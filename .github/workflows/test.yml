@@ -1,0 +1,36 @@
+name: Makefile CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: configure
+        run: ./configure
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install Dependencies
+        run: |
+          forge install
+
+      - name: Run build
+        run: |
+          export PATH="/home/runner/.config/.foundry/bin:$PATH";
+          make build;
+
+      - name: Run tests
+        run: |
+          export PATH="/home/runner/.config/.foundry/bin:$PATH";
+          make test;

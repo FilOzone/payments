@@ -1,3 +1,1 @@
-# payments
-
-WIP
+### TODO README

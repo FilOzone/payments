@@ -30,6 +30,7 @@ interface IArbiter {
     ) external returns (ArbitrationResult memory result);
 }
 
+// @title Payments contract.
 contract Payments is
     Initializable,
     UUPSUpgradeable,
@@ -143,6 +144,12 @@ contract Payments is
         _;
     }
 
+    /// @notice Updates the approval status and allowances for an operator.
+    /// @param token The ERC20 token address for which the approval is being set.
+    /// @param operator The address of the operator whose approval is being modified.
+    /// @param approved Whether the operator is approved (true) or not (false) to create new rails>
+    /// @param rateAllowance The maximum payment rate the operator can set across all rails created by the operator. If this is less than the current payment rate, the operator will only be able to reduce rates until they fall below the target.
+    /// @param lockupAllowance The maximum amount of funds the operator can lock up towards future payments. If this exceeds the current total amount of funds locked towards future payments, the operator will only be able to reduce future lockup.
     function setOperatorApproval(
         address token,
         address operator,
@@ -163,6 +170,11 @@ contract Payments is
         approval.lockupAllowance = lockupAllowance;
     }
 
+    /// @notice Terminates a payment rail, preventing further payments after the rail's lockup period. After calling this method, the lockup period cannot be changed, and the rail's rate and fixed lockup may only be reduced.
+    /// @param railId The ID of the rail to terminate.
+    /// @custom:constraint Caller must be a rail participant (client, operator, or recipient).
+    /// @custom:constraint Rail must be active and not already terminated.
+    /// @custom:constraint The payer's account must be fully funded.
     function terminateRail(
         uint256 railId
     )
@@ -212,6 +224,11 @@ contract Payments is
         approval.rateUsage -= rail.paymentRate;
     }
 
+    /// @notice Deposits tokens from the caller's account into `to`'s account.
+    /// @param token The ERC20 token address to deposit.
+    /// @param to The address whose account will be credited.
+    /// @param amount The amount of tokens to deposit.
+    /// @custom:constraint Caller must have approved the contract to transfer the tokens.
     function deposit(
         address token,
         address to,
@@ -231,10 +248,17 @@ contract Payments is
         account.funds += amount;
     }
 
+    /// @notice Withdraws tokens from the caller's account to the caller's account.
+    /// @param token The ERC20 token address to withdraw.
+    /// @param amount The amount of tokens to withdraw.
     function withdraw(address token, uint256 amount) external nonReentrant {
         return withdrawToInternal(token, msg.sender, amount);
     }
 
+    /// @notice Withdraws tokens (`token`) from the caller's account to `to`.
+    /// @param token The ERC20 token address to withdraw.
+    /// @param to The address to receive the withdrawn tokens.
+    /// @param amount The amount of tokens to withdraw.
     function withdrawTo(
         address token,
         address to,
@@ -268,6 +292,13 @@ contract Payments is
         IERC20(token).safeTransfer(to, amount);
     }
 
+    /// @notice Create a new rail from `from` to `to`, operated by the caller.
+    /// @param token The ERC20 token address for payments on this rail.
+    /// @param from The client address (payer) for this rail.
+    /// @param to The recipient address for payments on this rail.
+    /// @param arbiter Optional address of an arbiter contract (can be address(0) for no arbitration).
+    /// @return The ID of the newly created rail.
+    /// @custom:constraint Caller must be approved as an operator by the client (from address).
     function createRail(
         address token,
         address from,
@@ -300,6 +331,14 @@ contract Payments is
         return railId;
     }
 
+    /// @notice Modifies the fixed lockup and lockup period of a rail.
+    /// - If the rail has already been terminated, the lockup period may not be altered and the fixed lockup may only be reduced.
+    /// - If the rail is active, the lockup may only be modified if the payer's account is fully funded and the payer's account must have enough funds to cover the new lockup.
+    /// @param railId The ID of the rail to modify.
+    /// @param period The new lockup period (in epochs/blocks).
+    /// @param lockupFixed The new fixed lockup amount.
+    /// @custom:constraint Caller must be the rail operator.
+    /// @custom:constraint Operator must have sufficient lockup allowance to cover any increases the lockup period or the fixed lockup.
     function modifyRailLockup(
         uint256 railId,
         uint256 period,
@@ -413,6 +452,17 @@ contract Payments is
         );
     }
 
+    /// @notice Modifies the payment rate and optionally makes a one-time payment. The rail will automatically be settled at the current rate (before changing it) unless the rail is subject to arbitration.
+    /// - If the rail has already been terminated for an entire lockup period, this method will always revert.
+    /// - If the rail has already been terminated but a lockup period hasn't passed since termination, the rate may be decreased (but not incrased) and one-time payments may be made.
+    /// - If the payer doesn't have enough funds in their account to settle the rail up to the current epoch, the rail's payment rate may not be changed at all (increased or decreased).
+    /// - If the payer's account isn't fully funded, the rail's payment rate may not be increased but it may be decreased.
+    /// - Regardless of the payer's account status, one-time payments will always go through provided that the rail has sufficient fixed lockup to cover the payment.
+    /// @param railId The ID of the rail to modify.
+    /// @param newRate The new payment rate (per epoch). This new rate applies starting the next epoch after the current one.
+    /// @param oneTimePayment Optional one-time payment amount to transfer immediately, taken out of the rail's fixed lockup.
+    /// @custom:constraint Caller must be the rail operator.
+    /// @custom:constraint Operator must have sufficient rate and lockup allowances for any increases.
     function modifyRailPayment(
         uint256 railId,
         uint256 newRate,
@@ -689,6 +739,13 @@ contract Payments is
         approval.rateUsage += rateIncrease;
     }
 
+    /// @notice Settles payments for a rail up to the specified epoch. Settlement may fail to reach the target epoch if either the client lacks the funds to pay up to the current epoch or the arbiter refuses to settle the entire requested range.
+    /// @param railId The ID of the rail to settle.
+    /// @param untilEpoch The epoch up to which to settle (must not exceed current block number).
+    /// @param skipArbitration Whether to skip arbitration (only the client can set this to true).
+    /// @return totalSettledAmount The total amount settled and transferred.
+    /// @return finalSettledEpoch The epoch up to which settlement was actually completed.
+    /// @return note Additional information about the settlement (especially from arbitration).
     function settleRail(
         uint256 railId,
         uint256 untilEpoch,

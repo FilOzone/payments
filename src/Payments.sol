@@ -246,9 +246,6 @@ contract Payments is
 
         // Update account balance
         account.funds += amount;
-
-        // settle account lockup now that we have more funds
-        settleAccountLockup(account);
     }
 
     function withdraw(address token, uint256 amount) external nonReentrant {
@@ -711,6 +708,9 @@ contract Payments is
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
 
+        // Update the payer's lockup to account for elapsed time
+        settleAccountLockup(payer);
+
         // Only the client (payer) of the rail can skip arbitration
         if (skipArbitration) {
             require(
@@ -738,9 +738,6 @@ contract Payments is
             // For terminated but not fully settled rails, limit settlement window
             untilEpoch = min(untilEpoch, maxTerminatedRailSettlementEpoch);
         }
-
-        // Update the payer's lockup to account for elapsed time
-        settleAccountLockup(payer);
 
         uint256 maxLockupSettlementEpoch = payer.lockupLastSettledAt +
             rail.lockupPeriod;

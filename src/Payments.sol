@@ -1133,8 +1133,8 @@ contract Payments is
     ) internal view returns (bool) {
         return block.number > payer.lockupLastSettledAt + rail.lockupPeriod;
     }
+}
 
-    function min(uint256 a, uint256 b) public pure returns (uint256) {
-        return a < b ? a : b;
-    }
+function min(uint256 a, uint256 b) pure returns (uint256) {
+    return a < b ? a : b;
 }

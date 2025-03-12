@@ -143,23 +143,6 @@ contract Payments is
         _;
     }
 
-    function approveOperator(
-        address token,
-        address operator,
-        uint256 rateAllowance,
-        uint256 lockupAllowance
-    ) external {
-        require(token != address(0), "token address cannot be zero");
-        require(operator != address(0), "operator address cannot be zero");
-
-        OperatorApproval storage approval = operatorApprovals[token][
-            msg.sender
-        ][operator];
-        approval.rateAllowance = rateAllowance;
-        approval.lockupAllowance = lockupAllowance;
-        approval.isApproved = true;
-    }
-
     function setOperatorApproval(
         address token,
         address operator,

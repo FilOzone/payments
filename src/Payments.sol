@@ -450,7 +450,8 @@ contract Payments is
             payer,
             oldRate,
             newRate,
-            lockupSettledUpto
+            lockupSettledUpto,
+            oneTimePayment
         );
 
         // --- Settlement Prior to Rate Change ---
@@ -587,13 +588,18 @@ contract Payments is
         Account storage payer,
         uint256 oldRate,
         uint256 newRate,
-        uint256 lockupSettledUpto
+        uint256 lockupSettledUpto,
+        uint256 oneTimePayment
     ) internal view {
         if (isRailTerminated(rail)) {
-            require(
-                block.number <= maxSettlementEpochForTerminatedRail(rail),
-                "terminated rail is beyond it's max settlement epoch; settle the rail"
-            );
+            if (block.number > maxSettlementEpochForTerminatedRail(rail)) {
+                require(
+                    newRate == 0 && oneTimePayment == 0,
+                    "terminated rail beyond max settlement epoch: can only be set to zero rate with no one-time payment"
+                );
+                return;
+            }
+
             require(
                 newRate <= oldRate,
                 "failed to modify rail: cannot increase rate on terminated rail"

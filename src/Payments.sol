@@ -525,6 +525,12 @@ contract Payments is
             return;
         }
 
+        // No need to settle the rail or enqueue the rate change if the rail has already been settled upto
+        // the current epoch
+        if (rail.settledUpTo == block.number) {
+            return;
+        }
+
         // If there is no arbiter, settle the rail immediately
         if (rail.arbiter == address(0)) {
             (, uint256 settledUpto, ) = settleRail(railId, block.number, false);

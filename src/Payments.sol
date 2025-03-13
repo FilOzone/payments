@@ -526,7 +526,7 @@ contract Payments is
 
         // If there is no arbiter, settle the rail immediately
         if (rail.arbiter == address(0)) {
-            (, uint256 settledUpto, ) = settleRail(railId, block.number, false);
+            (, uint256 settledUpto, ) = settleRail(railId, block.number);
             require(
                 settledUpto == block.number,
                 "failed to settle rail up to current epoch"
@@ -689,14 +689,64 @@ contract Payments is
         approval.rateUsage += rateIncrease;
     }
 
+    function settleTerminatedRailWithoutArbitration(
+        uint256 railId
+    )
+        external
+        validateRailActive(railId)
+        nonReentrant
+        returns (
+            uint256 totalSettledAmount,
+            uint256 finalSettledEpoch,
+            string memory note
+        )
+    {
+        Rail storage rail = rails[railId];
+
+        // Verify the caller is the rail client (payer)
+        require(
+            rail.from == msg.sender,
+            "only the rail client can settle a terminated rail without arbitration"
+        );
+
+        // Verify the rail is terminated
+        require(
+            isRailTerminated(rail),
+            "can only skip arbitration for terminated rails"
+        );
+
+        // Verify the current epoch is greater than the max settlement epoch
+        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(rail);
+        require(
+            block.number > maxSettleEpoch,
+            "terminated rail can only be settled without arbitration after max settlement epoch"
+        );
+
+        return settleRailInternal(railId, maxSettleEpoch, true);
+    }
+
     function settleRail(
         uint256 railId,
-        uint256 untilEpoch,
-        bool skipArbitration
+        uint256 untilEpoch
     )
         public
         validateRailActive(railId)
         nonReentrant
+        returns (
+            uint256 totalSettledAmount,
+            uint256 finalSettledEpoch,
+            string memory note
+        )
+    {
+        return settleRailInternal(railId, untilEpoch, false);
+    }
+
+    function settleRailInternal(
+        uint256 railId,
+        uint256 untilEpoch,
+        bool skipArbitration
+    )
+        internal
         returns (
             uint256 totalSettledAmount,
             uint256 finalSettledEpoch,
@@ -710,14 +760,6 @@ contract Payments is
 
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
-
-        // Only the client (payer) of the rail can skip arbitration
-        if (skipArbitration) {
-            require(
-                rail.from == msg.sender,
-                "only the rail client can skip arbitration"
-            );
-        }
 
         // Handle terminated rails
         if (isRailTerminated(rail)) {

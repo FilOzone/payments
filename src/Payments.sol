@@ -410,12 +410,14 @@ contract Payments is
                 lockupSettledUpto == block.number,
                 "cannot increase lockup: client funds insufficient for current account lockup settlement"
             );
-        } else if (period < rail.lockupPeriod) {
+        } else {
             // When reducing period, ensure we still cover all unsettled epochs
-            require(
-                payer.lockupLastSettledAt + period >= block.number,
-                "cannot reduce lockup period below what's needed for unsettled epochs"
-            );
+            if (period < rail.lockupPeriod) {
+                require(
+                    payer.lockupLastSettledAt + period >= block.number,
+                    "cannot reduce lockup period below what's needed for unsettled epochs"
+                );
+            }
         }
 
         // Calculate effective lockup period for the old period

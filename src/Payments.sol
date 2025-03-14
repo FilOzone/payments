@@ -403,21 +403,18 @@ contract Payments is
 
         // Settle account lockup as much as possible
         uint256 lockupSettledUpto = settleAccountLockup(payer);
-
         // Only require full settlement if increasing period or fixed lockup
         if (period > rail.lockupPeriod || lockupFixed > rail.lockupFixed) {
             require(
                 lockupSettledUpto == block.number,
                 "cannot increase lockup: client funds insufficient for current account lockup settlement"
             );
-        } else {
+        } else if (period < rail.lockupPeriod) {
             // When reducing period, ensure we still cover all unsettled epochs
-            if (period < rail.lockupPeriod) {
-                require(
-                    payer.lockupLastSettledAt + period >= block.number,
-                    "cannot reduce lockup period below what's needed for unsettled epochs"
-                );
-            }
+            require(
+                payer.lockupLastSettledAt + period >= block.number,
+                "cannot reduce lockup period below what's needed for unsettled epochs"
+            );
         }
 
         // Calculate effective lockup period for the old period

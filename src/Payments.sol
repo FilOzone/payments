@@ -143,23 +143,6 @@ contract Payments is
         _;
     }
 
-    function approveOperator(
-        address token,
-        address operator,
-        uint256 rateAllowance,
-        uint256 lockupAllowance
-    ) external {
-        require(token != address(0), "token address cannot be zero");
-        require(operator != address(0), "operator address cannot be zero");
-
-        OperatorApproval storage approval = operatorApprovals[token][
-            msg.sender
-        ][operator];
-        approval.rateAllowance = rateAllowance;
-        approval.lockupAllowance = lockupAllowance;
-        approval.isApproved = true;
-    }
-
     function setOperatorApproval(
         address token,
         address operator,
@@ -246,20 +229,25 @@ contract Payments is
 
         // Update account balance
         account.funds += amount;
-
-        // settle account lockup now that we have more funds
-        settleAccountLockup(account);
     }
 
     function withdraw(address token, uint256 amount) external nonReentrant {
-        withdrawTo(token, msg.sender, amount);
+        return withdrawToInternal(token, msg.sender, amount);
     }
 
     function withdrawTo(
         address token,
         address to,
         uint256 amount
-    ) public nonReentrant {
+    ) external nonReentrant {
+        return withdrawToInternal(token, to, amount);
+    }
+
+    function withdrawToInternal(
+        address token,
+        address to,
+        uint256 amount
+    ) internal {
         require(token != address(0), "token address cannot be zero");
         require(to != address(0), "recipient address cannot be zero");
 
@@ -450,7 +438,8 @@ contract Payments is
             payer,
             oldRate,
             newRate,
-            lockupSettledUpto
+            lockupSettledUpto,
+            oneTimePayment
         );
 
         // --- Settlement Prior to Rate Change ---
@@ -524,6 +513,12 @@ contract Payments is
             return;
         }
 
+        // No need to settle the rail or enqueue the rate change if the rail has already been settled upto
+        // the current epoch
+        if (rail.settledUpTo == block.number) {
+            return;
+        }
+
         // If there is no arbiter, settle the rail immediately
         if (rail.arbiter == address(0)) {
             (, uint256 settledUpto, ) = settleRail(railId, block.number);
@@ -587,13 +582,18 @@ contract Payments is
         Account storage payer,
         uint256 oldRate,
         uint256 newRate,
-        uint256 lockupSettledUpto
+        uint256 lockupSettledUpto,
+        uint256 oneTimePayment
     ) internal view {
         if (isRailTerminated(rail)) {
-            require(
-                block.number <= maxSettlementEpochForTerminatedRail(rail),
-                "terminated rail is beyond it's max settlement epoch; settle the rail"
-            );
+            if (block.number > maxSettlementEpochForTerminatedRail(rail)) {
+                require(
+                    newRate == 0 && oneTimePayment == 0,
+                    "terminated rail beyond max settlement epoch: can only be set to zero rate with no one-time payment"
+                );
+                return;
+            }
+
             require(
                 newRate <= oldRate,
                 "failed to modify rail: cannot increase rate on terminated rail"
@@ -761,6 +761,9 @@ contract Payments is
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
 
+        // Update the payer's lockup to account for elapsed time
+        settleAccountLockup(payer);
+
         // Handle terminated rails
         if (isRailTerminated(rail)) {
             uint256 maxTerminatedRailSettlementEpoch = maxSettlementEpochForTerminatedRail(
@@ -780,9 +783,6 @@ contract Payments is
             // For terminated but not fully settled rails, limit settlement window
             untilEpoch = min(untilEpoch, maxTerminatedRailSettlementEpoch);
         }
-
-        // Update the payer's lockup to account for elapsed time
-        settleAccountLockup(payer);
 
         uint256 maxLockupSettlementEpoch = payer.lockupLastSettledAt +
             rail.lockupPeriod;
@@ -1175,8 +1175,8 @@ contract Payments is
     ) internal view returns (bool) {
         return block.number > payer.lockupLastSettledAt + rail.lockupPeriod;
     }
+}
 
-    function min(uint256 a, uint256 b) public pure returns (uint256) {
-        return a < b ? a : b;
-    }
+function min(uint256 a, uint256 b) pure returns (uint256) {
+    return a < b ? a : b;
 }

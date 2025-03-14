@@ -70,6 +70,7 @@ contract Payments is
         uint256 lockupAllowance;
         uint256 rateUsage; // Track actual usage for rate
         uint256 lockupUsage; // Track actual usage for lockup
+        uint256 oneTimePaymentsUsed; // Track one-time payments made by this operator
     }
 
     // Counter for generating unique rail IDs
@@ -360,9 +361,12 @@ contract Payments is
         // 1. Period remains unchanged (enforced by the require statement above)
         // 2. The rate-based portion of the lockup doesn't change
         // 3. The only thing changing is the fixed lockup, which is being reduced
-
-        // Update operator allowance - reduce usage by the exact reduction amount
-        approval.lockupUsage -= lockupReduction;
+        updateOperatorLockupTracking(
+            approval,
+            rail.lockupFixed,
+            lockupFixed,
+            0
+        );
 
         // Update payer's lockup - subtract the exact reduction amount
         require(
@@ -404,8 +408,8 @@ contract Payments is
         // Calculate new lockup amount with new parameters
         uint256 newLockup = lockupFixed + (rail.paymentRate * period);
 
-        // Update operator allowance tracking based on lockup changes
-        updateOperatorLockupTracking(approval, oldLockup, newLockup);
+        // Update operator allowance tracking based on lockup changes (no one-time payment)
+        updateOperatorLockupTracking(approval, oldLockup, newLockup, 0);
 
         require(
             payer.lockupCurrent >= oldLockup,
@@ -626,25 +630,29 @@ contract Payments is
     function updateOperatorLockupTracking(
         OperatorApproval storage approval,
         uint256 oldLockup,
-        uint256 newLockup
+        uint256 newLockup,
+        uint256 oneTimePayment
     ) internal {
+        // Handle regular lockup changes
         if (newLockup < oldLockup) {
             uint256 lockupDecrease = oldLockup - newLockup;
             approval.lockupUsage -= lockupDecrease;
-            return;
+        } else if (newLockup > oldLockup) {
+            uint256 lockupIncrease = newLockup - oldLockup;
+            approval.lockupUsage += lockupIncrease;
         }
 
-        // Handle lockup increase
-        uint256 lockupIncrease = newLockup - oldLockup;
+        // Track one-time payment if any
+        if (oneTimePayment > 0) {
+            approval.oneTimePaymentsUsed += oneTimePayment;
+        }
 
-        // Verify against allowance
+        // Verify the total usage against allowance
         require(
-            approval.lockupUsage + lockupIncrease <= approval.lockupAllowance,
-            "exceeds operator lockup allowance"
+            approval.lockupUsage + approval.oneTimePaymentsUsed <=
+                approval.lockupAllowance,
+            "total usage exceeds operator lockup allowance"
         );
-
-        // Update usage
-        approval.lockupUsage += lockupIncrease;
     }
 
     function validateAndModifyRateChangeApproval(
@@ -661,17 +669,13 @@ contract Payments is
         uint256 newLockup = (newRate * effectiveLockupPeriod) +
             (rail.lockupFixed - oneTimePayment);
 
-        updateOperatorLockupTracking(approval, oldLockup, newLockup);
-
-        if (oneTimePayment > 0) {
-            // one-time payments count towards lockup usage
-            require(
-                approval.lockupUsage + oneTimePayment <=
-                    approval.lockupAllowance,
-                "one-time payment exceeds operator lockup allowance"
-            );
-            approval.lockupUsage += oneTimePayment;
-        }
+        // Update tracking in one place with all relevant information
+        updateOperatorLockupTracking(
+            approval,
+            oldLockup,
+            newLockup,
+            oneTimePayment
+        );
 
         // handle a rate decrease
         if (newRate < oldRate) {
@@ -863,7 +867,8 @@ contract Payments is
             approval.lockupUsage >= rail.lockupFixed,
             "invariant violation: operator lockup usage cannot be less than rail fixed lockup"
         );
-        approval.lockupUsage -= rail.lockupFixed;
+        // Use our centralized tracking function - releasing the entire fixed lockup
+        updateOperatorLockupTracking(approval, rail.lockupFixed, 0, 0);
 
         // Reduce the lockup by the fixed amount
         require(

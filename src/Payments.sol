@@ -161,6 +161,14 @@ contract Payments is
         _;
     }
 
+    modifier verifyOperatorApproval(address token, address client) {
+        OperatorApproval storage approval = operatorApprovals[token][client][
+            msg.sender
+        ];
+        require(approval.isApproved, "operator not approved for this client");
+        _;
+    }
+
     modifier verifyAccountLockupFullySettledForRailClient(uint256 railId) {
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
@@ -182,6 +190,21 @@ contract Payments is
             "account lockup settlement not complete"
         );
         _;
+    }
+
+    modifier settleAccountLockupAfter(address token, address account) {
+        _;
+        Account storage accountStorage = accounts[token][account];
+        settleAccountLockup(accountStorage);
+    }
+
+    modifier verifyAccountLockupFullySettledAfter(
+        address token,
+        address account
+    ) {
+        _;
+        Account storage accountStorage = accounts[token][account];
+        settleAccountLockup(accountStorage);
     }
 
     function setOperatorApproval(
@@ -253,14 +276,12 @@ contract Payments is
         validateNotZeroAddr(token, "token")
         validateNotZeroAddr(to, "to")
         validateNotZeroAmount(amount, "deposit")
+        settleAccountLockupAfter(token, to)
     {
-        // Create account if it doesn't exist
+        // Creates account if it doesn't exist
         Account storage account = accounts[token][to];
 
-        // Transfer tokens from sender to contract
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-
-        // Update account balance
         account.funds += amount;
     }
 
@@ -274,7 +295,7 @@ contract Payments is
         validateNotZeroAmount(amount, "withdrawal")
         verifyAccountLockupFullySettled(token, msg.sender)
     {
-        return withdrawToInternal(token, msg.sender, amount);
+        return _withdrawToInternal(token, msg.sender, amount);
     }
 
     function withdrawTo(
@@ -289,23 +310,7 @@ contract Payments is
         validateNotZeroAmount(amount, "withdrawal")
         verifyAccountLockupFullySettled(token, msg.sender)
     {
-        return withdrawToInternal(token, to, amount);
-    }
-
-    function withdrawToInternal(
-        address token,
-        address to,
-        uint256 amount
-    ) internal {
-        Account storage account = accounts[token][msg.sender];
-
-        uint256 available = account.funds - account.lockupCurrent;
-        require(
-            amount <= available,
-            "insufficient unlocked funds for withdrawal"
-        );
-        account.funds -= amount;
-        IERC20(token).safeTransfer(to, amount);
+        return _withdrawToInternal(token, to, amount);
     }
 
     function createRail(
@@ -313,18 +318,16 @@ contract Payments is
         address from,
         address to,
         address arbiter
-    ) external noRailModificationInProgress(_nextRailId) returns (uint256) {
+    )
+        external
+        noRailModificationInProgress(_nextRailId)
+        validateNotZeroAddr(token, "token")
+        validateNotZeroAddr(from, "from")
+        validateNotZeroAddr(to, "to")
+        verifyOperatorApproval(token, from)
+        returns (uint256)
+    {
         address operator = msg.sender;
-        require(token != address(0), "token address cannot be zero");
-        require(from != address(0), "from address cannot be zero");
-        require(to != address(0), "to address cannot be zero");
-
-        // Check if operator is approved - approval is required for rail creation
-        OperatorApproval storage approval = operatorApprovals[token][from][
-            operator
-        ];
-        require(approval.isApproved, "operator not approved");
-
         uint256 railId = _nextRailId++;
 
         Rail storage rail = rails[railId];
@@ -1214,6 +1217,22 @@ contract Payments is
         Account storage payer
     ) internal view returns (bool) {
         return block.number > payer.lockupLastSettledAt + rail.lockupPeriod;
+    }
+
+    function _withdrawToInternal(
+        address token,
+        address to,
+        uint256 amount
+    ) internal {
+        Account storage account = accounts[token][msg.sender];
+
+        uint256 available = account.funds - account.lockupCurrent;
+        require(
+            amount <= available,
+            "insufficient unlocked funds for withdrawal"
+        );
+        account.funds -= amount;
+        IERC20(token).safeTransfer(to, amount);
     }
 }
 

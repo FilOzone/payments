@@ -145,6 +145,16 @@ contract Payments is
         _;
     }
 
+    modifier verifyRailNotInDebt(uint256 railId) {
+        Rail storage rail = rails[railId];
+        Account storage payer = accounts[rail.token][rail.from];
+        require(
+            !isRailInDebt(rail, payer),
+            "rail is in debt: cannot perform this operation"
+        );
+        _;
+    }
+
     modifier validateNotZeroAddr(address addr, string memory addrName) {
         require(
             addr != address(0),
@@ -166,6 +176,14 @@ contract Payments is
             msg.sender
         ];
         require(approval.isApproved, "operator not approved for this client");
+        _;
+    }
+
+    modifier settleAccountLockupForRailClient(uint256 railId) {
+        Rail storage rail = rails[railId];
+        Account storage payer = accounts[rail.token][rail.from];
+
+        settleAccountLockup(payer);
         _;
     }
 
@@ -352,18 +370,20 @@ contract Payments is
         validateRailActive(railId)
         onlyRailOperator(railId)
         noRailModificationInProgress(railId)
+        settleAccountLockupForRailClient(railId)
+        verifyRailNotInDebt(railId)
     {
         Rail storage rail = rails[railId];
-        bool isTerminated = isRailTerminated(rail);
+        bool isTerminated = _isRailTerminated(rail);
 
         if (isTerminated) {
-            modifyTerminatedRailLockup(rail, period, lockupFixed);
+            _modifyTerminatedRailLockup(rail, period, lockupFixed);
         } else {
-            modifyActiveRailLockup(rail, period, lockupFixed);
+            _modifyActiveRailLockup(rail, period, lockupFixed);
         }
     }
 
-    function modifyTerminatedRailLockup(
+    function _modifyTerminatedRailLockup(
         Rail storage rail,
         uint256 period,
         uint256 lockupFixed
@@ -377,11 +397,6 @@ contract Payments is
         OperatorApproval storage approval = operatorApprovals[rail.token][
             rail.from
         ][rail.operator];
-
-        // we don't need to ensure that the account lockup is fully settled here
-        // because we already ensure that enough funds are locked for a terminated rail during
-        // `terminateRail`
-        settleAccountLockup(payer);
 
         // Calculate the fixed lockup reduction - this is the only change allowed for terminated rails
         uint256 lockupReduction = rail.lockupFixed - lockupFixed;
@@ -411,7 +426,7 @@ contract Payments is
         );
     }
 
-    function modifyActiveRailLockup(
+    function _modifyActiveRailLockup(
         Rail storage rail,
         uint256 period,
         uint256 lockupFixed
@@ -421,19 +436,10 @@ contract Payments is
             rail.from
         ][rail.operator];
 
-        // Settle account lockup as much as possible
-        uint256 lockupSettledUpto = settleAccountLockup(payer);
-
-        // Check for rail in debt before modifying lockup
-        require(
-            !isRailInDebt(rail, payer),
-            "cannot modify rail lockup: rail is in debt"
-        );
-
         // Only require full settlement if increasing period or fixed lockup
         if (period > rail.lockupPeriod || lockupFixed > rail.lockupFixed) {
             require(
-                lockupSettledUpto == block.number,
+                payer.lockupSettledUpto == block.number,
                 "cannot increase lockup: client funds insufficient for current account lockup settlement"
             );
         } else if (period < rail.lockupPeriod) {
@@ -1231,11 +1237,7 @@ contract Payments is
         return maxSettlementEpoch - block.number;
     }
 
-    function isRailTerminated(Rail storage rail) internal view returns (bool) {
-        require(
-            rail.from != address(0),
-            "failed to check: rail does not exist"
-        );
+    function _isRailTerminated(Rail storage rail) internal view returns (bool) {
         return rail.terminationEpoch > 0;
     }
 

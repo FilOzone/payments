@@ -100,12 +100,16 @@ contract Payments is
     ) internal override onlyOwner {}
 
     modifier verifyRailActive(uint256 railId) {
+        require(rails[railId].from != address(0), "rail does not exist");
         require(rails[railId].isActive, "rail is inactive");
         _;
     }
 
     modifier noRailModificationInProgress(uint256 railId) {
-        require(!rails[railId].isLocked, "Modification already in progress");
+        require(
+            !rails[railId].isLocked,
+            "modification already in progress for this rail"
+        );
         rails[railId].isLocked = true;
         _;
         rails[railId].isLocked = false;

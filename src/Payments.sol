@@ -139,7 +139,48 @@ contract Payments is
     }
 
     modifier validateRailNotTerminated(uint256 railId) {
+        require(rails[railId].from != address(0), "rail does not exist");
+        require(rails[railId].isActive, "rail is inactive");
         require(rails[railId].terminationEpoch == 0, "rail already terminated");
+        _;
+    }
+
+    modifier validateNotZeroAddr(address addr, string memory addrName) {
+        require(
+            addr != address(0),
+            string.concat(addrName, " address cannot be zero")
+        );
+        _;
+    }
+
+    modifier validateNotZeroAmount(uint256 amount, string memory amountName) {
+        require(
+            amount > 0,
+            string.concat(amountName, " amount must be greater than 0")
+        );
+        _;
+    }
+
+    modifier verifyAccountLockupFullySettledForRailClient(uint256 railId) {
+        Rail storage rail = rails[railId];
+        Account storage payer = accounts[rail.token][rail.from];
+
+        uint256 settledUpto = settleAccountLockup(payer);
+        require(
+            settledUpto == block.number,
+            "account lockup settlement not complete"
+        );
+        _;
+    }
+
+    modifier verifyAccountLockupFullySettled(address token, address account) {
+        Account storage payer = accounts[token][account];
+
+        uint256 settledUpto = settleAccountLockup(payer);
+        require(
+            settledUpto == block.number,
+            "account lockup settlement not complete"
+        );
         _;
     }
 
@@ -149,10 +190,11 @@ contract Payments is
         bool approved,
         uint256 rateAllowance,
         uint256 lockupAllowance
-    ) external {
-        require(token != address(0), "token address cannot be zero");
-        require(operator != address(0), "operator address cannot be zero");
-
+    )
+        external
+        validateNotZeroAddr(token, "token")
+        validateNotZeroAddr(operator, "operator")
+    {
         OperatorApproval storage approval = operatorApprovals[token][
             msg.sender
         ][operator];
@@ -167,27 +209,16 @@ contract Payments is
         uint256 railId
     )
         external
-        validateRailActive(railId)
+        validateRailNotTerminated(railId)
         noRailModificationInProgress(railId)
         onlyRailParticipant(railId)
-        validateRailNotTerminated(railId)
+        verifyAccountLockupFullySettledForRailClient(railId)
     {
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
         OperatorApproval storage approval = operatorApprovals[rail.token][
             rail.from
         ][rail.operator];
-
-        // Settle account lockup to ensure we're up to date
-        uint256 settledUntil = settleAccountLockup(payer);
-
-        // Verify that the account is fully settled up to the current epoch
-        // This ensures that the client has enough funds locked to settle the rail upto
-        // and including (termination epoch aka current epoch + rail lockup period)
-        require(
-            settledUntil >= block.number,
-            "cannot terminate rail: failed to settle account lockup completely"
-        );
 
         rail.terminationEpoch = block.number;
 
@@ -216,11 +247,13 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    ) external nonReentrant {
-        require(token != address(0), "token address cannot be zero");
-        require(to != address(0), "to address cannot be zero");
-        require(amount > 0, "amount must be greater than 0");
-
+    )
+        external
+        nonReentrant
+        validateNotZeroAddr(token, "token")
+        validateNotZeroAddr(to, "to")
+        validateNotZeroAmount(amount, "deposit")
+    {
         // Create account if it doesn't exist
         Account storage account = accounts[token][to];
 
@@ -231,7 +264,16 @@ contract Payments is
         account.funds += amount;
     }
 
-    function withdraw(address token, uint256 amount) external nonReentrant {
+    function withdraw(
+        address token,
+        uint256 amount
+    )
+        external
+        nonReentrant
+        validateNotZeroAddr(token, "token")
+        validateNotZeroAmount(amount, "withdrawal")
+        verifyAccountLockupFullySettled(token, msg.sender)
+    {
         return withdrawToInternal(token, msg.sender, amount);
     }
 
@@ -239,7 +281,14 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    ) external nonReentrant {
+    )
+        external
+        nonReentrant
+        validateNotZeroAddr(token, "token")
+        validateNotZeroAddr(to, "to")
+        validateNotZeroAmount(amount, "withdrawal")
+        verifyAccountLockupFullySettled(token, msg.sender)
+    {
         return withdrawToInternal(token, to, amount);
     }
 
@@ -248,23 +297,14 @@ contract Payments is
         address to,
         uint256 amount
     ) internal {
-        require(token != address(0), "token address cannot be zero");
-        require(to != address(0), "recipient address cannot be zero");
+        Account storage account = accounts[token][msg.sender];
 
-        Account storage acct = accounts[token][msg.sender];
-
-        uint256 settleEpoch = settleAccountLockup(acct);
-        require(settleEpoch == block.number, "insufficient funds");
-
-        uint256 available = acct.funds > acct.lockupCurrent
-            ? acct.funds - acct.lockupCurrent
-            : 0;
-
+        uint256 available = account.funds - account.lockupCurrent;
         require(
             amount <= available,
             "insufficient unlocked funds for withdrawal"
         );
-        acct.funds -= amount;
+        account.funds -= amount;
         IERC20(token).safeTransfer(to, amount);
     }
 

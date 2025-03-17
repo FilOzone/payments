@@ -99,7 +99,7 @@ contract Payments is
         address newImplementation
     ) internal override onlyOwner {}
 
-    modifier validateRailActive(uint256 railId) {
+    modifier verifyRailActive(uint256 railId) {
         require(rails[railId].isActive, "rail is inactive");
         _;
     }
@@ -137,8 +137,7 @@ contract Payments is
         _;
     }
 
-    modifier validateRailNotTerminated(uint256 railId) {
-        require(rails[railId].from != address(0), "rail does not exist");
+    modifier verifyRailNotTerminated(uint256 railId) {
         require(rails[railId].isActive, "rail is inactive");
         require(rails[railId].terminationEpoch == 0, "rail already terminated");
         _;
@@ -154,7 +153,7 @@ contract Payments is
         _;
     }
 
-    modifier validateNotZeroAddr(address addr, string memory addrName) {
+    modifier verifyNotZeroAddr(address addr, string memory addrName) {
         require(
             addr != address(0),
             string.concat(addrName, " address cannot be zero")
@@ -162,7 +161,7 @@ contract Payments is
         _;
     }
 
-    modifier validateNotZeroAmount(uint256 amount, string memory amountName) {
+    modifier verifyNotZeroAmount(uint256 amount, string memory amountName) {
         require(
             amount > 0,
             string.concat(amountName, " amount must be greater than 0")
@@ -232,8 +231,8 @@ contract Payments is
         uint256 lockupAllowance
     )
         external
-        validateNotZeroAddr(token, "token")
-        validateNotZeroAddr(operator, "operator")
+        verifyNotZeroAddr(token, "token")
+        verifyNotZeroAddr(operator, "operator")
     {
         OperatorApproval storage approval = operatorApprovals[token][
             msg.sender
@@ -249,7 +248,7 @@ contract Payments is
         uint256 railId
     )
         external
-        validateRailNotTerminated(railId)
+        verifyRailNotTerminated(railId)
         noRailModificationInProgress(railId)
         onlyRailParticipant(railId)
         verifyAccountLockupFullySettledForRailClient(railId)
@@ -290,9 +289,9 @@ contract Payments is
     )
         external
         nonReentrant
-        validateNotZeroAddr(token, "token")
-        validateNotZeroAddr(to, "to")
-        validateNotZeroAmount(amount, "deposit")
+        verifyNotZeroAddr(token, "token")
+        verifyNotZeroAddr(to, "to")
+        verifyNotZeroAmount(amount, "deposit")
         settleAccountLockupAfter(token, to)
     {
         // Creates account if it doesn't exist
@@ -308,8 +307,8 @@ contract Payments is
     )
         external
         nonReentrant
-        validateNotZeroAddr(token, "token")
-        validateNotZeroAmount(amount, "withdrawal")
+        verifyNotZeroAddr(token, "token")
+        verifyNotZeroAmount(amount, "withdrawal")
         verifyAccountLockupFullySettled(token, msg.sender)
     {
         return _withdrawToInternal(token, msg.sender, amount);
@@ -322,9 +321,9 @@ contract Payments is
     )
         external
         nonReentrant
-        validateNotZeroAddr(token, "token")
-        validateNotZeroAddr(to, "to")
-        validateNotZeroAmount(amount, "withdrawal")
+        verifyNotZeroAddr(token, "token")
+        verifyNotZeroAddr(to, "to")
+        verifyNotZeroAmount(amount, "withdrawal")
         verifyAccountLockupFullySettled(token, msg.sender)
     {
         return _withdrawToInternal(token, to, amount);
@@ -338,9 +337,9 @@ contract Payments is
     )
         external
         noRailModificationInProgress(_nextRailId)
-        validateNotZeroAddr(token, "token")
-        validateNotZeroAddr(from, "from")
-        validateNotZeroAddr(to, "to")
+        verifyNotZeroAddr(token, "token")
+        verifyNotZeroAddr(from, "from")
+        verifyNotZeroAddr(to, "to")
         verifyOperatorApproval(token, from)
         returns (uint256)
     {
@@ -366,7 +365,7 @@ contract Payments is
         uint256 lockupFixed
     )
         external
-        validateRailActive(railId)
+        verifyRailActive(railId)
         onlyRailOperator(railId)
         noRailModificationInProgress(railId)
         settleAccountLockupForRailClient(railId)
@@ -494,7 +493,7 @@ contract Payments is
         uint256 oneTimePayment
     )
         external
-        validateRailActive(railId)
+        verifyRailActive(railId)
         onlyRailOperator(railId)
         noRailModificationInProgress(railId)
     {
@@ -769,7 +768,7 @@ contract Payments is
     )
         external
         nonReentrant
-        validateRailActive(railId)
+        verifyRailActive(railId)
         onlyRailClient(railId)
         returns (
             uint256 totalSettledAmount,
@@ -800,7 +799,7 @@ contract Payments is
         uint256 untilEpoch
     )
         public
-        validateRailActive(railId)
+        verifyRailActive(railId)
         nonReentrant
         returns (
             uint256 totalSettledAmount,

@@ -144,12 +144,12 @@ contract Payments is
         _;
     }
 
-    /// @notice Updates the approval status and allowances for an operator.
+    /// @notice Updates the approval status and allowances for an operator on behalf of the message sender.
     /// @param token The ERC20 token address for which the approval is being set.
     /// @param operator The address of the operator whose approval is being modified.
     /// @param approved Whether the operator is approved (true) or not (false) to create new rails>
-    /// @param rateAllowance The maximum payment rate the operator can set across all rails created by the operator. If this is less than the current payment rate, the operator will only be able to reduce rates until they fall below the target.
-    /// @param lockupAllowance The maximum amount of funds the operator can lock up towards future payments. If this exceeds the current total amount of funds locked towards future payments, the operator will only be able to reduce future lockup.
+    /// @param rateAllowance The maximum payment rate the operator can set across all rails created by the operator on behalf of the message sender. If this is less than the current payment rate, the operator will only be able to reduce rates until they fall below the target.
+    /// @param lockupAllowance The maximum amount of funds the operator can lock up on behalf of the message sender towards future payments. If this exceeds the current total amount of funds locked towards future payments, the operator will only be able to reduce future lockup.
     function setOperatorApproval(
         address token,
         address operator,

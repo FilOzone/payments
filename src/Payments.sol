@@ -452,9 +452,8 @@ contract Payments is
         );
     }
 
-    /// @notice Modifies the payment rate and optionally makes a one-time payment. The rail will automatically be settled at the current rate (before changing it) unless the rail is subject to arbitration.
-    /// - If the rail has already been terminated for an entire lockup period, this method will always revert.
-    /// - If the rail has already been terminated but a lockup period hasn't passed since termination, the rate may be decreased (but not incrased) and one-time payments may be made.
+    /// @notice Modifies the payment rate and optionally makes a one-time payment.
+    /// - If the rail has already been terminated, one-time payments can be made but the rate may not be increased (only decreased).
     /// - If the payer doesn't have enough funds in their account to settle the rail up to the current epoch, the rail's payment rate may not be changed at all (increased or decreased).
     /// - If the payer's account isn't fully funded, the rail's payment rate may not be increased but it may be decreased.
     /// - Regardless of the payer's account status, one-time payments will always go through provided that the rail has sufficient fixed lockup to cover the payment.

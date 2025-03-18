@@ -224,11 +224,11 @@ contract Payments is
         approval.rateUsage -= rail.paymentRate;
     }
 
-    /// @notice Deposits tokens from the caller's account into `to`'s account.
+    /// @notice Deposits tokens from the message sender's account into `to`'s account.
     /// @param token The ERC20 token address to deposit.
     /// @param to The address whose account will be credited.
     /// @param amount The amount of tokens to deposit.
-    /// @custom:constraint Caller must have approved the contract to transfer the tokens.
+    /// @custom:constraint The message sender must have approved this contract to spend the requested amount via the ERC-20 token (`token`).
     function deposit(
         address token,
         address to,

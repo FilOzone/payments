@@ -248,14 +248,14 @@ contract Payments is
         account.funds += amount;
     }
 
-    /// @notice Withdraws tokens from the caller's account to the caller's account.
+    /// @notice Withdraws tokens from the caller's account to the caller's account, up to the amount of currently available tokens (the tokens not currently locked in rails).
     /// @param token The ERC20 token address to withdraw.
     /// @param amount The amount of tokens to withdraw.
     function withdraw(address token, uint256 amount) external nonReentrant {
         return withdrawToInternal(token, msg.sender, amount);
     }
 
-    /// @notice Withdraws tokens (`token`) from the caller's account to `to`.
+    /// @notice Withdraws tokens (`token`) from the caller's account to `to`, up to the amount of currently available tokens (the tokens not currently locked in rails).
     /// @param token The ERC20 token address to withdraw.
     /// @param to The address to receive the withdrawn tokens.
     /// @param amount The amount of tokens to withdraw.

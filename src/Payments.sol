@@ -135,7 +135,7 @@ contract Payments is
         require(rails[railId].terminationEpoch == 0, "rail already terminated");
         _;
     }
-
+    
     modifier validateRailTerminated(uint256 railId) {
         require(
             isRailTerminated(rails[railId]),
@@ -752,9 +752,7 @@ contract Payments is
         )
     {
         // Verify the current epoch is greater than the max settlement epoch
-        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(
-            rails[railId]
-        );
+        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(rails[railId]);
         require(
             block.number > maxSettleEpoch,
             "terminated rail can only be settled without arbitration after max settlement epoch"

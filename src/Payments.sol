@@ -159,7 +159,6 @@ contract Payments is
         _;
     }
 
-    // Modifier that handles settlement before and after function execution with DRY approach
     modifier settleAccountLockupBeforeAndAfter(
         address token,
         address owner,
@@ -167,34 +166,123 @@ contract Payments is
     ) {
         Account storage payer = accounts[token][owner];
 
+        // Before function execution
+        performSettlementCheck(payer, settleFull, true);
+
+        _;
+
+        // After function execution
+        performSettlementCheck(payer, settleFull, false);
+    }
+
+    modifier settleAccountLockupBeforeAndAfterForRail(
+        uint256 railId,
+        bool settleFull,
+        uint256 oneTimePayment
+    ) {
+        Rail storage rail = rails[railId];
+        require(rails[railId].from != address(0), "rail is inactive");
+
+        Account storage payer = accounts[rail.token][rail.from];
+
+        // If rail is terminated, ensure it is never in debt
         require(
-            payer.funds >= payer.lockupCurrent,
-            "invariant failure: insufficient funds to cover lockup before function execution"
+            !(isRailTerminated(rail) && isRailInDebt(rail, payer)),
+            "invariant check failed: terminated rail cannot be in debt"
         );
 
-        // Settle account lockup before function execution
+        require(
+            rail.lockupFixed >= oneTimePayment,
+            "one time payment cannot be greater than rail lockupFixed"
+        );
+
+        // Before function execution
+        performSettlementCheck(payer, settleFull, true);
+
+        uint256 accountLockupBefore = payer.lockupCurrent;
+        uint256 accountRateBefore = payer.lockupRate;
+
+        // ---- EXECUTE FUNCTION
+        _;
+        // ---- FUNCTION EXECUTION COMPLETE
+
+        uint256 accountLockupAfter = payer.lockupCurrent;
+        uint256 accountRateAfter = payer.lockupRate;
+
+        OperatorApproval storage approval = operatorApprovals[rail.token][
+            rail.from
+        ][rail.operator];
+
+        // Update operator rate tracking if rate has changed
+        if (accountRateAfter > accountRateBefore) {
+            uint256 rateIncrease = accountRateAfter - accountRateBefore;
+            require(
+                approval.rateUsage + rateIncrease <= approval.rateAllowance,
+                "operation exceeds operator rate allowance"
+            );
+            approval.rateUsage += rateIncrease;
+        } else if (accountRateBefore > accountRateAfter) {
+            uint256 rateDecrease = accountRateBefore - accountRateAfter;
+            require(
+                approval.rateUsage >= rateDecrease,
+                "invariant check failed: operator rate usage cannot be less than rate decrease"
+            );
+            approval.rateUsage -= rateDecrease;
+        }
+
+        // Update operator lockup tracking if lockup has changed
+        if (accountLockupAfter >= accountLockupBefore) {
+            uint256 lockupIncrease = accountLockupAfter - accountLockupBefore;
+            require(
+                approval.lockupUsage + lockupIncrease <=
+                    approval.lockupAllowance,
+                "operation exceeds operator lockup allowance"
+            );
+            approval.lockupUsage += lockupIncrease;
+        } else if (accountLockupBefore > accountLockupAfter) {
+            uint256 lockupDecrease = accountLockupBefore - accountLockupAfter;
+            approval.lockupUsage -= lockupDecrease;
+        }
+
+        // note: `oneTimePayment` is bounded by `rail.lockupFixed` which in turn is bounded by `approval.lockupAllowance`
+        // when it is initialised. So, the below the fine in the case where client sets `lockupAllowance` 0 BUT after `rail.lockupFixed`
+        // has been initialised using an allowance which was valid at that time.
+        approval.lockupAllowance = oneTimePayment > approval.lockupAllowance
+            ? 0
+            : approval.lockupAllowance - oneTimePayment;
+
+        // After function execution
+        performSettlementCheck(payer, settleFull, false);
+    }
+
+    function performSettlementCheck(
+        Account storage payer,
+        bool settleFull,
+        bool isBefore
+    ) internal {
+        require(
+            payer.funds >= payer.lockupCurrent,
+            isBefore
+                ? "invariant failure: insufficient funds to cover lockup before function execution"
+                : "invariant failure: insufficient funds to cover lockup after function execution"
+        );
+
+        // Settle account lockup
         uint256 settledUpto = settleAccountLockup(payer);
 
         // Verify full settlement if required
         require(
             !settleFull || settledUpto == block.number,
-            "account lockup not fully settled before function execution"
-        );
-
-        _;
-
-        // Settle account lockup after function execution
-        settledUpto = settleAccountLockup(payer);
-
-        // Verify full settlement if required
-        require(
-            !settleFull || settledUpto == block.number,
-            "account lockup not fully settled after function execution"
+            isBefore
+                ? "account lockup not fully settled before function execution"
+                : "account lockup not fully settled after function execution"
         );
 
         require(
             payer.funds >= payer.lockupCurrent,
-            "invariant failure: insufficient funds to cover lockup after function execution"
+            isBefore
+                ? "invariant failure: insufficient funds to cover lockup before function execution"
+                : "invariant failure: insufficient funds to cover lockup after function execution"
         );
     }
 
@@ -227,23 +315,10 @@ contract Payments is
         nonReentrant
         onlyRailParticipant(railId)
         validateRailNotTerminated(railId)
+        settleAccountLockupBeforeAndAfterForRail(railId, true, 0)
     {
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
-        OperatorApproval storage approval = operatorApprovals[rail.token][
-            rail.from
-        ][rail.operator];
-
-        // Settle account lockup to ensure we're up to date
-        uint256 settledUntil = settleAccountLockup(payer);
-
-        // Verify that the account is fully settled up to the current epoch
-        // This ensures that the client has enough funds locked to settle the rail upto
-        // and including (termination epoch aka current epoch + rail lockup period)
-        require(
-            settledUntil >= block.number,
-            "cannot terminate rail: failed to settle account lockup completely"
-        );
 
         rail.terminationEpoch = block.number;
 
@@ -259,13 +334,6 @@ contract Payments is
             "lockup rate inconsistency"
         );
         payer.lockupRate -= rail.paymentRate;
-
-        // Update operator approval rate usage
-        require(
-            approval.rateUsage >= rail.paymentRate,
-            "invariant violation: operator rate usage must be at least the rail payment rate"
-        );
-        approval.rateUsage -= rail.paymentRate;
     }
 
     function deposit(
@@ -381,6 +449,7 @@ contract Payments is
         onlyRailOperator(railId)
         nonReentrant
         validateRailNotInDebt(railId)
+        settleAccountLockupBeforeAndAfterForRail(railId, false, 0)
     {
         Rail storage rail = rails[railId];
         bool isTerminated = isRailTerminated(rail);
@@ -403,26 +472,9 @@ contract Payments is
         );
 
         Account storage payer = accounts[rail.token][rail.from];
-        OperatorApproval storage approval = operatorApprovals[rail.token][
-            rail.from
-        ][rail.operator];
-
-        // we don't need to ensure that the account lockup is fully settled here
-        // because we already ensure that enough funds are locked for a terminated rail during
-        // `terminateRail`
-        settleAccountLockup(payer);
 
         // Calculate the fixed lockup reduction - this is the only change allowed for terminated rails
         uint256 lockupReduction = rail.lockupFixed - lockupFixed;
-
-        // For terminated rails (whether fully settled or still in settlement period),
-        // we only need to reduce the fixed lockup amount directly because:
-        // 1. Period remains unchanged (enforced by the require statement above)
-        // 2. The rate-based portion of the lockup doesn't change
-        // 3. The only thing changing is the fixed lockup, which is being reduced
-
-        // Update operator allowance - reduce usage by the exact reduction amount
-        approval.lockupUsage -= lockupReduction;
 
         // Update payer's lockup - subtract the exact reduction amount
         require(
@@ -432,12 +484,6 @@ contract Payments is
         payer.lockupCurrent -= lockupReduction;
 
         rail.lockupFixed = lockupFixed;
-
-        // Final safety check
-        require(
-            payer.lockupCurrent <= payer.funds,
-            "invariant violation: payer's current lockup cannot be greater than their funds"
-        );
     }
 
     function modifyNonTerminatedRailLockup(
@@ -455,7 +501,7 @@ contract Payments is
         // Only require full settlement if increasing period or fixed lockup
         if (period > rail.lockupPeriod || lockupFixed > rail.lockupFixed) {
             require(
-                lockupSettledUpto == block.number,
+                payer.lockupLastSettledAt == block.number,
                 "cannot increase lockup: client funds insufficient for current account lockup settlement"
             );
         } else if (period < rail.lockupPeriod) {
@@ -484,9 +530,6 @@ contract Payments is
         uint256 newLockup = lockupFixed +
             (rail.paymentRate * newEffectiveLockupPeriod);
 
-        // Update operator allowance tracking based on lockup changes
-        updateOperatorLockupTracking(approval, oldLockup, newLockup);
-
         require(
             payer.lockupCurrent >= oldLockup,
             "payer's current lockup cannot be less than old lockup"
@@ -497,12 +540,6 @@ contract Payments is
         // Update rail lockup parameters
         rail.lockupPeriod = period;
         rail.lockupFixed = lockupFixed;
-
-        // Final safety check: ensure lockup doesn't exceed available funds
-        require(
-            payer.lockupCurrent <= payer.funds,
-            "invariant violation: payer's current lockup cannot be greater than their funds"
-        );
     }
 
     function modifyRailPayment(
@@ -511,9 +548,10 @@ contract Payments is
         uint256 oneTimePayment
     )
         external
+        nonReentrant
         validateRailActive(railId)
         onlyRailOperator(railId)
-        nonReentrant
+        settleAccountLockupBeforeAndAfterForRail(railId, false, oneTimePayment)
     {
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
@@ -570,19 +608,6 @@ contract Payments is
             "one time payment cannot be greater than rail lockupFixed"
         );
 
-        // --- Operator Approval Checks
-        OperatorApproval storage approval = operatorApprovals[rail.token][
-            rail.from
-        ][rail.operator];
-        validateAndModifyRateChangeApproval(
-            rail,
-            approval,
-            oldRate,
-            newRate,
-            oneTimePayment,
-            effectiveLockupPeriod
-        );
-
         // Update the rail fixed lockup and payment rate
         rail.lockupFixed = rail.lockupFixed - oneTimePayment;
         rail.paymentRate = newRate;
@@ -607,12 +632,6 @@ contract Payments is
 
         // --- Process the One-Time Payment ---
         processOneTimePayment(payer, payee, oneTimePayment);
-
-        // Ensure the modified lockup doesn't exceed available funds
-        require(
-            payer.lockupCurrent <= payer.funds,
-            "invariant violation: payer lockup cannot exceed funds"
-        );
     }
 
     function modifyPaymentForTerminatedRailBeyondLastEpoch(
@@ -719,80 +738,15 @@ contract Payments is
         );
     }
 
-    function updateOperatorLockupTracking(
-        OperatorApproval storage approval,
-        uint256 oldLockup,
-        uint256 newLockup
-    ) internal {
-        if (newLockup < oldLockup) {
-            uint256 lockupDecrease = oldLockup - newLockup;
-            approval.lockupUsage -= lockupDecrease;
-            return;
-        }
-
-        // Handle lockup increase
-        uint256 lockupIncrease = newLockup - oldLockup;
-
-        // Verify against allowance
-        require(
-            approval.lockupUsage + lockupIncrease <= approval.lockupAllowance,
-            "exceeds operator lockup allowance"
-        );
-
-        // Update usage
-        approval.lockupUsage += lockupIncrease;
-    }
-
-    function validateAndModifyRateChangeApproval(
-        Rail storage rail,
-        OperatorApproval storage approval,
-        uint256 oldRate,
-        uint256 newRate,
-        uint256 oneTimePayment,
-        uint256 effectiveLockupPeriod
-    ) internal {
-        // Handle rate-based lockup changes
-        uint256 oldLockup = (oldRate * effectiveLockupPeriod) +
-            rail.lockupFixed;
-        uint256 newLockup = (newRate * effectiveLockupPeriod) +
-            (rail.lockupFixed - oneTimePayment);
-
-        updateOperatorLockupTracking(approval, oldLockup, newLockup);
-
-        if (oneTimePayment > 0) {
-            // one-time payments count towards lockup usage
-            require(
-                approval.lockupUsage + oneTimePayment <=
-                    approval.lockupAllowance,
-                "one-time payment exceeds operator lockup allowance"
-            );
-            approval.lockupUsage += oneTimePayment;
-        }
-
-        // handle a rate decrease
-        if (newRate < oldRate) {
-            uint256 rateDecrease = oldRate - newRate;
-            approval.rateUsage -= rateDecrease;
-            return;
-        }
-
-        // Rate increase
-        uint256 rateIncrease = newRate - oldRate;
-        require(
-            approval.rateUsage + rateIncrease <= approval.rateAllowance,
-            "new rate exceeds operator rate allowance"
-        );
-        approval.rateUsage += rateIncrease;
-    }
-
     function settleTerminatedRailWithoutArbitration(
         uint256 railId
     )
         external
+        nonReentrant
         validateRailActive(railId)
         validateRailTerminated(railId)
         onlyRailClient(railId)
-        nonReentrant
+        settleAccountLockupBeforeAndAfterForRail(railId, false, 0)
         returns (
             uint256 totalSettledAmount,
             uint256 finalSettledEpoch,
@@ -816,8 +770,9 @@ contract Payments is
         uint256 untilEpoch
     )
         public
-        validateRailActive(railId)
         nonReentrant
+        validateRailActive(railId)
+        settleAccountLockupBeforeAndAfterForRail(railId, false, 0)
         returns (
             uint256 totalSettledAmount,
             uint256 finalSettledEpoch,
@@ -981,18 +936,6 @@ contract Payments is
         Rail storage rail,
         Account storage payer
     ) internal {
-        // Get operator approval to reduce usage
-        OperatorApproval storage approval = operatorApprovals[rail.token][
-            rail.from
-        ][rail.operator];
-
-        // Reduce operator's lockup usage by the fixed amount
-        require(
-            approval.lockupUsage >= rail.lockupFixed,
-            "invariant violation: operator lockup usage cannot be less than rail fixed lockup"
-        );
-        approval.lockupUsage -= rail.lockupFixed;
-
         // Reduce the lockup by the fixed amount
         require(
             payer.lockupCurrent >= rail.lockupFixed,

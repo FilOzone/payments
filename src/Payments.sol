@@ -135,7 +135,7 @@ contract Payments is
         require(rails[railId].terminationEpoch == 0, "rail already terminated");
         _;
     }
-    
+
     modifier validateRailTerminated(uint256 railId) {
         require(
             isRailTerminated(rails[railId]),
@@ -150,9 +150,12 @@ contract Payments is
         require(!isRailInDebt(rail, payer), "rail is in debt");
         _;
     }
-    
+
     modifier validateNonZeroAddress(address addr, string memory varName) {
-        require(addr != address(0), string.concat(varName, " address cannot be zero"));
+        require(
+            addr != address(0),
+            string.concat(varName, " address cannot be zero")
+        );
         _;
     }
 
@@ -162,7 +165,7 @@ contract Payments is
         bool approved,
         uint256 rateAllowance,
         uint256 lockupAllowance
-    ) 
+    )
         external
         validateNonZeroAddress(token, "token")
         validateNonZeroAddress(operator, "operator")
@@ -230,8 +233,8 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    ) 
-        external 
+    )
+        external
         nonReentrant
         validateNonZeroAddress(token, "token")
         validateNonZeroAddress(to, "to")
@@ -292,9 +295,9 @@ contract Payments is
         address from,
         address to,
         address arbiter
-    ) 
-        external 
-        nonReentrant 
+    )
+        external
+        nonReentrant
         validateNonZeroAddress(token, "token")
         validateNonZeroAddress(from, "from")
         validateNonZeroAddress(to, "to")
@@ -752,7 +755,9 @@ contract Payments is
         )
     {
         // Verify the current epoch is greater than the max settlement epoch
-        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(rails[railId]);
+        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(
+            rails[railId]
+        );
         require(
             block.number > maxSettleEpoch,
             "terminated rail can only be settled without arbitration after max settlement epoch"
@@ -1223,6 +1228,22 @@ contract Payments is
 
         // Clear the rate change queue
         rail.rateChangeQueue.clear();
+    }
+
+    function withdrawToInternal(
+        address token,
+        address to,
+        uint256 amount
+    ) internal {
+        Account storage account = accounts[token][msg.sender];
+
+        uint256 available = account.funds - account.lockupCurrent;
+        require(
+            amount <= available,
+            "insufficient unlocked funds for withdrawal"
+        );
+        account.funds -= amount;
+        IERC20(token).safeTransfer(to, amount);
     }
 }
 

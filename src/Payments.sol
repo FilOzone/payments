@@ -147,6 +147,11 @@ contract Payments is
         require(!isRailInDebt(rail, payer), "rail is in debt");
         _;
     }
+    
+    modifier validateNonZeroAddress(address addr, string memory varName) {
+        require(addr != address(0), string.concat(varName, " address cannot be zero"));
+        _;
+    }
 
     function setOperatorApproval(
         address token,
@@ -154,10 +159,11 @@ contract Payments is
         bool approved,
         uint256 rateAllowance,
         uint256 lockupAllowance
-    ) external {
-        require(token != address(0), "token address cannot be zero");
-        require(operator != address(0), "operator address cannot be zero");
-
+    ) 
+        external 
+        validateNonZeroAddress(token, "token")
+        validateNonZeroAddress(operator, "operator")
+    {
         OperatorApproval storage approval = operatorApprovals[token][
             msg.sender
         ][operator];
@@ -221,9 +227,12 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    ) external nonReentrant {
-        require(token != address(0), "token address cannot be zero");
-        require(to != address(0), "to address cannot be zero");
+    ) 
+        external 
+        nonReentrant
+        validateNonZeroAddress(token, "token")
+        validateNonZeroAddress(to, "to") 
+    {
         require(amount > 0, "amount must be greater than 0");
 
         // Create account if it doesn't exist
@@ -252,9 +261,11 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    ) internal {
-        require(token != address(0), "token address cannot be zero");
-        require(to != address(0), "recipient address cannot be zero");
+    ) 
+        internal 
+        validateNonZeroAddress(token, "token")
+        validateNonZeroAddress(to, "recipient")
+    {
 
         Account storage acct = accounts[token][msg.sender];
 
@@ -278,11 +289,15 @@ contract Payments is
         address from,
         address to,
         address arbiter
-    ) external nonReentrant returns (uint256) {
+    ) 
+        external 
+        nonReentrant 
+        validateNonZeroAddress(token, "token")
+        validateNonZeroAddress(from, "from")
+        validateNonZeroAddress(to, "to")
+        returns (uint256) 
+    {
         address operator = msg.sender;
-        require(token != address(0), "token address cannot be zero");
-        require(from != address(0), "from address cannot be zero");
-        require(to != address(0), "to address cannot be zero");
 
         // Check if operator is approved - approval is required for rail creation
         OperatorApproval storage approval = operatorApprovals[token][from][

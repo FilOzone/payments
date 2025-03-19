@@ -919,6 +919,9 @@ contract Payments is
             rail.from
         ][rail.operator];
 
+        // Assert that we've handled all rate changes.
+        require(rail.rateChangeQueue.isEmpty(), "cannot finalize rail with future rate-changes");
+
         // Reduce operator's lockup usage by the fixed amount
         require(
             approval.lockupUsage >= rail.lockupFixed,
@@ -933,8 +936,9 @@ contract Payments is
         );
         payer.lockupCurrent -= rail.lockupFixed;
 
-        // Zero out the rail to mark it as inactive
-        _zeroOutRail(rail);
+        // Zero out the rail.
+        Rail memory zeroRail;
+        rail = zeroRail;
     }
 
     function _settleWithRateChanges(
@@ -1190,22 +1194,6 @@ contract Payments is
         Account storage payer
     ) internal view returns (bool) {
         return block.number > payer.lockupLastSettledAt + rail.lockupPeriod;
-    }
-
-    function _zeroOutRail(Rail storage rail) internal {
-        rail.token = address(0);
-        rail.from = address(0); // This now marks the rail as inactive
-        rail.to = address(0);
-        rail.operator = address(0);
-        rail.arbiter = address(0);
-        rail.paymentRate = 0;
-        rail.lockupFixed = 0;
-        rail.lockupPeriod = 0;
-        rail.settledUpTo = 0;
-        rail.terminationEpoch = 0;
-
-        // Clear the rate change queue
-        rail.rateChangeQueue.clear();
     }
 }
 

@@ -648,7 +648,6 @@ contract Payments is
         }
     }
 
-
     function validateRateChangeRequirementsForNonTerminatedRail(
         Rail storage rail,
         Account storage payer,

@@ -150,12 +150,9 @@ contract Payments is
         require(!isRailInDebt(rail, payer), "rail is in debt");
         _;
     }
-
+    
     modifier validateNonZeroAddress(address addr, string memory varName) {
-        require(
-            addr != address(0),
-            string.concat(varName, " address cannot be zero")
-        );
+        require(addr != address(0), string.concat(varName, " address cannot be zero"));
         _;
     }
 
@@ -165,7 +162,7 @@ contract Payments is
         bool approved,
         uint256 rateAllowance,
         uint256 lockupAllowance
-    )
+    ) 
         external
         validateNonZeroAddress(token, "token")
         validateNonZeroAddress(operator, "operator")
@@ -233,8 +230,8 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    )
-        external
+    ) 
+        external 
         nonReentrant
         validateNonZeroAddress(token, "token")
         validateNonZeroAddress(to, "to")
@@ -275,9 +272,12 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    ) internal {
+    ) 
+        internal 
+        validateNonZeroAddress(token, "token")
+        validateNonZeroAddress(to, "recipient")
+    {
         Account storage account = accounts[token][msg.sender];
-
         uint256 available = account.funds - account.lockupCurrent;
         require(
             amount <= available,
@@ -292,9 +292,9 @@ contract Payments is
         address from,
         address to,
         address arbiter
-    )
-        external
-        nonReentrant
+    ) 
+        external 
+        nonReentrant 
         validateNonZeroAddress(token, "token")
         validateNonZeroAddress(from, "from")
         validateNonZeroAddress(to, "to")

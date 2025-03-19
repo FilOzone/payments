@@ -456,28 +456,49 @@ contract Payments is
         Account storage payee = accounts[rail.token][rail.to];
 
         uint256 oldRate = rail.paymentRate;
+        bool isTerminated = isRailTerminated(rail);
 
         // Settle the payer's lockup to account for elapsed time
         uint256 lockupSettledUpto = settleAccountLockup(payer);
 
         // Validate rate changes based on rail state and account lockup
-        validateRateChangeRequirements(
-            rail,
-            payer,
-            oldRate,
-            newRate,
-            lockupSettledUpto,
-            oneTimePayment
-        );
+        if (isTerminated) {
+            if (block.number >= maxSettlementEpochForTerminatedRail(rail)) {
+                return
+                    modifyPaymentForTerminatedRailBeyondLastEpoch(
+                        rail,
+                        newRate,
+                        oneTimePayment
+                    );
+            }
+
+            require(
+                newRate <= oldRate,
+                "failed to modify rail: cannot increase rate on terminated rail"
+            );
+        } else {
+            validateRateChangeRequirementsForNonTerminatedRail(
+                rail,
+                payer,
+                oldRate,
+                newRate,
+                lockupSettledUpto
+            );
+        }
 
         // --- Settlement Prior to Rate Change ---
         handleRateChangeSettlement(railId, rail, oldRate, newRate);
 
         // Calculate the effective lockup period
-        uint256 effectiveLockupPeriod = calculateEffectiveLockupPeriod(
-            rail,
-            payer
-        );
+        uint256 effectiveLockupPeriod;
+        if (isTerminated) {
+            effectiveLockupPeriod = remainingEpochsForTerminatedRail(rail);
+        } else {
+            effectiveLockupPeriod = isRailInDebt(rail, payer)
+                ? 0
+                : rail.lockupPeriod -
+                    (block.number - payer.lockupLastSettledAt);
+        }
 
         // Verify one-time payment doesn't exceed fixed lockup
         require(
@@ -504,7 +525,7 @@ contract Payments is
 
         // Update payer's lockup rate - only if the rail is not terminated
         // for terminated rails, the payer's lockup rate is already updated during rail termination
-        if (!isRailTerminated(rail)) {
+        if (!isTerminated) {
             require(
                 payer.lockupRate >= oldRate,
                 "payer lockup rate cannot be less than old rate"
@@ -528,6 +549,30 @@ contract Payments is
             payer.lockupCurrent <= payer.funds,
             "invariant violation: payer lockup cannot exceed funds"
         );
+    }
+
+    function modifyPaymentForTerminatedRailBeyondLastEpoch(
+        Rail storage rail,
+        uint256 newRate,
+        uint256 oneTimePayment
+    ) internal {
+        uint256 endEpoch = maxSettlementEpochForTerminatedRail(rail);
+        require(
+            newRate == 0 && oneTimePayment == 0,
+            "for terminated rails beyond last settlement epoch, both new rate and one-time payment must be 0"
+        );
+
+        // Check if we need to record the current rate in the queue (should only do this once for the last epoch)
+        if (
+            rail.rateChangeQueue.isEmpty() ||
+            rail.rateChangeQueue.peekTail().untilEpoch < endEpoch
+        ) {
+            // Queue the current rate up to the max settlement epoch
+            rail.rateChangeQueue.enqueue(rail.paymentRate, endEpoch);
+        }
+
+        // Set payment rate to 0 as the rail is past its last settlement epoch
+        rail.paymentRate = 0;
     }
 
     function handleRateChangeSettlement(
@@ -585,56 +630,15 @@ contract Payments is
         }
     }
 
-    function calculateEffectiveLockupPeriod(
-        Rail storage rail,
-        Account storage payer
-    ) internal view returns (uint256 effectiveLockupPeriod) {
-        if (!isRailTerminated(rail)) {
-            // effective lockup period should be 0 for rails that are in debt
-            // we disallow rate changes for in-debted rails anyways
-            if (isRailInDebt(rail, payer)) {
-                return 0;
-            }
-            return
-                rail.lockupPeriod - (block.number - payer.lockupLastSettledAt);
-        }
-
-        // For terminated rails, we only need to consider the remaining termination period
-        // When a rail is terminated, we ensure account lockup is fully settled up to the current epoch
-        // and we've already locked enough funds until termination epoch + rail lockup period
-        return remainingEpochsForTerminatedRail(rail);
-    }
-
-    function validateRateChangeRequirements(
+    function validateRateChangeRequirementsForNonTerminatedRail(
         Rail storage rail,
         Account storage payer,
         uint256 oldRate,
         uint256 newRate,
-        uint256 lockupSettledUpto,
-        uint256 oneTimePayment
+        uint256 lockupSettledUpto
     ) internal view {
-        if (isRailTerminated(rail)) {
-            if (block.number > maxSettlementEpochForTerminatedRail(rail)) {
-                require(
-                    newRate == 0 && oneTimePayment == 0,
-                    "terminated rail beyond max settlement epoch: can only be set to zero rate with no one-time payment"
-                );
-                return;
-            }
-
-            require(
-                newRate <= oldRate,
-                "failed to modify rail: cannot increase rate on terminated rail"
-            );
-            // Ensure terminated rails are never in debt - this should be an invariant
-            require(
-                !isRailInDebt(rail, payer),
-                "invariant violation: terminated rail cannot be in debt"
-            );
-        }
-
         if (lockupSettledUpto == block.number) {
-            // if account lockup is fully settled; there's nothing left to do
+            // if account lockup is fully settled; there's nothing to check
             return;
         }
 
@@ -644,7 +648,7 @@ contract Payments is
             return;
         }
 
-        // Case 2.B: Lockup not fully settled  but rail is not in debt -> check if rate is being increased
+        // Case 2.B: Lockup not fully settled but rail is not in debt -> check if rate is being increased
         require(
             newRate <= oldRate,
             "account lockup not fully settled; cannot increase rate"

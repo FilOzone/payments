@@ -135,6 +135,18 @@ contract Payments is
         require(rails[railId].terminationEpoch == 0, "rail already terminated");
         _;
     }
+    
+    modifier validateRailTerminated(uint256 railId) {
+        require(isRailTerminated(rails[railId]), "can only be used on terminated rails");
+        _;
+    }
+
+    modifier validateRailNotInDebt(uint256 railId) {
+        Rail storage rail = rails[railId];
+        Account storage payer = accounts[rail.token][rail.from];
+        require(!isRailInDebt(rail, payer), "rail is in debt");
+        _;
+    }
 
     function setOperatorApproval(
         address token,
@@ -301,6 +313,7 @@ contract Payments is
         validateRailActive(railId)
         onlyRailOperator(railId)
         nonReentrant
+        validateRailNotInDebt(railId)
     {
         Rail storage rail = rails[railId];
         bool isTerminated = isRailTerminated(rail);
@@ -372,12 +385,6 @@ contract Payments is
 
         // Settle account lockup as much as possible
         uint256 lockupSettledUpto = settleAccountLockup(payer);
-
-        // Check for rail in debt before modifying lockup
-        require(
-            !isRailInDebt(rail, payer),
-            "cannot modify rail lockup: rail is in debt"
-        );
 
         // Only require full settlement if increasing period or fixed lockup
         if (period > rail.lockupPeriod || lockupFixed > rail.lockupFixed) {
@@ -713,6 +720,8 @@ contract Payments is
     )
         external
         validateRailActive(railId)
+        validateRailTerminated(railId)
+        onlyRailClient(railId)
         nonReentrant
         returns (
             uint256 totalSettledAmount,
@@ -720,22 +729,8 @@ contract Payments is
             string memory note
         )
     {
-        Rail storage rail = rails[railId];
-
-        // Verify the caller is the rail client (payer)
-        require(
-            rail.from == msg.sender,
-            "only the rail client can settle a terminated rail without arbitration"
-        );
-
-        // Verify the rail is terminated
-        require(
-            isRailTerminated(rail),
-            "can only skip arbitration for terminated rails"
-        );
-
         // Verify the current epoch is greater than the max settlement epoch
-        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(rail);
+        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(rails[railId]);
         require(
             block.number > maxSettleEpoch,
             "terminated rail can only be settled without arbitration after max settlement epoch"

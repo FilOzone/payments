@@ -98,7 +98,10 @@ contract Payments is
     ) internal override onlyOwner {}
 
     modifier validateRailActive(uint256 railId) {
-        require(rails[railId].from != address(0), "rail does not exist or is inactive");
+        require(
+            rails[railId].from != address(0),
+            "rail does not exist or is inactive"
+        );
         _;
     }
 
@@ -1188,11 +1191,7 @@ contract Payments is
     ) internal view returns (bool) {
         return block.number > payer.lockupLastSettledAt + rail.lockupPeriod;
     }
-    
-    /**
-     * @dev Internal function to zero out all fields of a rail to mark it as inactive.
-     * Setting rail.from to address(0) is the main indicator that a rail is inactive.
-     */
+
     function _zeroOutRail(Rail storage rail) internal {
         rail.token = address(0);
         rail.from = address(0); // This now marks the rail as inactive
@@ -1204,7 +1203,7 @@ contract Payments is
         rail.lockupPeriod = 0;
         rail.settledUpTo = 0;
         rail.terminationEpoch = 0;
-        
+
         // Clear the rate change queue
         rail.rateChangeQueue.clear();
     }

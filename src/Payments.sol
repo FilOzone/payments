@@ -48,7 +48,6 @@ contract Payments is
     }
 
     struct Rail {
-        bool isActive;
         address token;
         address from;
         address to;
@@ -99,8 +98,7 @@ contract Payments is
     ) internal override onlyOwner {}
 
     modifier validateRailActive(uint256 railId) {
-        require(rails[railId].from != address(0), "rail does not exist");
-        require(rails[railId].isActive, "rail is inactive");
+        require(rails[railId].from != address(0), "rail does not exist or is inactive");
         _;
     }
 
@@ -285,7 +283,6 @@ contract Payments is
         rail.to = to;
         rail.operator = operator;
         rail.arbiter = arbiter;
-        rail.isActive = true;
         rail.settledUpTo = block.number;
         rail.terminationEpoch = 0;
 
@@ -933,11 +930,8 @@ contract Payments is
         );
         payer.lockupCurrent -= rail.lockupFixed;
 
-        // Mark rail as inactive and clear payment parameters
-        rail.isActive = false;
-        rail.paymentRate = 0;
-        rail.lockupFixed = 0;
-        rail.lockupPeriod = 0;
+        // Zero out the rail to mark it as inactive
+        _zeroOutRail(rail);
     }
 
     function _settleWithRateChanges(
@@ -1193,6 +1187,26 @@ contract Payments is
         Account storage payer
     ) internal view returns (bool) {
         return block.number > payer.lockupLastSettledAt + rail.lockupPeriod;
+    }
+    
+    /**
+     * @dev Internal function to zero out all fields of a rail to mark it as inactive.
+     * Setting rail.from to address(0) is the main indicator that a rail is inactive.
+     */
+    function _zeroOutRail(Rail storage rail) internal {
+        rail.token = address(0);
+        rail.from = address(0); // This now marks the rail as inactive
+        rail.to = address(0);
+        rail.operator = address(0);
+        rail.arbiter = address(0);
+        rail.paymentRate = 0;
+        rail.lockupFixed = 0;
+        rail.lockupPeriod = 0;
+        rail.settledUpTo = 0;
+        rail.terminationEpoch = 0;
+        
+        // Clear the rate change queue
+        rail.rateChangeQueue.clear();
     }
 }
 

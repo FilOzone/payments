@@ -378,19 +378,46 @@ contract Payments is
             rail.from
         ][rail.operator];
 
-        // Ensure account lockup is fully settled up to the current epoch
+        // Settle account lockup as much as possible
         uint256 lockupSettledUpto = settleAccountLockup(payer);
+
+        // Check for rail in debt before modifying lockup
         require(
-            lockupSettledUpto == block.number,
-            "cannot modify active rail lockup: client funds insufficient for current account lockup settlement"
+            !isRailInDebt(rail, payer),
+            "cannot modify rail lockup: rail is in debt"
         );
 
-        // Calculate current (old) lockup - for active rails this is straightforward
+        // Only require full settlement if increasing period or fixed lockup
+        if (period > rail.lockupPeriod || lockupFixed > rail.lockupFixed) {
+            require(
+                lockupSettledUpto == block.number,
+                "cannot increase lockup: client funds insufficient for current account lockup settlement"
+            );
+        } else if (period < rail.lockupPeriod) {
+            // When reducing period, ensure we still cover all unsettled epochs
+            require(
+                payer.lockupLastSettledAt + period >= block.number,
+                "cannot reduce lockup period below what's needed for unsettled epochs"
+            );
+        }
+
+        // Calculate effective lockup period for the old period
+        uint256 oldEffectiveLockupPeriod = rail.lockupPeriod -
+            (block.number - payer.lockupLastSettledAt);
+
+        // Calculate effective lockup period for the updated period
+        uint256 newEffectiveLockupPeriod = period -
+            (block.number - payer.lockupLastSettledAt);
+
+        // Calculate current (old) lockup using effective lockup period
         uint256 oldLockup = rail.lockupFixed +
-            (rail.paymentRate * rail.lockupPeriod);
+            (rail.paymentRate * oldEffectiveLockupPeriod);
 
         // Calculate new lockup amount with new parameters
-        uint256 newLockup = lockupFixed + (rail.paymentRate * period);
+        // We can safely use min(period, effectiveLockupPeriod) here now that we've added
+        // the explicit check to ensure period doesn't fall below unsettled epochs
+        uint256 newLockup = lockupFixed +
+            (rail.paymentRate * newEffectiveLockupPeriod);
 
         // Update operator allowance tracking based on lockup changes
         updateOperatorLockupTracking(approval, oldLockup, newLockup);

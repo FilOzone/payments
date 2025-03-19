@@ -60,7 +60,6 @@ contract Payments is
         // epoch up to and including which this rail has been settled
         uint256 settledUpTo;
         RateChangeQueue.Queue rateChangeQueue;
-        bool isLocked; // Indicates if the rail is currently being modified
         uint256 terminationEpoch; // Epoch at which the rail was terminated (0 if not terminated)
     }
 
@@ -103,13 +102,6 @@ contract Payments is
         require(rails[railId].from != address(0), "rail does not exist");
         require(rails[railId].isActive, "rail is inactive");
         _;
-    }
-
-    modifier noRailModificationInProgress(uint256 railId) {
-        require(!rails[railId].isLocked, "Modification already in progress");
-        rails[railId].isLocked = true;
-        _;
-        rails[railId].isLocked = false;
     }
 
     modifier onlyRailClient(uint256 railId) {
@@ -168,7 +160,7 @@ contract Payments is
     )
         external
         validateRailActive(railId)
-        noRailModificationInProgress(railId)
+        nonReentrant
         onlyRailParticipant(railId)
         validateRailNotTerminated(railId)
     {
@@ -273,7 +265,7 @@ contract Payments is
         address from,
         address to,
         address arbiter
-    ) external noRailModificationInProgress(_nextRailId) returns (uint256) {
+    ) external nonReentrant returns (uint256) {
         address operator = msg.sender;
         require(token != address(0), "token address cannot be zero");
         require(from != address(0), "from address cannot be zero");
@@ -308,7 +300,7 @@ contract Payments is
         external
         validateRailActive(railId)
         onlyRailOperator(railId)
-        noRailModificationInProgress(railId)
+        nonReentrant
     {
         Rail storage rail = rails[railId];
         bool isTerminated = isRailTerminated(rail);
@@ -448,7 +440,7 @@ contract Payments is
         external
         validateRailActive(railId)
         onlyRailOperator(railId)
-        noRailModificationInProgress(railId)
+        nonReentrant
     {
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];

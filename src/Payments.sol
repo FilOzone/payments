@@ -159,6 +159,45 @@ contract Payments is
         _;
     }
 
+    // Modifier that handles settlement before and after function execution with DRY approach
+    modifier settleAccountLockupBeforeAndAfter(
+        address token,
+        address owner,
+        bool settleFull
+    ) {
+        Account storage payer = accounts[token][owner];
+
+        require(
+            payer.funds >= payer.lockupCurrent,
+            "invariant failure: insufficient funds to cover lockup before function execution"
+        );
+
+        // Settle account lockup before function execution
+        uint256 settledUpto = settleAccountLockup(payer);
+
+        // Verify full settlement if required
+        require(
+            !settleFull || settledUpto == block.number,
+            "account lockup not fully settled before function execution"
+        );
+
+        _;
+
+        // Settle account lockup after function execution
+        settledUpto = settleAccountLockup(payer);
+
+        // Verify full settlement if required
+        require(
+            !settleFull || settledUpto == block.number,
+            "account lockup not fully settled after function execution"
+        );
+
+        require(
+            payer.funds >= payer.lockupCurrent,
+            "invariant failure: insufficient funds to cover lockup after function execution"
+        );
+    }
+
     function setOperatorApproval(
         address token,
         address operator,
@@ -238,6 +277,7 @@ contract Payments is
         nonReentrant
         validateNonZeroAddress(token, "token")
         validateNonZeroAddress(to, "to")
+        settleAccountLockupBeforeAndAfter(token, to, false)
     {
         require(amount > 0, "amount must be greater than 0");
 
@@ -254,7 +294,12 @@ contract Payments is
     function withdraw(
         address token,
         uint256 amount
-    ) external nonReentrant validateNonZeroAddress(token, "token") {
+    )
+        external
+        nonReentrant
+        validateNonZeroAddress(token, "token")
+        settleAccountLockupBeforeAndAfter(token, msg.sender, true)
+    {
         return withdrawToInternal(token, msg.sender, amount);
     }
 
@@ -267,6 +312,7 @@ contract Payments is
         nonReentrant
         validateNonZeroAddress(token, "token")
         validateNonZeroAddress(to, "to")
+        settleAccountLockupBeforeAndAfter(token, msg.sender, true)
     {
         return withdrawToInternal(token, to, amount);
     }

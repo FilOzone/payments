@@ -135,9 +135,12 @@ contract Payments is
         require(rails[railId].terminationEpoch == 0, "rail already terminated");
         _;
     }
-    
+
     modifier validateRailTerminated(uint256 railId) {
-        require(isRailTerminated(rails[railId]), "can only be used on terminated rails");
+        require(
+            isRailTerminated(rails[railId]),
+            "can only be used on terminated rails"
+        );
         _;
     }
 
@@ -147,9 +150,12 @@ contract Payments is
         require(!isRailInDebt(rail, payer), "rail is in debt");
         _;
     }
-    
+
     modifier validateNonZeroAddress(address addr, string memory varName) {
-        require(addr != address(0), string.concat(varName, " address cannot be zero"));
+        require(
+            addr != address(0),
+            string.concat(varName, " address cannot be zero")
+        );
         _;
     }
 
@@ -159,8 +165,8 @@ contract Payments is
         bool approved,
         uint256 rateAllowance,
         uint256 lockupAllowance
-    ) 
-        external 
+    )
+        external
         validateNonZeroAddress(token, "token")
         validateNonZeroAddress(operator, "operator")
     {
@@ -227,11 +233,11 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    ) 
-        external 
+    )
+        external
         nonReentrant
         validateNonZeroAddress(token, "token")
-        validateNonZeroAddress(to, "to") 
+        validateNonZeroAddress(to, "to")
     {
         require(amount > 0, "amount must be greater than 0");
 
@@ -245,7 +251,10 @@ contract Payments is
         account.funds += amount;
     }
 
-    function withdraw(address token, uint256 amount) external nonReentrant {
+    function withdraw(
+        address token,
+        uint256 amount
+    ) external nonReentrant validateNonZeroAddress(token, "token") {
         return withdrawToInternal(token, msg.sender, amount);
     }
 
@@ -253,35 +262,13 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    ) external nonReentrant {
-        return withdrawToInternal(token, to, amount);
-    }
-
-    function withdrawToInternal(
-        address token,
-        address to,
-        uint256 amount
-    ) 
-        internal 
+    )
+        external
+        nonReentrant
         validateNonZeroAddress(token, "token")
-        validateNonZeroAddress(to, "recipient")
+        validateNonZeroAddress(to, "to")
     {
-
-        Account storage acct = accounts[token][msg.sender];
-
-        uint256 settleEpoch = settleAccountLockup(acct);
-        require(settleEpoch == block.number, "insufficient funds");
-
-        uint256 available = acct.funds > acct.lockupCurrent
-            ? acct.funds - acct.lockupCurrent
-            : 0;
-
-        require(
-            amount <= available,
-            "insufficient unlocked funds for withdrawal"
-        );
-        acct.funds -= amount;
-        IERC20(token).safeTransfer(to, amount);
+        return withdrawToInternal(token, to, amount);
     }
 
     function createRail(
@@ -289,13 +276,13 @@ contract Payments is
         address from,
         address to,
         address arbiter
-    ) 
-        external 
-        nonReentrant 
+    )
+        external
+        nonReentrant
         validateNonZeroAddress(token, "token")
         validateNonZeroAddress(from, "from")
         validateNonZeroAddress(to, "to")
-        returns (uint256) 
+        returns (uint256)
     {
         address operator = msg.sender;
 
@@ -745,7 +732,9 @@ contract Payments is
         )
     {
         // Verify the current epoch is greater than the max settlement epoch
-        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(rails[railId]);
+        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(
+            rails[railId]
+        );
         require(
             block.number > maxSettleEpoch,
             "terminated rail can only be settled without arbitration after max settlement epoch"
@@ -1216,6 +1205,22 @@ contract Payments is
 
         // Clear the rate change queue
         rail.rateChangeQueue.clear();
+    }
+
+    function withdrawToInternal(
+        address token,
+        address to,
+        uint256 amount
+    ) internal {
+        Account storage account = accounts[token][msg.sender];
+
+        uint256 available = account.funds - account.lockupCurrent;
+        require(
+            amount <= available,
+            "insufficient unlocked funds for withdrawal"
+        );
+        account.funds -= amount;
+        IERC20(token).safeTransfer(to, amount);
     }
 }
 

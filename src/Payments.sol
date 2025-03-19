@@ -100,7 +100,7 @@ contract Payments is
     modifier validateRailActive(uint256 railId) {
         require(
             rails[railId].from != address(0),
-            "rail does not exist or is inactive"
+            "rail does not exist or is beyond it's last settlement after termination"
         );
         _;
     }
@@ -308,7 +308,7 @@ contract Payments is
         if (isTerminated) {
             modifyTerminatedRailLockup(rail, period, lockupFixed);
         } else {
-            modifyActiveRailLockup(rail, period, lockupFixed);
+            modifyNonTerminatedRailLockup(rail, period, lockupFixed);
         }
     }
 
@@ -360,7 +360,7 @@ contract Payments is
         );
     }
 
-    function modifyActiveRailLockup(
+    function modifyNonTerminatedRailLockup(
         Rail storage rail,
         uint256 period,
         uint256 lockupFixed

@@ -444,7 +444,6 @@ contract Payments is
         validateRailActive(railId)
         onlyRailOperator(railId)
         nonReentrant
-        validateRailNotInDebt(railId)
         settleAccountLockupBeforeAndAfterForRail(railId, false, 0)
     {
         Rail storage rail = rails[railId];
@@ -488,9 +487,11 @@ contract Payments is
         uint256 lockupFixed
     ) internal {
         Account storage payer = accounts[rail.token][rail.from];
+        bool isIncrease = period > rail.lockupPeriod ||
+            lockupFixed > rail.lockupFixed;
 
         // Only require full settlement if increasing period or fixed lockup
-        if (period > rail.lockupPeriod || lockupFixed > rail.lockupFixed) {
+        if (isIncrease) {
             require(
                 payer.lockupLastSettledAt == block.number,
                 "cannot increase lockup: client funds insufficient for current account lockup settlement"
@@ -504,20 +505,19 @@ contract Payments is
         }
 
         // Calculate effective lockup period for the old period
-        uint256 oldEffectiveLockupPeriod = rail.lockupPeriod -
-            (block.number - payer.lockupLastSettledAt);
+        uint256 oldEffectiveLockupPeriod = isRailInDebt(rail, payer)
+            ? 0
+            : rail.lockupPeriod - (block.number - payer.lockupLastSettledAt);
 
         // Calculate effective lockup period for the updated period
-        uint256 newEffectiveLockupPeriod = period -
-            (block.number - payer.lockupLastSettledAt);
+        uint256 newEffectiveLockupPeriod = isRailInDebt(rail, payer)
+            ? 0
+            : period - (block.number - payer.lockupLastSettledAt);
 
         // Calculate current (old) lockup using effective lockup period
         uint256 oldLockup = rail.lockupFixed +
             (rail.paymentRate * oldEffectiveLockupPeriod);
 
-        // Calculate new lockup amount with new parameters
-        // We can safely use min(period, effectiveLockupPeriod) here now that we've added
-        // the explicit check to ensure period doesn't fall below unsettled epochs
         uint256 newLockup = lockupFixed +
             (rail.paymentRate * newEffectiveLockupPeriod);
 

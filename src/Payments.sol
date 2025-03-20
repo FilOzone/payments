@@ -278,6 +278,13 @@ contract Payments is
     ) internal {
         Account storage account = accounts[token][msg.sender];
 
+        // Settle account lockup to ensure we're up to date before withdrawal
+        uint256 settledUntil = settleAccountLockup(account);
+        require(
+            settledUntil == block.number,
+            "withdrawal requires account lockup to be fully settled"
+        );
+
         uint256 available = account.funds - account.lockupCurrent;
         require(
             amount <= available,

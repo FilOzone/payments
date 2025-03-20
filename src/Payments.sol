@@ -100,7 +100,7 @@ contract Payments is
     modifier validateRailActive(uint256 railId) {
         require(
             rails[railId].from != address(0),
-            "rail does not exist or is inactive"
+            "rail does not exist or is beyond it's last settlement after termination"
         );
         _;
     }

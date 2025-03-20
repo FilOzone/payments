@@ -389,8 +389,8 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    ) 
-        internal 
+    )
+        internal
         validateNonZeroAddress(token, "token")
         validateNonZeroAddress(to, "recipient")
     {
@@ -492,12 +492,8 @@ contract Payments is
         uint256 lockupFixed
     ) internal {
         Account storage payer = accounts[rail.token][rail.from];
-        OperatorApproval storage approval = operatorApprovals[rail.token][
-            rail.from
-        ][rail.operator];
 
         // Settle account lockup as much as possible
-        uint256 lockupSettledUpto = settleAccountLockup(payer);
         // Only require full settlement if increasing period or fixed lockup
         if (period > rail.lockupPeriod || lockupFixed > rail.lockupFixed) {
             require(
@@ -1216,22 +1212,6 @@ contract Payments is
 
         // Clear the rate change queue
         rail.rateChangeQueue.clear();
-    }
-
-    function withdrawToInternal(
-        address token,
-        address to,
-        uint256 amount
-    ) internal {
-        Account storage account = accounts[token][msg.sender];
-
-        uint256 available = account.funds - account.lockupCurrent;
-        require(
-            amount <= available,
-            "insufficient unlocked funds for withdrawal"
-        );
-        account.funds -= amount;
-        IERC20(token).safeTransfer(to, amount);
     }
 }
 

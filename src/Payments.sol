@@ -389,11 +389,7 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    )
-        internal
-        validateNonZeroAddress(token, "token")
-        validateNonZeroAddress(to, "recipient")
-    {
+    ) internal {
         Account storage account = accounts[token][msg.sender];
         uint256 available = account.funds - account.lockupCurrent;
         require(
@@ -556,9 +552,6 @@ contract Payments is
         uint256 oldRate = rail.paymentRate;
         bool isTerminated = isRailTerminated(rail);
 
-        // Settle the payer's lockup to account for elapsed time
-        uint256 lockupSettledUpto = settleAccountLockup(payer);
-
         // Validate rate changes based on rail state and account lockup
         if (isTerminated) {
             if (block.number >= maxSettlementEpochForTerminatedRail(rail)) {
@@ -579,8 +572,7 @@ contract Payments is
                 rail,
                 payer,
                 oldRate,
-                newRate,
-                lockupSettledUpto
+                newRate
             );
         }
 
@@ -713,10 +705,9 @@ contract Payments is
         Rail storage rail,
         Account storage payer,
         uint256 oldRate,
-        uint256 newRate,
-        uint256 lockupSettledUpto
+        uint256 newRate
     ) internal view {
-        if (lockupSettledUpto == block.number) {
+        if (payer.lockupLastSettledAt == block.number) {
             // if account lockup is fully settled; there's nothing to check
             return;
         }

@@ -276,23 +276,14 @@ contract Payments is
         address to,
         uint256 amount
     ) internal {
-        require(token != address(0), "token address cannot be zero");
-        require(to != address(0), "recipient address cannot be zero");
+        Account storage account = accounts[token][msg.sender];
 
-        Account storage acct = accounts[token][msg.sender];
-
-        uint256 settleEpoch = settleAccountLockup(acct);
-        require(settleEpoch == block.number, "insufficient funds");
-
-        uint256 available = acct.funds > acct.lockupCurrent
-            ? acct.funds - acct.lockupCurrent
-            : 0;
-
+        uint256 available = account.funds - account.lockupCurrent;
         require(
             amount <= available,
             "insufficient unlocked funds for withdrawal"
         );
-        acct.funds -= amount;
+        account.funds -= amount;
         IERC20(token).safeTransfer(to, amount);
     }
 

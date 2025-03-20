@@ -1198,6 +1198,8 @@ contract Payments is
             rail.rateChangeQueue.isEmpty(),
             "rate change queue must be empty post full settlement"
         );
+        // Clear the rate change queue
+        rail.rateChangeQueue.clear();
 
         rail.token = address(0);
         rail.from = address(0); // This now marks the rail as inactive
@@ -1209,9 +1211,6 @@ contract Payments is
         rail.lockupPeriod = 0;
         rail.settledUpTo = 0;
         rail.terminationEpoch = 0;
-
-        // Clear the rate change queue
-        rail.rateChangeQueue.clear();
     }
 }
 

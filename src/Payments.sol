@@ -1216,7 +1216,7 @@ contract Payments is
         Rail storage rail,
         Account storage payer
     ) internal view returns (bool) {
-        return block.number > payer.lockupLastSettledAt + rail.lockupPeriod;
+        return !isRailTerminated(rail) && block.number > payer.lockupLastSettledAt + rail.lockupPeriod;
     }
 
     function _zeroOutRail(Rail storage rail) internal {

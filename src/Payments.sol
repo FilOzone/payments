@@ -231,7 +231,7 @@ contract Payments is
         }
 
         // Update operator lockup tracking if lockup has changed
-        if (accountLockupAfter >= accountLockupBefore) {
+        if (accountLockupAfter > accountLockupBefore) {
             uint256 lockupIncrease = accountLockupAfter - accountLockupBefore;
             require(
                 approval.lockupUsage + lockupIncrease <=

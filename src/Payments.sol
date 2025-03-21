@@ -144,13 +144,6 @@ contract Payments is
         _;
     }
 
-    modifier validateRailNotInDebt(uint256 railId) {
-        Rail storage rail = rails[railId];
-        Account storage payer = accounts[rail.token][rail.from];
-        require(!isRailInDebt(rail, payer), "rail is in debt");
-        _;
-    }
-
     modifier validateNonZeroAddress(address addr, string memory varName) {
         require(
             addr != address(0),

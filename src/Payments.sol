@@ -489,43 +489,32 @@ contract Payments is
     ) internal {
         Account storage payer = accounts[rail.token][rail.from];
 
-        // Only require full settlement if increasing period or fixed lockup
-        if (period > rail.lockupPeriod || lockupFixed > rail.lockupFixed) {
+        // Don't allow changing the lockup period or increasing the fixed lockup unless the payer's
+        // account is fully settled.
+        if (payer.lockupLastSettledAt < block.number) {
             require(
-                payer.lockupLastSettledAt == block.number,
-                "cannot increase lockup: client funds insufficient for current account lockup settlement"
+                period == rail.lockupPeriod,
+                "cannot change the lockup period: insufficient funds to cover the current lockup"
             );
-        } else if (period < rail.lockupPeriod) {
-            // When reducing period, ensure we still cover all unsettled epochs
             require(
-                payer.lockupLastSettledAt + period >= block.number,
-                "cannot reduce lockup period below what's needed for unsettled epochs"
+                lockupFixed <= rail.lockupFixed,
+                "cannot increase the fixed lockup: insufficient funds to cover the current lockup"
             );
         }
 
-        // Calculate effective lockup period for the old period
-        uint256 oldEffectiveLockupPeriod = rail.lockupPeriod -
-            (block.number - payer.lockupLastSettledAt);
-
-        // Calculate effective lockup period for the updated period
-        uint256 newEffectiveLockupPeriod = period -
-            (block.number - payer.lockupLastSettledAt);
-
-        // Calculate current (old) lockup using effective lockup period
-        uint256 oldLockup = rail.lockupFixed +
-            (rail.paymentRate * oldEffectiveLockupPeriod);
+        // Calculate current (old) lockup.
+        uint256 oldLockup = rail.lockupFixed + (rail.paymentRate * rail.lockupPeriod);
 
         // Calculate new lockup amount with new parameters
-        // We can safely use min(period, effectiveLockupPeriod) here now that we've added
-        // the explicit check to ensure period doesn't fall below unsettled epochs
-        uint256 newLockup = lockupFixed +
-            (rail.paymentRate * newEffectiveLockupPeriod);
+        uint256 newLockup = lockupFixed + (rail.paymentRate * period);
 
         require(
             payer.lockupCurrent >= oldLockup,
             "payer's current lockup cannot be less than old lockup"
         );
 
+        // We blindly update the payer's lockup. If they don't have enough funds to cover the new
+        // amount, we'll revert in the post-condition.
         payer.lockupCurrent = payer.lockupCurrent - oldLockup + newLockup;
 
         // Update rail lockup parameters

@@ -185,8 +185,6 @@ contract RateChangeQueueTest is Test {
         RateChangeQueue.peek(queue());
     }
 
-    // 2. FAILURE PATH TESTS
-
     function testEmptyQueueOperations() public {
         createEmptyQueue();
 
@@ -267,8 +265,6 @@ contract RateChangeQueueTest is Test {
             "Queue with advanced indices failed"
         );
     }
-
-    // 4. COMPLEX OPERATIONS
 
     function testMixedOperations() public {
         createEmptyQueue();

@@ -80,6 +80,20 @@ contract Payments is
     // railId => Rail
     mapping(uint256 => Rail) internal rails;
 
+    // Struct to hold rail data without the RateChangeQueue (for external returns)
+    struct RailView {
+        address token;
+        address from;
+        address to;
+        address operator;
+        address arbiter;
+        uint256 paymentRate;
+        uint256 lockupPeriod;
+        uint256 lockupFixed;
+        uint256 settledUpTo;
+        uint256 terminationEpoch;
+    }
+
     // token => client => operator => Approval
     mapping(address => mapping(address => mapping(address => OperatorApproval)))
         public operatorApprovals;
@@ -285,6 +299,24 @@ contract Payments is
                 ? "invariant failure: insufficient funds to cover lockup before function execution"
                 : "invariant failure: insufficient funds to cover lockup after function execution"
         );
+    }
+
+    // Public getter for rail data that returns a struct instead of tuple
+    function getRail(uint256 railId) external view returns (RailView memory) {
+        Rail storage rail = rails[railId];
+        return
+            RailView({
+                token: rail.token,
+                from: rail.from,
+                to: rail.to,
+                operator: rail.operator,
+                arbiter: rail.arbiter,
+                paymentRate: rail.paymentRate,
+                lockupPeriod: rail.lockupPeriod,
+                lockupFixed: rail.lockupFixed,
+                settledUpTo: rail.settledUpTo,
+                terminationEpoch: rail.terminationEpoch
+            });
     }
 
     /// @notice Updates the approval status and allowances for an operator on behalf of the message sender.

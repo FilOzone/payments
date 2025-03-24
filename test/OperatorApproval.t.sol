@@ -843,6 +843,88 @@ contract OperatorApprovalTest is Test {
         );
     }
 
+    function test_OperatorCanReduceUsageOfExistingRailDespiteInsufficientAllowance()
+        public
+    {
+        // Client allows operator to use up to 90 rate/30 lockup
+        helper.setupOperatorApproval(
+            payments,
+            address(token),
+            client,
+            operator,
+            90 ether,
+            30 ether
+        );
+
+        // Operator creates a rail using 50 rate/20 lockup
+        uint256 railId = helper.createRail(
+            payments,
+            address(token),
+            client,
+            recipient,
+            operator,
+            address(0)
+        );
+
+        vm.startPrank(operator);
+        payments.modifyRailPayment(railId, 50 ether, 0);
+        payments.modifyRailLockup(railId, 0, 20 ether);
+        vm.stopPrank();
+
+        // Client reduces allowance to below what's already being used
+        vm.startPrank(client);
+        payments.setOperatorApproval(
+            address(token),
+            operator,
+            true,
+            40 ether, // below current usage of 50 ether
+            15 ether // below current usage of 20 ether
+        );
+        vm.stopPrank();
+
+        // Operator should still be able to reduce usage of rate/lockup on existing rail
+        vm.startPrank(operator);
+        payments.modifyRailPayment(railId, 30 ether, 0);
+        payments.modifyRailLockup(railId, 0, 10 ether);
+        vm.stopPrank();
+
+        // Allowance - usage should be 40 - 30 = 10 for rate, 15 - 10 = 5 for lockup
+        (
+            ,
+            /*bool isApproved*/ uint256 rateAllowance,
+            uint256 lockupAllowance,
+            uint256 rateUsage,
+            uint256 lockupUsage
+        ) = payments.operatorApprovals(address(token), client, operator);
+        assertEq(rateAllowance - rateUsage, 10 ether);
+        assertEq(lockupAllowance - lockupUsage, 5 ether);
+
+        // Even though the operator can reduce usage on existing rails despite insufficient allowance,
+        // they should not be able to create new rail configurations with non-zero rate/lockup
+
+        // Create a new rail, which should succeed
+        uint256 railId2 = helper.createRail(
+            payments,
+            address(token),
+            client,
+            recipient,
+            operator,
+            address(0)
+        );
+
+        // But attempting to set non-zero rate on the new rail should fail due to insufficient allowance
+        vm.startPrank(operator);
+        vm.expectRevert("operation exceeds operator rate allowance");
+        payments.modifyRailPayment(railId2, 11 ether, 0);
+        vm.stopPrank();
+
+        // Similarly, attempting to set non-zero lockup on the new rail should fail
+        vm.startPrank(operator);
+        vm.expectRevert("operation exceeds operator lockup allowance");
+        payments.modifyRailLockup(railId2, 0, 6 ether);
+        vm.stopPrank();
+    }
+
     function testAllowanceReductionScenarios() public {
         // 1. Test reducing rate allowance below current usage
         // Setup approval

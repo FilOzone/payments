@@ -158,6 +158,7 @@ contract RateChangeQueueTest is Test {
         assertEq(RateChangeQueue.size(queue()), 0);
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     function testClear() public {
         // Setup a multi-item queue
         uint256[] memory rates = new uint256[](3);
@@ -184,6 +185,7 @@ contract RateChangeQueueTest is Test {
         RateChangeQueue.peek(queue());
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     function testEmptyQueueDequeue() public {
         createEmptyQueue();
 
@@ -192,6 +194,7 @@ contract RateChangeQueueTest is Test {
         RateChangeQueue.dequeue(queue());
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     function testEmptyQueuePeek() public {
         createEmptyQueue();
 
@@ -200,6 +203,7 @@ contract RateChangeQueueTest is Test {
         RateChangeQueue.peek(queue());
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     function testEmptyQueuePeekTail() public {
         createEmptyQueue();
 

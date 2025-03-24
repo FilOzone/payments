@@ -229,4 +229,110 @@ contract PaymentsTestHelpers is Test {
             "Account last settled at incorrect"
         );
     }
+
+    function verifyOperatorAllowances(
+        Payments payments,
+        address token, 
+        address client, 
+        address operator, 
+        bool expectedIsApproved,
+        uint256 expectedRateAllowance, 
+        uint256 expectedLockupAllowance, 
+        uint256 expectedRateUsage,
+        uint256 expectedLockupUsage
+    ) public view {
+        (bool isApproved, uint256 rateAllowance, uint256 lockupAllowance, uint256 rateUsage, uint256 lockupUsage) = 
+            payments.operatorApprovals(token, client, operator);
+            
+        assertEq(isApproved, expectedIsApproved, "Operator approval status mismatch");
+        assertEq(rateAllowance, expectedRateAllowance, "Rate allowance mismatch");
+        assertEq(lockupAllowance, expectedLockupAllowance, "Lockup allowance mismatch");
+        assertEq(rateUsage, expectedRateUsage, "Rate usage mismatch");
+        assertEq(lockupUsage, expectedLockupUsage, "Lockup usage mismatch");
+    }
+    
+    // Setup a rail with specific parameters and return balances
+    function setupRailWithFixedLockup(
+        Payments payments,
+        address token,
+        address client,
+        address recipient,
+        address operator,
+        uint256 paymentRate, 
+        uint256 fixedLockup,
+        uint256 lockupPeriod
+    ) public returns (
+        uint256 railId, 
+        Payments.Account memory clientBefore, 
+        Payments.Account memory recipientBefore
+    ) {
+        // Create rail
+        railId = createRail(
+            payments,
+            token,
+            client,
+            recipient,
+            operator,
+            address(0)
+        );
+        
+        // Set payment rate and fixed lockup
+        vm.startPrank(operator);
+        payments.modifyRailPayment(railId, paymentRate, 0);
+        payments.modifyRailLockup(railId, lockupPeriod, fixedLockup);
+        vm.stopPrank();
+        
+        // Get account states before any payment
+        clientBefore = getAccountData(payments, token, client);
+        recipientBefore = getAccountData(payments, token, recipient);
+        
+        return (railId, clientBefore, recipientBefore);
+    }
+
+    // Verify one-time payment effects
+    function verifyOneTimePayment(
+        Payments payments,
+        uint256 railId,
+        uint256 paymentAmount,
+        address token,
+        address client,
+        address recipient,
+        address operator,
+        Payments.Account memory clientBefore,
+        Payments.Account memory recipientBefore,
+        uint256 expectedRemainingLockup
+    ) public {
+        // Make the payment
+        vm.startPrank(operator);
+        payments.modifyRailPayment(railId, 0, paymentAmount);
+        vm.stopPrank();
+        
+        // Check account balances after payment
+        Payments.Account memory clientAfter = getAccountData(payments, token, client);
+        Payments.Account memory recipientAfter = getAccountData(payments, token, recipient);
+        
+        // Verify funds transferred correctly
+        assertEq(clientAfter.funds, clientBefore.funds - paymentAmount, "Client balance incorrect");
+        assertEq(recipientAfter.funds, recipientBefore.funds + paymentAmount, "Recipient balance incorrect");
+        
+        // Verify remaining fixed lockup
+        Payments.RailView memory rail = payments.getRail(railId);
+        assertEq(rail.lockupFixed, expectedRemainingLockup, "Fixed lockup not updated correctly");
+    }
+    
+    // Get current operator allowance and usage
+    function getOperatorAllowanceAndUsage(
+        Payments payments,
+        address token,
+        address client,
+        address operator
+    ) public view returns (
+        bool isApproved,
+        uint256 rateAllowance,
+        uint256 lockupAllowance,
+        uint256 rateUsage,
+        uint256 lockupUsage
+    ) {
+        return payments.operatorApprovals(token, client, operator);
+    }
 }

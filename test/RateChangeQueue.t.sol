@@ -8,7 +8,6 @@ contract RateChangeQueueTest is Test {
     struct TestQueueContainer {
         RateChangeQueue.Queue queue;
     }
-
     TestQueueContainer private queueContainer;
 
     function queue() internal view returns (RateChangeQueue.Queue storage) {
@@ -180,21 +179,31 @@ contract RateChangeQueueTest is Test {
         assertTrue(RateChangeQueue.isEmpty(queue()));
         assertEq(RateChangeQueue.size(queue()), 0);
 
-        // Verify head and tail are reset
+        // Verify peek reverts since queue is empty
         vm.expectRevert("Queue is empty");
         RateChangeQueue.peek(queue());
     }
 
-    function testEmptyQueueOperations() public {
+    function testEmptyQueueDequeue() public {
         createEmptyQueue();
 
-        // Try operations on empty queue
+        // Test dequeue on empty queue
         vm.expectRevert("Queue is empty");
         RateChangeQueue.dequeue(queue());
+    }
 
+    function testEmptyQueuePeek() public {
+        createEmptyQueue();
+
+        // Test peek on empty queue
         vm.expectRevert("Queue is empty");
         RateChangeQueue.peek(queue());
+    }
 
+    function testEmptyQueuePeekTail() public {
+        createEmptyQueue();
+
+        // Test peekTail on empty queue
         vm.expectRevert("Queue is empty");
         RateChangeQueue.peekTail(queue());
     }

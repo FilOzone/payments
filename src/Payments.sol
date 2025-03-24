@@ -364,8 +364,6 @@ contract Payments is
         validateNonZeroAddress(to, "to")
         settleAccountLockupBeforeAndAfter(token, to, false)
     {
-        require(amount > 0, "amount must be greater than 0");
-
         // Create account if it doesn't exist
         Account storage account = accounts[token][to];
 
@@ -542,7 +540,8 @@ contract Payments is
         }
 
         // Calculate current (old) lockup.
-        uint256 oldLockup = rail.lockupFixed + (rail.paymentRate * rail.lockupPeriod);
+        uint256 oldLockup = rail.lockupFixed +
+            (rail.paymentRate * rail.lockupPeriod);
 
         // Calculate new lockup amount with new parameters
         uint256 newLockup = lockupFixed + (rail.paymentRate * period);
@@ -1234,7 +1233,9 @@ contract Payments is
         Rail storage rail,
         Account storage payer
     ) internal view returns (bool) {
-        return !isRailTerminated(rail) && block.number > payer.lockupLastSettledAt + rail.lockupPeriod;
+        return
+            !isRailTerminated(rail) &&
+            block.number > payer.lockupLastSettledAt + rail.lockupPeriod;
     }
 
     function _zeroOutRail(Rail storage rail) internal {

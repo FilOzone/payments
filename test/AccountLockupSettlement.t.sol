@@ -5,309 +5,469 @@ import {Test} from "forge-std/Test.sol";
 import {Payments} from "../src/Payments.sol";
 import {ERC1967Proxy} from "../src/ERC1967Proxy.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 
 contract AccountLockupSettlementTest is Test {
     Payments payments;
     MockERC20 token;
-    
+    PaymentsTestHelpers helper;
+
     address owner = address(0x1);
     address user1 = address(0x2);
     address user2 = address(0x3);
     address operator = address(0x4);
-    
+
     uint256 constant INITIAL_BALANCE = 1000 ether;
     uint256 constant DEPOSIT_AMOUNT = 100 ether;
-    
-    // Direct access to account storage
-    struct AccountData {
-        uint256 funds;
-        uint256 lockupCurrent;
-        uint256 lockupRate;
-        uint256 lockupLastSettledAt;
-    }
-    
+
     function setUp() public {
-        // Setup contracts through proxy for upgradeability
-        vm.startPrank(owner);
-        Payments paymentsImplementation = new Payments();
-        ERC1967Proxy proxy = new ERC1967Proxy(
-            address(paymentsImplementation),
-            abi.encodeWithSelector(Payments.initialize.selector)
+        helper = new PaymentsTestHelpers();
+        payments = helper.deployPaymentsSystem(owner);
+
+        // Set up users for the token
+        address[] memory users = new address[](2);
+        users[0] = user1;
+        users[1] = user2;
+
+        // Deploy test token with initial balances and approvals
+        token = helper.setupTestToken(
+            "Test Token",
+            "TEST",
+            users,
+            INITIAL_BALANCE,
+            address(payments)
         );
-        payments = Payments(address(proxy));
-        vm.stopPrank();
-        
-        // Deploy test token
-        token = new MockERC20("Test Token", "TEST");
-        
-        // Setup initial token balances
-        token.mint(user1, INITIAL_BALANCE);
-        token.mint(user2, INITIAL_BALANCE);
-        
-        // Approve payments contract to spend tokens
-        vm.startPrank(user1);
-        token.approve(address(payments), type(uint256).max);
-        vm.stopPrank();
-        
-        vm.startPrank(user2);
-        token.approve(address(payments), type(uint256).max);
-        vm.stopPrank();
-        
+
         // Setup operator approval for potential rails
+        helper.setupOperatorApproval(
+            payments,
+            address(token),
+            user1,
+            operator,
+            10 ether, // rateAllowance
+            100 ether // lockupAllowance
+        );
+    }
+
+    function testSettlementWithNoLockupRate() public {
+        // Setup: deposit funds
+        helper.makeDeposit(
+            payments,
+            address(token),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
+
+        // No rails created, so lockup rate should be 0
+
+        // Advance blocks to create a settlement gap without a rate
+        helper.advanceBlocks(10);
+
+        // Trigger settlement with a new deposit
+        helper.makeDeposit(
+            payments,
+            address(token),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
+
+        // Verify settlement occurred
+        Payments.Account memory account = helper.getAccountData(
+            payments,
+            address(token),
+            user1
+        );
+        assertEq(
+            account.lockupLastSettledAt,
+            block.number,
+            "Lockup last settled at should be updated"
+        );
+        assertEq(
+            account.lockupCurrent,
+            0,
+            "Lockup current should remain zero without a rate"
+        );
+        assertEq(
+            account.funds,
+            DEPOSIT_AMOUNT * 2,
+            "Funds should match total deposits"
+        );
+    }
+
+    function testSimpleLockupAccumulation() public {
+        // Setup: deposit funds
+        helper.makeDeposit(
+            payments,
+            address(token),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
+
+        // Define a lockup rate
+        uint256 lockupRate = 2 ether;
+        uint256 lockupPeriod = 2;
+
+        // Create a rail with this rate
         vm.startPrank(user1);
         payments.setOperatorApproval(
             address(token),
             operator,
             true,
-            10 ether, // rateAllowance
+            lockupRate, // rate allowance
             100 ether // lockupAllowance
         );
         vm.stopPrank();
-    }
-    
-    // Helper to get full account data as a struct for easier testing
-    function getAccount(address tokenAddress, address userAddress) internal view returns (AccountData memory) {
-        (uint256 funds, uint256 lockupCurrent, uint256 lockupRate, uint256 lockupLastSettledAt) = 
-            payments.accounts(tokenAddress, userAddress);
-            
-        return AccountData({
-            funds: funds,
-            lockupCurrent: lockupCurrent,
-            lockupRate: lockupRate,
-            lockupLastSettledAt: lockupLastSettledAt
-        });
-    }
-    
-    // Helper to directly set account values for testing
-    function setAccountValues(
-        address tokenAddress,
-        address accountOwner,
-        uint256 funds,
-        uint256 lockupCurrent,
-        uint256 lockupRate,
-        uint256 lockupLastSettledAt
-    ) internal {
-        // Get the storage slot for the account
-        bytes32 accountMapPosition = keccak256(abi.encode(
-            tokenAddress, 
-            uint256(0) // The position of 'accounts' in the contract
-        ));
-        
-        bytes32 accountPosition = keccak256(abi.encode(
-            accountOwner,
-            accountMapPosition
-        ));
-        
-        // Set each value in the struct (funds, lockupCurrent, lockupRate, lockupLastSettledAt)
-        vm.store(address(payments), accountPosition, bytes32(funds));
-        vm.store(address(payments), bytes32(uint256(accountPosition) + 1), bytes32(lockupCurrent));
-        vm.store(address(payments), bytes32(uint256(accountPosition) + 2), bytes32(lockupRate));
-        vm.store(address(payments), bytes32(uint256(accountPosition) + 3), bytes32(lockupLastSettledAt));
-    }
-    
-    // Helper to deposit for test setup
-    function setupDeposit(address from, address to, uint256 amount) internal {
-        vm.startPrank(from);
-        payments.deposit(address(token), to, amount);
-        vm.stopPrank();
-    }
-    
-    /*//////////////////////////////////////////////////////////////
-                    ACCOUNT LOCKUP SETTLEMENT TESTS
-    //////////////////////////////////////////////////////////////*/
-    
-    function testSettlementWithNoLockupRate() public {
-        // Setup: deposit funds
-        setupDeposit(user1, user1, DEPOSIT_AMOUNT);
-        
-        // Set account with no lockup rate but old settlement time
-        uint256 oldBlockNumber = block.number - 10;
-        setAccountValues(
+
+        // Create rail with the desired rate
+        helper.setupRailWithParameters(
+            payments,
             address(token),
             user1,
-            DEPOSIT_AMOUNT,
-            0, // no lockup
-            0, // no rate
-            oldBlockNumber // settled 10 blocks ago
+            user2,
+            operator,
+            lockupRate, // payment rate
+            lockupPeriod, // lockup period
+            0 // no fixed lockup
         );
-        
+
+        // Note: Settlement begins at the current block
+
+        // Advance blocks to create a settlement gap
+        uint256 elapsedBlocks = 5;
+        helper.advanceBlocks(elapsedBlocks);
+
         // Trigger settlement with a new deposit
-        setupDeposit(user1, user1, DEPOSIT_AMOUNT);
-        
-        // Verify settlement occurred
-        AccountData memory account = getAccount(address(token), user1);
-        assertEq(account.lockupLastSettledAt, block.number, "Lockup last settled at should be updated");
-        assertEq(account.lockupCurrent, 0, "Lockup current should remain zero without a rate");
-    }
-    
-    function testSimpleLockupAccumulation() public {
-        // Setup: deposit funds
-        setupDeposit(user1, user1, DEPOSIT_AMOUNT);
-        
-        // Set account with a lockup rate
-        uint256 lockupRate = 2 ether; // 2 tokens per block
-        uint256 oldBlockNumber = block.number - 5;
-        setAccountValues(
+        helper.makeDeposit(
+            payments,
             address(token),
             user1,
-            DEPOSIT_AMOUNT,
-            0, // start with no lockup
+            user1,
+            DEPOSIT_AMOUNT
+        );
+
+        // Verify settlement occurred
+        Payments.Account memory account = helper.getAccountData(
+            payments,
+            address(token),
+            user1
+        );
+        assertEq(
+            account.lockupLastSettledAt,
+            block.number,
+            "Lockup last settled at should be updated"
+        );
+
+        // The correct expected value is:
+        uint256 initialLockup = lockupRate * lockupPeriod;
+        uint256 accumulatedLockup = lockupRate * elapsedBlocks;
+        uint256 expectedLockup = initialLockup + accumulatedLockup;
+
+        // The account has both initial lockup from rail creation and accumulated lockup from settlement
+        assertEq(
+            account.lockupCurrent,
+            expectedLockup,
+            "Lockup current should match expected value"
+        );
+        assertEq(
+            account.lockupRate,
             lockupRate,
-            oldBlockNumber // settled 5 blocks ago
+            "Lockup rate should match rail rate"
         );
-        
-        // Trigger settlement with a new deposit
-        setupDeposit(user1, user1, DEPOSIT_AMOUNT);
-        
-        // Verify settlement occurred
-        AccountData memory account = getAccount(address(token), user1);
-        assertEq(account.lockupLastSettledAt, block.number, "Lockup last settled at should be updated");
-        assertEq(account.lockupCurrent, 5 * lockupRate, "Lockup current should accumulate properly");
+
+        // Also verify the account funds match the sum of the deposits
+        assertEq(
+            account.funds,
+            DEPOSIT_AMOUNT * 2,
+            "Account funds should match total deposits"
+        );
     }
-    
+
     function testPartialSettlement() public {
-        // Setup: deposit a small amount
-        setupDeposit(user1, user1, DEPOSIT_AMOUNT / 2); // Only deposit enough for partial settlement
-        
-        // Set account with a high lockup rate that will exceed available funds
-        uint256 lockupRate = 20 ether; // Very high rate to force partial settlement
-        uint256 oldBlockNumber = block.number - 10;
-        setAccountValues(
+        uint256 lockupRate = 20 ether;
+
+        helper.makeDeposit(
+            payments,
             address(token),
             user1,
-            DEPOSIT_AMOUNT / 2, // Less than what would be needed for full settlement
-            0,                  // start with no lockup
-            lockupRate,         // High lockup rate
-            oldBlockNumber      // settled 10 blocks ago
+            user1,
+            DEPOSIT_AMOUNT / 2 // 50
         );
-        
-        // Attempt to trigger full settlement - this will deposit more funds
-        // but the account should still only be partially settled
-        setupDeposit(user1, user1, DEPOSIT_AMOUNT / 2);
-        
+
+        // Create a rail with this high rate
+        vm.startPrank(user1);
+        payments.setOperatorApproval(
+            address(token),
+            operator,
+            true,
+            lockupRate, // Higher rate allowance
+            100000 ether // lockupAllowance
+        );
+        vm.stopPrank();
+
+        // Create rail with the high rate (this will set the railway's settledUpTo to the current block)
+        helper.setupRailWithParameters(
+            payments,
+            address(token),
+            user1,
+            user2,
+            operator,
+            lockupRate, // Very high payment rate (20 ether per block)
+            1, // lockup period
+            0 // no fixed lockup
+        );
+
+        // When a rail is created, its settledUpTo is set to the current block
+        // Initial account lockup value should be lockupRate * lockupPeriod = 20 ether * 1 = 20 ether
+        // Initial funds are DEPOSIT_AMOUNT / 2 = 50 ether
+
+        // Advance many blocks to exceed available funds
+        uint256 advancedBlocks = 10;
+        helper.advanceBlocks(advancedBlocks);
+
+        // Deposit additional funds, which will trigger settlement
+        helper.makeDeposit(
+            payments,
+            address(token),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT / 2
+        );
+
         // Verify partial settlement
-        AccountData memory account = getAccount(address(token), user1);
-        
-        // With a rate of 20 ether per block, and 10 blocks elapsed, full settlement would require 200 ether
-        // But we only have DEPOSIT_AMOUNT (100 ether) in funds, so expect partial settlement
-        
-        // Expected settlement: 100 ether / 20 ether per block = 5 blocks settled
-        uint256 expectedSettledBlocks = 5;
-        uint256 expectedNewLastSettledAt = oldBlockNumber + expectedSettledBlocks;
-        uint256 expectedLockupCurrent = expectedSettledBlocks * lockupRate;
-        
-        assertEq(account.lockupLastSettledAt, expectedNewLastSettledAt, "Partial settlement: lockup last settled at");
-        assertEq(account.lockupCurrent, expectedLockupCurrent, "Partial settlement: lockup current");
-        assertEq(account.funds, DEPOSIT_AMOUNT, "Funds should match total deposits");
+        Payments.Account memory account = helper.getAccountData(
+            payments,
+            address(token),
+            user1
+        );
+
+        uint256 expectedSettlementBlock = 5; // lockupRate is 20, so we only have enough funds to pay for 5 epochs)
+
+        assertEq(
+            account.lockupLastSettledAt,
+            expectedSettlementBlock,
+            "Account should be settled to the correct block number"
+        );
+
+        uint256 expectedLockup = DEPOSIT_AMOUNT;
+
+        assertEq(
+            account.lockupCurrent,
+            expectedLockup,
+            "Lockup current should equal total deposits"
+        );
+
+        assertEq(
+            account.funds,
+            DEPOSIT_AMOUNT,
+            "Funds should match total deposits"
+        );
     }
-    
+
     function testSettlementAfterGap() public {
-        // Setup: deposit funds
-        setupDeposit(user1, user1, DEPOSIT_AMOUNT);
-        
-        // Set account with a lockup rate
-        uint256 lockupRate = 1 ether;
-        uint256 oldBlockNumber = block.number - 20;
-        setAccountValues(
+        helper.makeDeposit(
+            payments,
             address(token),
             user1,
-            DEPOSIT_AMOUNT,
-            10 ether,         // existing lockup
-            lockupRate,       // 1 token per block
-            oldBlockNumber    // settled 20 blocks ago
+            user1,
+            DEPOSIT_AMOUNT * 2 // 200 ether
         );
-        
-        // Roll forward even more blocks
-        vm.roll(block.number + 10);
-        
+
+        uint256 lockupRate = 1 ether; // 1 token per block
+        uint256 lockupPeriod = 30;
+        uint256 initialLockup = 10 ether;
+
+        // Create rail
+        helper.setupRailWithParameters(
+            payments,
+            address(token),
+            user1,
+            user2,
+            operator,
+            lockupRate, // 1 token per block
+            lockupPeriod, // Lockup period of 30 blocks
+            initialLockup // initial fixed lockup of 10 ether
+        );
+
+        // Roll forward many blocks
+        helper.advanceBlocks(30);
+
         // Trigger settlement with a new deposit
-        setupDeposit(user1, user1, DEPOSIT_AMOUNT);
-        
+        helper.makeDeposit(
+            payments,
+            address(token),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
+
         // Verify settlement occurred
-        AccountData memory account = getAccount(address(token), user1);
-        
-        // Now we have a total gap of 30 blocks (20 initially + 10 more with roll)
-        // Existing funds: DEPOSIT_AMOUNT (100 ether)
-        // Existing lockup: 10 ether
-        // Available for new lockup: 90 ether
-        // Can cover: 90 ether / 1 ether per block = 90 blocks, which is more than the 30 block gap
-        // So we expect full settlement
-        
-        assertEq(account.lockupLastSettledAt, block.number, "Lockup should be settled to current block");
-        assertEq(account.lockupCurrent, 10 ether + (30 * lockupRate), "Lockup current should include existing + new lockup");
+        Payments.Account memory account = helper.getAccountData(
+            payments,
+            address(token),
+            user1
+        );
+
+        assertEq(
+            account.lockupLastSettledAt,
+            block.number,
+            "Lockup should be settled to current block"
+        );
+
+        uint256 expectedLockup = initialLockup +
+            (lockupRate * 30) + // accumulated lockup
+            (lockupRate * lockupPeriod); // future lockup
+        assertEq(
+            account.lockupCurrent,
+            expectedLockup,
+            "Lockup current should match rail's lockup requirements"
+        );
+        // Verify account funds match expected value after deposits
+        assertEq(
+            account.funds,
+            DEPOSIT_AMOUNT * 3,
+            "Account funds should match total deposits after settlement"
+        );
     }
-    
+
     function testSettlementInvariants() public {
         // Setup: deposit a specific amount
-        setupDeposit(user1, user1, DEPOSIT_AMOUNT);
-        
-        // Test various lockup scenarios to verify the invariant: funds >= lockupCurrent
-        
-        // Scenario 1: Lockup exactly matches funds - should pass
-        setAccountValues(
+        helper.makeDeposit(
+            payments,
             address(token),
             user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
+
+        // Scenario 1: Lockup exactly matches funds by creating a rail with fixed lockup
+        // exactly matching the deposit amount
+
+        // Create a rail with fixed lockup = all available funds
+        helper.setupRailWithParameters(
+            payments,
+            address(token),
+            user1,
+            user2,
+            operator,
+            0, // no payment rate
+            10, // Lockup period
+            DEPOSIT_AMOUNT // fixed lockup equal to all funds
+        );
+
+        // Verify the account state
+        Payments.Account memory accountAfterRail = helper.getAccountData(
+            payments,
+            address(token),
+            user1
+        );
+        assertEq(
+            accountAfterRail.lockupCurrent,
             DEPOSIT_AMOUNT,
-            DEPOSIT_AMOUNT, // lockup equals funds
-            0,
-            block.number
+            "Lockup should equal funds"
         );
-        
-        // This should succeed as the invariant holds
-        setupDeposit(user1, user1, 1); // Any operation that triggers settlement
-        
-        // Scenario 2: Attempt to set lockup greater than funds (invalid state)
-        setAccountValues(
+        assertEq(
+            accountAfterRail.funds,
+            DEPOSIT_AMOUNT,
+            "Funds should match deposit"
+        );
+
+        helper.makeDeposit(payments, address(token), user1, user1, 1); // Adding more funds
+
+        // Scenario 2: Verify we can't create a situation where lockup > funds
+        // We'll try to create a rail with an impossibly high fixed lockup
+
+        // Increase operator approval allowance
+        vm.startPrank(user1);
+        payments.setOperatorApproval(
+            address(token),
+            operator,
+            true,
+            0, // no rate allowance needed
+            DEPOSIT_AMOUNT * 3 // much higher lockup allowance
+        );
+        vm.stopPrank();
+
+        // Try to set up a rail with lockup > funds which should fail
+        vm.startPrank(operator);
+        uint256 railId = payments.createRail(
             address(token),
             user1,
-            DEPOSIT_AMOUNT + 1, // Current funds
-            DEPOSIT_AMOUNT + 2, // Trying to set lockup > funds (invalid)
-            0,
-            block.number
+            user2,
+            address(0)
         );
-        
-        // This should revert due to invariant check
-        vm.startPrank(user1);
-        vm.expectRevert("invariant failure: insufficient funds to cover lockup before function execution");
-        payments.deposit(address(token), user1, 1);
+
+        // This should fail because lockupFixed > available funds
+        vm.expectRevert(
+            "invariant failure: insufficient funds to cover lockup after function execution"
+        );
+        payments.modifyRailLockup(railId, 10, DEPOSIT_AMOUNT * 2);
         vm.stopPrank();
     }
-    
+
     function testWithdrawWithLockupSettlement() public {
-        // Setup: deposit funds
-        setupDeposit(user1, user1, DEPOSIT_AMOUNT * 2); // Deposit 200 ether
-        
-        // Set a lockup rate and an existing lockup
-        uint256 lockupRate = 1 ether;
-        uint256 initialLockup = 50 ether;
-        uint256 oldBlockNumber = block.number - 10;
-        
-        setAccountValues(
+        helper.makeDeposit(
+            payments,
             address(token),
             user1,
-            DEPOSIT_AMOUNT * 2,  // 200 ether funds
-            initialLockup,       // 50 ether locked
-            lockupRate,          // 1 ether per block
-            oldBlockNumber       // 10 blocks ago
+            user1,
+            DEPOSIT_AMOUNT * 2 // Deposit 200 ether
         );
-        
-        // Calculate expected values after settlement
-        // Total lockup after settlement: 50 ether + (10 blocks * 1 ether) = 60 ether
-        // Available for withdrawal: 200 ether - 60 ether = 140 ether
-        
+        // Set a lockup rate and an existing lockup via a rail
+        uint256 lockupRate = 1 ether;
+        uint256 initialLockup = 50 ether;
+        uint256 lockupPeriod = 10;
+
+        // Create rail with fixed + rate-based lockup
+        helper.setupRailWithParameters(
+            payments,
+            address(token),
+            user1,
+            user2,
+            operator,
+            lockupRate, // 1 ether per block
+            lockupPeriod, // Lockup period of 10 blocks
+            initialLockup // 50 ether fixed lockup
+        );
+
+        // Total lockup at rail creation: 50 ether fixed + (1 ether * 10 blocks) = 60 ether
+        // Available for withdrawal at creation: 200 ether - 60 ether = 140 ether
+
         // Try to withdraw more than available (should fail)
-        vm.startPrank(user1);
-        vm.expectRevert("insufficient unlocked funds for withdrawal");
-        payments.withdraw(address(token), 150 ether);
-        
-        // Withdraw exactly the available amount (should succeed)
-        payments.withdraw(address(token), 140 ether);
-        vm.stopPrank();
-        
+        helper.expectWithdrawalToFail(
+            payments,
+            address(token),
+            user1,
+            150 ether,
+            bytes("insufficient unlocked funds for withdrawal")
+        );
+
+        // Withdraw exactly the available amount (should succeed and also settle account lockup)
+        helper.makeWithdrawal(payments, address(token), user1, 140 ether);
+
         // Verify account state
-        AccountData memory account = getAccount(address(token), user1);
-        assertEq(account.funds, 60 ether, "Remaining funds should match lockup");
+        Payments.Account memory account = helper.getAccountData(
+            payments,
+            address(token),
+            user1
+        );
+
+        // Remaining funds: 200 - 140 = 60 ether
+        // Remaining lockup: 60 ether (unchanged because no blocks passed)
+        assertEq(
+            account.funds,
+            60 ether,
+            "Remaining funds should match lockup"
+        );
         assertEq(account.lockupCurrent, 60 ether, "Lockup should be updated");
-        assertEq(account.lockupLastSettledAt, block.number, "Settlement should be updated to current block");
+
+        // Settlement happens during withdrawal
+        assertEq(
+            account.lockupLastSettledAt,
+            block.number,
+            "Settlement should be updated to current block"
+        );
     }
 }

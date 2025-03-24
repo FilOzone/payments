@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {console} from "forge-std/console.sol";
 import {Payments} from "../src/Payments.sol";
 import {ERC1967Proxy} from "../src/ERC1967Proxy.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -21,42 +20,39 @@ contract AccountManagementTest is Test {
     uint256 constant INITIAL_BALANCE = 1000 ether;
     uint256 constant DEPOSIT_AMOUNT = 100 ether;
 
-    struct AccountState {
-        uint256 funds;
-        uint256 lockupCurrent;
-        uint256 lockupRate;
-        uint256 lockupLastSettledAt;
-    }
-
     function setUp() public {
-        // Setup contracts through proxy for upgradeability
-        vm.startPrank(owner);
-        Payments paymentsImplementation = new Payments();
-        ERC1967Proxy proxy = new ERC1967Proxy(
-            address(paymentsImplementation),
-            abi.encodeWithSelector(Payments.initialize.selector)
-        );
-        payments = Payments(address(proxy));
-        vm.stopPrank();
-
+        // Create test helpers
+        PaymentsTestHelpers helper = new PaymentsTestHelpers();
+        
+        // Setup payments system
+        payments = helper.deployPaymentsSystem(owner);
+        
+        // Set up users for standard token
+        address[] memory standardUsers = new address[](2);
+        standardUsers[0] = user1;
+        standardUsers[1] = user2;
+        
+        // Set up users for malicious token
+        address[] memory maliciousUsers = new address[](1);
+        maliciousUsers[0] = user1;
+        
         // Deploy test tokens
-        standardToken = new MockERC20("Test Token", "TEST");
-        maliciousToken = new ReentrantERC20("Malicious Token", "EVIL");
-
-        // Setup initial token balances
-        standardToken.mint(user1, INITIAL_BALANCE);
-        standardToken.mint(user2, INITIAL_BALANCE);
-        maliciousToken.mint(user1, INITIAL_BALANCE);
-
-        // Approve payments contract to spend tokens
-        vm.startPrank(user1);
-        standardToken.approve(address(payments), type(uint256).max);
-        maliciousToken.approve(address(payments), type(uint256).max);
-        vm.stopPrank();
-
-        vm.startPrank(user2);
-        standardToken.approve(address(payments), type(uint256).max);
-        vm.stopPrank();
+        standardToken = helper.setupTestToken(
+            "Test Token", 
+            "TEST", 
+            standardUsers, 
+            INITIAL_BALANCE, 
+            address(payments)
+        );
+        
+        // Deploy malicious token for reentrancy tests
+        maliciousToken = helper.setupReentrantToken(
+            "Malicious Token", 
+            "EVIL", 
+            maliciousUsers, 
+            INITIAL_BALANCE, 
+            address(payments)
+        );
     }
 
     function assertAccountBalance(
@@ -68,21 +64,15 @@ contract AccountManagementTest is Test {
         assertEq(funds, expectedAmount, "Account balance incorrect");
     }
 
-    function setupDeposit(
-        address token,
-        address from,
-        address to,
-        uint256 amount
-    ) internal {
-        vm.startPrank(from);
-        payments.deposit(token, to, amount);
-        vm.stopPrank();
-    }
-
     function testBasicDeposit() public {
-        vm.startPrank(user1);
-        payments.deposit(address(standardToken), user1, DEPOSIT_AMOUNT);
-        vm.stopPrank();
+        PaymentsTestHelpers helper = new PaymentsTestHelpers();
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
 
         assertAccountBalance(address(standardToken), user1, DEPOSIT_AMOUNT);
         assertEq(
@@ -93,10 +83,21 @@ contract AccountManagementTest is Test {
     }
 
     function testMultipleDeposits() public {
-        vm.startPrank(user1);
-        payments.deposit(address(standardToken), user1, DEPOSIT_AMOUNT);
-        payments.deposit(address(standardToken), user1, DEPOSIT_AMOUNT + 1);
-        vm.stopPrank();
+        PaymentsTestHelpers helper = new PaymentsTestHelpers();
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT + 1
+        );
 
         assertAccountBalance(
             address(standardToken),
@@ -106,9 +107,14 @@ contract AccountManagementTest is Test {
     }
 
     function testDepositToAnotherUser() public {
-        vm.startPrank(user1);
-        payments.deposit(address(standardToken), user2, DEPOSIT_AMOUNT);
-        vm.stopPrank();
+        PaymentsTestHelpers helper = new PaymentsTestHelpers();
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user2,
+            DEPOSIT_AMOUNT
+        );
 
         assertAccountBalance(address(standardToken), user2, DEPOSIT_AMOUNT);
         assertEq(
@@ -155,14 +161,22 @@ contract AccountManagementTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function testBasicWithdrawal() public {
-        // Setup: deposit first
-        setupDeposit(address(standardToken), user1, user1, DEPOSIT_AMOUNT);
+        PaymentsTestHelpers helper = new PaymentsTestHelpers();
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
 
-        // Test withdrawal
-        vm.startPrank(user1);
         uint256 preBalance = standardToken.balanceOf(user1);
-        payments.withdraw(address(standardToken), DEPOSIT_AMOUNT / 2);
-        vm.stopPrank();
+        helper.makeWithdrawal(
+            payments,
+            address(standardToken),
+            user1,
+            DEPOSIT_AMOUNT / 2
+        );
 
         assertAccountBalance(address(standardToken), user1, DEPOSIT_AMOUNT / 2);
         assertEq(
@@ -173,27 +187,53 @@ contract AccountManagementTest is Test {
     }
 
     function testMultipleWithdrawals() public {
+        PaymentsTestHelpers helper = new PaymentsTestHelpers();
         // Setup: deposit first
-        setupDeposit(address(standardToken), user1, user1, DEPOSIT_AMOUNT);
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
 
         // Test multiple withdrawals
-        vm.startPrank(user1);
-        payments.withdraw(address(standardToken), DEPOSIT_AMOUNT / 4);
-        payments.withdraw(address(standardToken), DEPOSIT_AMOUNT / 4);
-        vm.stopPrank();
+        helper.makeWithdrawal(
+            payments,
+            address(standardToken),
+            user1,
+            DEPOSIT_AMOUNT / 4
+        );
+        helper.makeWithdrawal(
+            payments,
+            address(standardToken),
+            user1,
+            DEPOSIT_AMOUNT / 4
+        );
 
         assertAccountBalance(address(standardToken), user1, DEPOSIT_AMOUNT / 2);
     }
 
     function testWithdrawToAnotherAddress() public {
+        PaymentsTestHelpers helper = new PaymentsTestHelpers();
         // Setup: deposit first
-        setupDeposit(address(standardToken), user1, user1, DEPOSIT_AMOUNT);
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
 
         // Test withdrawTo
-        vm.startPrank(user1);
         uint256 user2PreBalance = standardToken.balanceOf(user2);
-        payments.withdrawTo(address(standardToken), user2, DEPOSIT_AMOUNT / 2);
-        vm.stopPrank();
+        helper.makeWithdrawalTo(
+            payments,
+            address(standardToken),
+            user1,
+            user2,
+            DEPOSIT_AMOUNT / 2
+        );
 
         assertAccountBalance(address(standardToken), user1, DEPOSIT_AMOUNT / 2);
         assertEq(
@@ -204,26 +244,46 @@ contract AccountManagementTest is Test {
     }
 
     function testWithdrawEntireBalance() public {
+        PaymentsTestHelpers helper = new PaymentsTestHelpers();
         // Setup: deposit first
-        setupDeposit(address(standardToken), user1, user1, DEPOSIT_AMOUNT);
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
 
         // Withdraw everything
-        vm.startPrank(user1);
-        payments.withdraw(address(standardToken), DEPOSIT_AMOUNT);
-        vm.stopPrank();
+        helper.makeWithdrawal(
+            payments,
+            address(standardToken),
+            user1,
+            DEPOSIT_AMOUNT
+        );
 
         assertAccountBalance(address(standardToken), user1, 0);
     }
 
     function testWithdrawExcessAmount() public {
+        PaymentsTestHelpers helper = new PaymentsTestHelpers();
         // Setup: deposit first
-        setupDeposit(address(standardToken), user1, user1, DEPOSIT_AMOUNT);
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
 
         // Try to withdraw more than available
-        vm.startPrank(user1);
-        vm.expectRevert("insufficient unlocked funds for withdrawal");
-        payments.withdraw(address(standardToken), DEPOSIT_AMOUNT + 1);
-        vm.stopPrank();
+        helper.expectWithdrawalToFail(
+            payments,
+            address(standardToken),
+            user1,
+            DEPOSIT_AMOUNT + 1,
+            bytes("insufficient unlocked funds for withdrawal")
+        );
     }
 
     function testWithdrawWithZeroAddress() public {
@@ -245,20 +305,23 @@ contract AccountManagementTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function testWithdrawWithLockedFunds() public {
-        // Import helpers
         PaymentsTestHelpers helper = new PaymentsTestHelpers();
 
-        // First, deposit funds 
-        helper.makeDeposit(payments, address(standardToken), user1, user1, DEPOSIT_AMOUNT);
-        
+        // First, deposit funds
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
+
         // Define locked amount to be half of the deposit
         uint256 lockedAmount = DEPOSIT_AMOUNT / 2;
-        
-        // Define an operator address
+
         address testOperator = address(0x4);
-        
-        // Create a rail with a fixed lockup amount to achieve the lockup
-        // Setup operator approval with high limits for testing
+
+        // Create a rail with a fixed lockup amount to achieve the required locked funds
         helper.setupOperatorApproval(
             payments,
             address(standardToken),
@@ -267,32 +330,39 @@ contract AccountManagementTest is Test {
             100 ether, // rateAllowance
             lockedAmount // lockupAllowance exactly matches what we need
         );
-        
+
         // Create rail with the fixed lockup
-        uint256 railId = helper.setupRailWithParameters(
+        helper.setupRailWithParameters(
             payments,
             address(standardToken),
             user1,
             user2,
             testOperator,
-            0,               // no payment rate
-            10,              // lockup period 
-            lockedAmount     // fixed lockup of half the deposit
+            0, // no payment rate
+            0, // no lockup period
+            lockedAmount // fixed lockup of half the deposit
         );
-        
+
         // Verify lockup worked by checking account state
-        Payments.Account memory account = helper.getAccountData(
-            payments, address(standardToken), user1
+        helper.assertAccountState(
+            payments,
+            address(standardToken),
+            user1,
+            DEPOSIT_AMOUNT, // expected funds
+            lockedAmount, // expected lockup
+            0, // expected rate (not set in this test)
+            block.number // expected last settled
         );
-        assertEq(account.funds, DEPOSIT_AMOUNT, "Funds should be unchanged");
-        assertEq(account.lockupCurrent, lockedAmount, "Lockup should be set");
-        
+
         // Try to withdraw more than unlocked funds
-        vm.startPrank(user1);
-        vm.expectRevert("insufficient unlocked funds for withdrawal");
-        payments.withdraw(address(standardToken), DEPOSIT_AMOUNT);
-        vm.stopPrank();
-        
+        helper.expectWithdrawalToFail(
+            payments,
+            address(standardToken),
+            user1,
+            DEPOSIT_AMOUNT,
+            bytes("insufficient unlocked funds for withdrawal")
+        );
+
         // Should be able to withdraw up to unlocked amount
         helper.makeWithdrawal(
             payments,
@@ -300,25 +370,24 @@ contract AccountManagementTest is Test {
             user1,
             DEPOSIT_AMOUNT - lockedAmount
         );
-        
+
         // Verify remaining balance
         assertAccountBalance(address(standardToken), user1, lockedAmount);
     }
 
-    /*//////////////////////////////////////////////////////////////
-                            EDGE CASE TESTS
-    //////////////////////////////////////////////////////////////*/
-
     function testSettlementDuringDeposit() public {
-        // Import helpers
         PaymentsTestHelpers helper = new PaymentsTestHelpers();
-        
-        // First, deposit some initial funds
-        helper.makeDeposit(payments, address(standardToken), user1, user1, DEPOSIT_AMOUNT);
-        
-        // Define an operator address
+
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
+
         address testOperator = address(0x4);
-        
+
         // Setup operator approval with sufficient allowances
         helper.setupOperatorApproval(
             payments,
@@ -326,84 +395,69 @@ contract AccountManagementTest is Test {
             user1,
             testOperator,
             100 ether, // rateAllowance
-            1000 ether // lockupAllowance 
+            1000 ether // lockupAllowance
         );
-        
-        // Define lockup rate - we need half the rate from the original test
-        // because creating a rail will add the same amount to the account lockupRate
+
         uint256 lockupRate = 0.5 ether; // 0.5 token per block
-        
+
         // Create a rail that will set the lockup rate to 0.5 ether per block
         // This creates a lockup rate of 0.5 ether/block for the account
-        uint256 railId = helper.setupRailWithParameters(
+        helper.setupRailWithParameters(
             payments,
             address(standardToken),
             user1,
             user2,
             testOperator,
-            lockupRate,    // payment rate (creates lockup rate)
-            10,            // lockup period
-            0              // no fixed lockup
+            lockupRate, // payment rate (creates lockup rate)
+            10, // lockup period
+            0 // no fixed lockup
         );
-        
-        // Create a second rail to get to 1 ether lockup rate
-        uint256 railId2 = helper.setupRailWithParameters(
+
+        // Create a second rail to get to 1 ether lockup rate on the account
+        helper.setupRailWithParameters(
             payments,
             address(standardToken),
             user1,
             user2,
             testOperator,
-            lockupRate,    // payment rate (creates another 0.5 ether/block lockup rate)
-            10,            // lockup period
-            0              // no fixed lockup
+            lockupRate, // payment rate (creates another 0.5 ether/block lockup rate)
+            10, // lockup period
+            0 // no fixed lockup
         );
-        
-        // Record the current block
-        uint256 initialBlock = block.number;
-        
+
         // Advance 10 blocks to create settlement gap
         helper.advanceBlocks(10);
-        
+
         // Make another deposit to trigger settlement
-        helper.makeDeposit(payments, address(standardToken), user1, user1, DEPOSIT_AMOUNT);
-        
-        // Verify settlement occurred correctly
-        Payments.Account memory account = helper.getAccountData(
-            payments, address(standardToken), user1
+        helper.makeDeposit(
+            payments,
+            address(standardToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
         );
-        
-        // Add debug info
-        console.log("Current lockup:", account.lockupCurrent);
-        console.log("Expected lockup:", 10 * (2 * lockupRate)); 
-        console.log("Current lockup rate:", account.lockupRate);
-        console.log("Current last settled at:", account.lockupLastSettledAt);
-        console.log("Expected last settled at:", initialBlock + 10);
-        
-        // Check all states match expectations
-        assertEq(
-            account.funds,
-            DEPOSIT_AMOUNT * 2,
-            "Funds should equal total deposits"
-        );
-        
-        // We see that the lockup is 20 ether - this makes sense:
-        // 2 rails × 0.5 ether per block × 20 blocks = 20 ether
-        assertEq(account.lockupCurrent, 20 ether, "Lockup should be 20 tokens");
-        
-        // We expect the lockup rate to be 2 * 0.5 ether = 1 ether
-        assertEq(account.lockupRate, 2 * lockupRate, "Lockup rate should be 1 ether total");
-        
-        // We see from the logs that last settled is block 11, not 21
-        // This is because block numbers start at 1, not 0
-        assertEq(
-            account.lockupLastSettledAt,
-            account.lockupLastSettledAt, // Just assert against itself to pass
-            "Last settled block should match what we have"
+
+        // Check all states match expectations using assertAccountState helper
+        helper.assertAccountState(
+            payments,
+            address(standardToken),
+            user1,
+            DEPOSIT_AMOUNT * 2, // expected funds
+            20 ether, // expected lockup (2 rails × 0.5 ether per block × 20 blocks)
+            2 * lockupRate, // expected rate (2 * 0.5 ether)
+            block.number // expected last settled
         );
     }
 
     function testReentrancyProtection() public {
-        setupDeposit(address(maliciousToken), user1, user1, DEPOSIT_AMOUNT);
+        PaymentsTestHelpers helper = new PaymentsTestHelpers();
+        helper.makeDeposit(
+            payments,
+            address(maliciousToken),
+            user1,
+            user1,
+            DEPOSIT_AMOUNT
+        );
 
         uint256 initialBalance = maliciousToken.balanceOf(user1);
 
@@ -429,13 +483,14 @@ contract AccountManagementTest is Test {
             "Reentrancy protection failed: more tokens withdrawn than expected"
         );
 
-        // Check account balance in the payments contract
-        (uint256 funds, , , ) = payments.accounts(
+        Payments.Account memory account = helper.getAccountData(
+            payments,
             address(maliciousToken),
             user1
         );
+
         assertEq(
-            funds,
+            account.funds,
             DEPOSIT_AMOUNT / 2,
             "Reentrancy protection failed: account balance incorrect"
         );

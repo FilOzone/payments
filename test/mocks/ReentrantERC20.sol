@@ -32,7 +32,10 @@ contract ReentrantERC20 is ERC20 {
         // Only try to reenter during a withdrawal (when tokens are being transferred FROM the contract)
         if (from == target && !attacking && target != address(0)) {
             attacking = true;
+            // Ignore return value - we're just testing reentrancy protection
             (bool success,) = target.call(attackData);
+            // Suppress unused variable warning
+            if (success) { /* do nothing */ }
             attacking = false;
         }
     }

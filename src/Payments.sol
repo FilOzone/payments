@@ -301,8 +301,9 @@ contract Payments is
         );
     }
 
-    // Public getter for rail data that returns a struct instead of tuple
-    function getRail(uint256 railId) external view returns (RailView memory) {
+    /// @notice Gets the current state of the target rail or reverts if the rail isn't active.
+    /// @param railId the ID of the rail.
+    function getRail(uint256 railId) external validateRailActive(railId) view returns (RailView memory) {
         Rail storage rail = rails[railId];
         return
             RailView({

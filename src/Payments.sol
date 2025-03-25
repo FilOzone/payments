@@ -92,6 +92,7 @@ contract Payments is
         uint256 lockupFixed;
         uint256 settledUpTo;
         uint256 terminationEpoch;
+        uint256 rateChangeQueueLength;
     }
 
     // token => client => operator => Approval
@@ -255,8 +256,12 @@ contract Payments is
             );
             approval.lockupUsage += lockupIncrease;
         } else if (accountLockupBefore > accountLockupAfter) {
+            // Note: this can underflow if settling a rail makes payment for epochs greater than the
+            // locked period and rail is in debt
             uint256 lockupDecrease = accountLockupBefore - accountLockupAfter;
-            approval.lockupUsage -= lockupDecrease;
+            approval.lockupUsage = lockupDecrease > approval.lockupUsage
+                ? 0
+                : approval.lockupUsage - lockupDecrease;
         }
 
         // note: `oneTimePayment` is bounded by `rail.lockupFixed` which in turn is bounded by `approval.lockupAllowance`
@@ -303,7 +308,9 @@ contract Payments is
 
     /// @notice Gets the current state of the target rail or reverts if the rail isn't active.
     /// @param railId the ID of the rail.
-    function getRail(uint256 railId) external validateRailActive(railId) view returns (RailView memory) {
+    function getRail(
+        uint256 railId
+    ) external view validateRailActive(railId) returns (RailView memory) {
         Rail storage rail = rails[railId];
         return
             RailView({
@@ -316,8 +323,15 @@ contract Payments is
                 lockupPeriod: rail.lockupPeriod,
                 lockupFixed: rail.lockupFixed,
                 settledUpTo: rail.settledUpTo,
-                terminationEpoch: rail.terminationEpoch
+                terminationEpoch: rail.terminationEpoch,
+                rateChangeQueueLength: rail.rateChangeQueue.size()
             });
+    }
+
+    function isRailInDebtPublic(uint256 railId) external view returns (bool) {
+        Rail storage rail = rails[railId];
+        Account storage payer = accounts[rail.token][rail.from];
+        return isRailInDebt(rail, payer);
     }
 
     /// @notice Updates the approval status and allowances for an operator on behalf of the message sender.

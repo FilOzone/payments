@@ -815,7 +815,7 @@ contract Payments is
             "terminated rail can only be settled without arbitration after max settlement epoch"
         );
 
-        return settleRailInternal(railId, maxSettleEpoch, true);
+        return settleRailInternal(railId, maxSettleEpoch, true, false);
     }
 
     /// @notice Settles payments for a rail up to the specified epoch. Settlement may fail to reach the target epoch if either the client lacks the funds to pay up to the current epoch or the arbiter refuses to settle the entire requested range.
@@ -838,13 +838,81 @@ contract Payments is
             string memory note
         )
     {
-        return settleRailInternal(railId, untilEpoch, false);
+        return settleRailInternal(railId, untilEpoch, false, false);
+    }
+
+    /// @notice Settles and forecloses a rail. Can only be called by the operator or payee.
+    /// This method settles the rail, credits available funds to payee (up to account.lockupSettledAt + rail.lockupPeriod),
+    /// then finalizes the rail and marks it as inactive.
+    /// @param railId The ID of the rail to settle and foreclose.
+    /// @return totalSettledAmount The total amount settled and transferred.
+    /// @return finalSettledEpoch The epoch up to which settlement was actually completed.
+    /// @return note Additional information about the settlement.
+    function settleAndForecloseRail(
+        uint256 railId
+    )
+        external
+        nonReentrant
+        validateRailActive(railId)
+        settleAccountLockupBeforeAndAfterForRail(railId, false, 0)
+        returns (
+            uint256 totalSettledAmount,
+            uint256 finalSettledEpoch,
+            string memory note
+        )
+    {
+        Rail storage rail = rails[railId];
+
+        // Only operator or payee can call this function
+        require(
+            msg.sender == rail.operator || msg.sender == rail.to,
+            "only rail operator or payee can foreclose rail"
+        );
+
+        Account storage payer = accounts[rail.token][rail.from];
+
+        // Calculate max epoch to settle up to (account.lockupSettledAt + rail.lockupPeriod)
+        uint256 maxLockupSettlementEpoch = payer.lockupLastSettledAt +
+            rail.lockupPeriod;
+        uint256 maxSettlementEpoch = min(
+            block.number,
+            maxLockupSettlementEpoch
+        );
+
+        // Settle the rail up to the max epoch
+        (totalSettledAmount, finalSettledEpoch, note) = settleRailInternal(
+            railId,
+            maxSettlementEpoch,
+            false,
+            true
+        );
+
+        require(
+            payer.lockupCurrent >= rail.lockupFixed,
+            "lockup inconsistency during rail finalization"
+        );
+        payer.lockupCurrent -= rail.lockupFixed;
+
+        // Get operator approval for finalization update
+        OperatorApproval storage operatorApproval = operatorApprovals[
+            rail.token
+        ][rail.from][rail.operator];
+
+        updateOperatorLockupUsage(operatorApproval, rail.lockupFixed, 0);
+
+        // Zero out the rail to mark it as inactive
+        _zeroOutRail(rail, false);
+
+        note = string.concat(note, " Rail foreclosed and finalized.");
+
+        return (totalSettledAmount, finalSettledEpoch, note);
     }
 
     function settleRailInternal(
         uint256 railId,
         uint256 untilEpoch,
-        bool skipArbitration
+        bool skipArbitration,
+        bool isForeclosure
     )
         internal
         returns (
@@ -884,8 +952,17 @@ contract Payments is
             untilEpoch = min(untilEpoch, maxTerminatedRailSettlementEpoch);
         }
 
-        uint256 maxLockupSettlementEpoch = payer.lockupLastSettledAt +
-            rail.lockupPeriod;
+        uint256 maxLockupSettlementEpoch;
+        if (isForeclosure) {
+            // For foreclosure, use payer.lockupLastSettledAt + rail.lockupPeriod
+            maxLockupSettlementEpoch =
+                payer.lockupLastSettledAt +
+                rail.lockupPeriod;
+        } else {
+            // For normal settlement, use payer.lockupLastSettledAt as requested
+            maxLockupSettlementEpoch = payer.lockupLastSettledAt;
+        }
+
         uint256 maxSettlementEpoch = min(untilEpoch, maxLockupSettlementEpoch);
 
         uint256 startEpoch = rail.settledUpTo;
@@ -990,7 +1067,6 @@ contract Payments is
         return (amount, finalEpoch, regularNote);
     }
 
-    // Helper function to finalize a terminated rail
     function finalizeTerminatedRail(
         Rail storage rail,
         Account storage payer
@@ -1010,7 +1086,7 @@ contract Payments is
         updateOperatorLockupUsage(operatorApproval, rail.lockupFixed, 0);
 
         // Zero out the rail to mark it as inactive
-        _zeroOutRail(rail);
+        _zeroOutRail(rail, true);
     }
 
     function _settleWithRateChanges(
@@ -1270,12 +1346,14 @@ contract Payments is
             block.number > payer.lockupLastSettledAt + rail.lockupPeriod;
     }
 
-    function _zeroOutRail(Rail storage rail) internal {
-        // Check if queue is empty before clearing
-        require(
-            rail.rateChangeQueue.isEmpty(),
-            "rate change queue must be empty post full settlement"
-        );
+    function _zeroOutRail(Rail storage rail, bool emptyQueue) internal {
+        if (emptyQueue) {
+            // Check if queue is empty before clearing
+            require(
+                rail.rateChangeQueue.isEmpty(),
+                "rate change queue must be empty post full settlement"
+            );
+        }
         // Clear the rate change queue
         rail.rateChangeQueue.clear();
 

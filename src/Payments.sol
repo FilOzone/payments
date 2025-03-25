@@ -214,57 +214,9 @@ contract Payments is
         // Before function execution
         performSettlementCheck(payer, settleFull, true);
 
-        uint256 accountLockupBefore = payer.lockupCurrent;
-        uint256 accountRateBefore = payer.lockupRate;
-
         // ---- EXECUTE FUNCTION
         _;
         // ---- FUNCTION EXECUTION COMPLETE
-
-        uint256 accountLockupAfter = payer.lockupCurrent;
-        uint256 accountRateAfter = payer.lockupRate;
-
-        OperatorApproval storage approval = operatorApprovals[rail.token][
-            rail.from
-        ][rail.operator];
-
-        // Update operator rate tracking if rate has changed
-        if (accountRateAfter > accountRateBefore) {
-            uint256 rateIncrease = accountRateAfter - accountRateBefore;
-            require(
-                approval.rateUsage + rateIncrease <= approval.rateAllowance,
-                "operation exceeds operator rate allowance"
-            );
-            approval.rateUsage += rateIncrease;
-        } else if (accountRateBefore > accountRateAfter) {
-            uint256 rateDecrease = accountRateBefore - accountRateAfter;
-            require(
-                approval.rateUsage >= rateDecrease,
-                "invariant check failed: operator rate usage cannot be less than rate decrease"
-            );
-            approval.rateUsage -= rateDecrease;
-        }
-
-        // Update operator lockup tracking if lockup has changed
-        if (accountLockupAfter > accountLockupBefore) {
-            uint256 lockupIncrease = accountLockupAfter - accountLockupBefore;
-            require(
-                approval.lockupUsage + lockupIncrease <=
-                    approval.lockupAllowance,
-                "operation exceeds operator lockup allowance"
-            );
-            approval.lockupUsage += lockupIncrease;
-        } else if (accountLockupBefore > accountLockupAfter) {
-            uint256 lockupDecrease = accountLockupBefore - accountLockupAfter;
-            approval.lockupUsage -= lockupDecrease;
-        }
-
-        // note: `oneTimePayment` is bounded by `rail.lockupFixed` which in turn is bounded by `approval.lockupAllowance`
-        // when it is initialised. So, the below the fine in the case where client sets `lockupAllowance` 0 BUT after `rail.lockupFixed`
-        // has been initialised using an allowance which was valid at that time.
-        approval.lockupAllowance = oneTimePayment > approval.lockupAllowance
-            ? 0
-            : approval.lockupAllowance - oneTimePayment;
 
         // After function execution
         performSettlementCheck(payer, settleFull, false);
@@ -303,7 +255,9 @@ contract Payments is
 
     /// @notice Gets the current state of the target rail or reverts if the rail isn't active.
     /// @param railId the ID of the rail.
-    function getRail(uint256 railId) external validateRailActive(railId) view returns (RailView memory) {
+    function getRail(
+        uint256 railId
+    ) external view validateRailActive(railId) returns (RailView memory) {
         Rail storage rail = rails[railId];
         return
             RailView({
@@ -379,6 +333,12 @@ contract Payments is
             "lockup rate inconsistency"
         );
         payer.lockupRate -= rail.paymentRate;
+
+        // Reduce operator rate allowance
+        OperatorApproval storage operatorApproval = operatorApprovals[
+            rail.token
+        ][rail.from][rail.operator];
+        updateOperatorRateUsage(operatorApproval, rail.paymentRate, 0);
     }
 
     /// @notice Deposits tokens from the message sender's account into `to`'s account.
@@ -549,6 +509,16 @@ contract Payments is
         );
         payer.lockupCurrent -= lockupReduction;
 
+        // Reduce operator rate allowance
+        OperatorApproval storage operatorApproval = operatorApprovals[
+            rail.token
+        ][rail.from][rail.operator];
+        updateOperatorLockupUsage(
+            operatorApproval,
+            rail.lockupFixed,
+            lockupFixed
+        );
+
         rail.lockupFixed = lockupFixed;
     }
 
@@ -587,6 +557,11 @@ contract Payments is
         // We blindly update the payer's lockup. If they don't have enough funds to cover the new
         // amount, we'll revert in the post-condition.
         payer.lockupCurrent = payer.lockupCurrent - oldLockup + newLockup;
+
+        OperatorApproval storage operatorApproval = operatorApprovals[
+            rail.token
+        ][rail.from][rail.operator];
+        updateOperatorLockupUsage(operatorApproval, oldLockup, newLockup);
 
         // Update rail lockup parameters
         rail.lockupPeriod = period;
@@ -669,6 +644,10 @@ contract Payments is
         rail.lockupFixed = rail.lockupFixed - oneTimePayment;
         rail.paymentRate = newRate;
 
+        OperatorApproval storage operatorApproval = operatorApprovals[
+            rail.token
+        ][rail.from][rail.operator];
+
         // Update payer's lockup rate - only if the rail is not terminated
         // for terminated rails, the payer's lockup rate is already updated during rail termination
         if (!isTerminated) {
@@ -677,6 +656,7 @@ contract Payments is
                 "payer lockup rate cannot be less than old rate"
             );
             payer.lockupRate = payer.lockupRate - oldRate + newRate;
+            updateOperatorRateUsage(operatorApproval, oldRate, newRate);
         }
 
         // Update payer's current lockup with effective lockup period calculation
@@ -686,6 +666,18 @@ contract Payments is
             (oldRate * effectiveLockupPeriod) +
             (newRate * effectiveLockupPeriod) -
             oneTimePayment;
+
+        updateOperatorLockupUsage(
+            operatorApproval,
+            oldRate * effectiveLockupPeriod,
+            newRate * effectiveLockupPeriod
+        );
+
+        // Update operator allowance for one-time payment
+        updateOperatorAllowanceForOneTimePayment(
+            operatorApproval,
+            oneTimePayment
+        );
 
         // --- Process the One-Time Payment ---
         processOneTimePayment(payer, payee, oneTimePayment);
@@ -1010,6 +1002,13 @@ contract Payments is
         );
         payer.lockupCurrent -= rail.lockupFixed;
 
+        // Get operator approval for finalization update
+        OperatorApproval storage operatorApproval = operatorApprovals[
+            rail.token
+        ][rail.from][rail.operator];
+
+        updateOperatorLockupUsage(operatorApproval, rail.lockupFixed, 0);
+
         // Zero out the rail to mark it as inactive
         _zeroOutRail(rail);
     }
@@ -1290,6 +1289,64 @@ contract Payments is
         rail.lockupPeriod = 0;
         rail.settledUpTo = 0;
         rail.terminationEpoch = 0;
+    }
+
+    function updateOperatorRateUsage(
+        OperatorApproval storage approval,
+        uint256 oldRate,
+        uint256 newRate
+    ) internal {
+        if (newRate > oldRate) {
+            uint256 rateIncrease = newRate - oldRate;
+            require(
+                approval.rateUsage + rateIncrease <= approval.rateAllowance,
+                "operation exceeds operator rate allowance"
+            );
+            approval.rateUsage += rateIncrease;
+        } else if (oldRate > newRate) {
+            uint256 rateDecrease = oldRate - newRate;
+            approval.rateUsage = approval.rateUsage > rateDecrease
+                ? approval.rateUsage - rateDecrease
+                : 0;
+        }
+    }
+
+    function updateOperatorLockupUsage(
+        OperatorApproval storage approval,
+        uint256 oldLockup,
+        uint256 newLockup
+    ) internal {
+        if (newLockup > oldLockup) {
+            uint256 lockupIncrease = newLockup - oldLockup;
+            require(
+                approval.lockupUsage + lockupIncrease <=
+                    approval.lockupAllowance,
+                "operation exceeds operator lockup allowance"
+            );
+            approval.lockupUsage += lockupIncrease;
+        } else if (oldLockup > newLockup) {
+            uint256 lockupDecrease = oldLockup - newLockup;
+            approval.lockupUsage = approval.lockupUsage > lockupDecrease
+                ? approval.lockupUsage - lockupDecrease
+                : 0;
+        }
+    }
+
+    function updateOperatorAllowanceForOneTimePayment(
+        OperatorApproval storage approval,
+        uint256 oneTimePayment
+    ) internal {
+        if (oneTimePayment == 0) return;
+
+        // Reduce lockup usage
+        approval.lockupUsage = approval.lockupUsage > oneTimePayment
+            ? approval.lockupUsage - oneTimePayment
+            : 0;
+
+        // Reduce lockup allowance
+        approval.lockupAllowance = oneTimePayment > approval.lockupAllowance
+            ? 0
+            : approval.lockupAllowance - oneTimePayment;
     }
 }
 

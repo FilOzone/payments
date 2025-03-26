@@ -836,7 +836,7 @@ contract Payments is
         // Calculate the maximum settlement epoch based on account lockup
         uint256 maxSettlementEpoch;
         if (!isRailTerminated(rail)) {
-            maxSettlementEpoch = payer.lockupLastSettledAt;
+            maxSettlementEpoch = min(untilEpoch, payer.lockupLastSettledAt);
         } else {
             maxSettlementEpoch = min(
                 untilEpoch,

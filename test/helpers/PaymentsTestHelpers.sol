@@ -232,25 +232,42 @@ contract PaymentsTestHelpers is Test {
 
     function verifyOperatorAllowances(
         Payments payments,
-        address token, 
-        address client, 
-        address operator, 
+        address token,
+        address client,
+        address operator,
         bool expectedIsApproved,
-        uint256 expectedRateAllowance, 
-        uint256 expectedLockupAllowance, 
+        uint256 expectedRateAllowance,
+        uint256 expectedLockupAllowance,
         uint256 expectedRateUsage,
         uint256 expectedLockupUsage
     ) public view {
-        (bool isApproved, uint256 rateAllowance, uint256 lockupAllowance, uint256 rateUsage, uint256 lockupUsage) = 
-            payments.operatorApprovals(token, client, operator);
-            
-        assertEq(isApproved, expectedIsApproved, "Operator approval status mismatch");
-        assertEq(rateAllowance, expectedRateAllowance, "Rate allowance mismatch");
-        assertEq(lockupAllowance, expectedLockupAllowance, "Lockup allowance mismatch");
+        (
+            bool isApproved,
+            uint256 rateAllowance,
+            uint256 lockupAllowance,
+            uint256 rateUsage,
+            uint256 lockupUsage
+        ) = payments.operatorApprovals(token, client, operator);
+
+        assertEq(
+            isApproved,
+            expectedIsApproved,
+            "Operator approval status mismatch"
+        );
+        assertEq(
+            rateAllowance,
+            expectedRateAllowance,
+            "Rate allowance mismatch"
+        );
+        assertEq(
+            lockupAllowance,
+            expectedLockupAllowance,
+            "Lockup allowance mismatch"
+        );
         assertEq(rateUsage, expectedRateUsage, "Rate usage mismatch");
         assertEq(lockupUsage, expectedLockupUsage, "Lockup usage mismatch");
     }
-    
+
     // Setup a rail with specific parameters and return balances
     function setupRailWithFixedLockup(
         Payments payments,
@@ -258,14 +275,17 @@ contract PaymentsTestHelpers is Test {
         address client,
         address recipient,
         address operator,
-        uint256 paymentRate, 
+        uint256 paymentRate,
         uint256 fixedLockup,
         uint256 lockupPeriod
-    ) public returns (
-        uint256 railId, 
-        Payments.Account memory clientBefore, 
-        Payments.Account memory recipientBefore
-    ) {
+    )
+        public
+        returns (
+            uint256 railId,
+            Payments.Account memory clientBefore,
+            Payments.Account memory recipientBefore
+        )
+    {
         // Create rail
         railId = createRail(
             payments,
@@ -275,17 +295,17 @@ contract PaymentsTestHelpers is Test {
             operator,
             address(0)
         );
-        
+
         // Set payment rate and fixed lockup
         vm.startPrank(operator);
         payments.modifyRailPayment(railId, paymentRate, 0);
         payments.modifyRailLockup(railId, lockupPeriod, fixedLockup);
         vm.stopPrank();
-        
+
         // Get account states before any payment
         clientBefore = getAccountData(payments, token, client);
         recipientBefore = getAccountData(payments, token, recipient);
-        
+
         return (railId, clientBefore, recipientBefore);
     }
 
@@ -306,33 +326,130 @@ contract PaymentsTestHelpers is Test {
         vm.startPrank(operator);
         payments.modifyRailPayment(railId, 0, paymentAmount);
         vm.stopPrank();
-        
+
         // Check account balances after payment
-        Payments.Account memory clientAfter = getAccountData(payments, token, client);
-        Payments.Account memory recipientAfter = getAccountData(payments, token, recipient);
-        
+        Payments.Account memory clientAfter = getAccountData(
+            payments,
+            token,
+            client
+        );
+        Payments.Account memory recipientAfter = getAccountData(
+            payments,
+            token,
+            recipient
+        );
+
         // Verify funds transferred correctly
-        assertEq(clientAfter.funds, clientBefore.funds - paymentAmount, "Client balance incorrect");
-        assertEq(recipientAfter.funds, recipientBefore.funds + paymentAmount, "Recipient balance incorrect");
-        
+        assertEq(
+            clientAfter.funds,
+            clientBefore.funds - paymentAmount,
+            "Client balance incorrect"
+        );
+        assertEq(
+            recipientAfter.funds,
+            recipientBefore.funds + paymentAmount,
+            "Recipient balance incorrect"
+        );
+
         // Verify remaining fixed lockup
         Payments.RailView memory rail = payments.getRail(railId);
-        assertEq(rail.lockupFixed, expectedRemainingLockup, "Fixed lockup not updated correctly");
+        assertEq(
+            rail.lockupFixed,
+            expectedRemainingLockup,
+            "Fixed lockup not updated correctly"
+        );
     }
-    
+
     // Get current operator allowance and usage
     function getOperatorAllowanceAndUsage(
         Payments payments,
         address token,
         address client,
         address operator
-    ) public view returns (
-        bool isApproved,
-        uint256 rateAllowance,
-        uint256 lockupAllowance,
-        uint256 rateUsage,
-        uint256 lockupUsage
-    ) {
+    )
+        public
+        view
+        returns (
+            bool isApproved,
+            uint256 rateAllowance,
+            uint256 lockupAllowance,
+            uint256 rateUsage,
+            uint256 lockupUsage
+        )
+    {
         return payments.operatorApprovals(token, client, operator);
+    }
+
+    // Execute one-time payment and verify
+    function executeOneTimePayment(
+        Payments payments,
+        uint256 railId,
+        address operator,
+        uint256 oneTimeAmount
+    ) public {
+        Payments.RailView memory railBefore = payments.getRail(railId);
+        address token = railBefore.token;
+        address client = railBefore.from;
+        address recipient = railBefore.to;
+
+        // Get initial balances
+        Payments.Account memory clientBefore = getAccountData(
+            payments,
+            token,
+            client
+        );
+        Payments.Account memory recipientBefore = getAccountData(
+            payments,
+            token,
+            recipient
+        );
+
+        // Make one-time payment
+        vm.startPrank(operator);
+        payments.modifyRailPayment(
+            railId,
+            railBefore.paymentRate,
+            oneTimeAmount
+        );
+        vm.stopPrank();
+
+        // Verify balance changes
+        Payments.Account memory clientAfter = getAccountData(
+            payments,
+            token,
+            client
+        );
+        Payments.Account memory recipientAfter = getAccountData(
+            payments,
+            token,
+            recipient
+        );
+
+        assertEq(
+            clientAfter.funds,
+            clientBefore.funds - oneTimeAmount,
+            "Client funds not reduced correctly after one-time payment"
+        );
+
+        assertEq(
+            recipientAfter.funds,
+            recipientBefore.funds + oneTimeAmount,
+            "Recipient funds not increased correctly after one-time payment"
+        );
+
+        // Verify fixed lockup was reduced
+        Payments.RailView memory railAfter = payments.getRail(railId);
+        assertEq(
+            railAfter.lockupFixed,
+            railBefore.lockupFixed - oneTimeAmount,
+            "Fixed lockup not reduced by one-time payment amount"
+        );
+
+        // Verify account lockup is also reduced
+        assertEq(
+            clientAfter.lockupCurrent,
+            clientBefore.lockupCurrent - oneTimeAmount,
+            "Client lockup not reduced correctly after one-time payment"
+        );
     }
 }

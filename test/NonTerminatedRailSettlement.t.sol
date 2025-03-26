@@ -20,8 +20,9 @@ contract NonTerminatedRailSettlementTest is Test {
     address client = address(0x2);
     address recipient = address(0x3);
     address operator = address(0x4);
+    address recipient2 = address(0x5);
 
-    uint256 constant INITIAL_BALANCE = 1000 ether;
+    uint256 constant INITIAL_BALANCE = 5000 ether;
     uint256 constant DEPOSIT_AMOUNT = 200 ether;
 
     function setUp() public {
@@ -30,9 +31,10 @@ contract NonTerminatedRailSettlementTest is Test {
         payments = helper.deployPaymentsSystem(owner);
 
         // Set up users
-        address[] memory users = new address[](2);
+        address[] memory users = new address[](3);
         users[0] = client;
         users[1] = recipient;
+        users[2] = recipient2;
 
         // Deploy test token with initial balances and approvals
         token = helper.setupTestToken(
@@ -49,8 +51,8 @@ contract NonTerminatedRailSettlementTest is Test {
             address(token),
             client,
             operator,
-            50 ether, // rateAllowance
-            500 ether // lockupAllowance
+            100 ether, // rateAllowance - increased to support multiple rails
+            1000 ether // lockupAllowance - increased to support multiple rails
         );
 
         // Make initial deposit
@@ -542,6 +544,333 @@ contract NonTerminatedRailSettlementTest is Test {
             clientAccount.lockupCurrent,
             0,
             "Client lockup current should be 0 after rail finalization"
+        );
+    }
+
+    function testOperatorWithTwoRails() public {
+        // Make a larger deposit to support two rails
+        uint256 additionalDeposit = 1000 ether;
+        helper.makeDeposit(
+            payments,
+            address(token),
+            client,
+            client,
+            additionalDeposit
+        );
+
+        // Total client balance: 1200 ether (200 initial + 1000 additional)
+
+        // Create Rail 1
+        uint256 rate1 = 50 ether;
+        uint256 lockupPeriod1 = 3; // 3 blocks of lockup
+        uint256 railId1 = helper.setupRailWithParameters(
+            payments,
+            address(token),
+            client,
+            recipient,
+            operator,
+            rate1,
+            lockupPeriod1,
+            0 // No fixed lockup
+        );
+
+        // Rail 1 lockup: 150 ether (50 ether * 3 blocks)
+
+        // Create Rail 2 - this one will always have enough funds
+        uint256 rate2 = 20 ether;
+        uint256 lockupPeriod2 = 5; // 5 blocks of lockup
+        uint256 fixedLockup2 = 10 ether; // Initial fixed lockup
+        uint256 railId2 = helper.setupRailWithParameters(
+            payments,
+            address(token),
+            client,
+            recipient2,
+            operator,
+            rate2,
+            lockupPeriod2,
+            fixedLockup2
+        );
+
+        // Rail 2 lockup: 110 ether (20 ether * 5 blocks + 10 ether fixed)
+
+        // Total lockup for both rails: 260 ether (150 + 110)
+
+        // Verify initial account state
+        Payments.Account memory initialClientAccount = helper.getAccountData(
+            payments,
+            address(token),
+            client
+        );
+        assertEq(
+            initialClientAccount.lockupCurrent,
+            260 ether,
+            "Initial client lockup current should be 260 ether"
+        );
+        assertEq(
+            initialClientAccount.funds,
+            1200 ether,
+            "Initial client funds should be 1200 ether"
+        );
+
+        // Advance 7 blocks
+        helper.advanceBlocks(7);
+
+        // 1. Settle rail 1
+        vm.prank(client);
+        (uint256 settledAmount1, uint256 settledUpto1, ) = payments.settleRail(
+            railId1,
+            block.number
+        );
+
+        // Verify rail 1 settlement results
+        // Total client funds = 1200 ether
+        // Rail 1 lockup = 150 ether (50 ether * 3 blocks)
+        // Rail 2 lockup = 110 ether (20 ether * 5 blocks + 10 ether fixed)
+        // Total lockup = 260 ether
+        // Available for settlement = 1200 - 260 = 940 ether
+        // This can pay for 940 / 50 = 18.8 = 18 blocks (since rate1 is 50 ether)
+        // Therefore, the settlement amount should be 50 ether * (8-1) = 350 ether
+        // The -1 is because the rail is already settled at block 1 at creation
+
+        uint256 expectedAmount1 = 350 ether; // 7 blocks * 50 ether
+        assertEq(
+            settledAmount1,
+            expectedAmount1,
+            "Rail 1 settlement amount should be 350 ether"
+        );
+
+        // Rail should be settled up to block 8
+        assertEq(settledUpto1, 8, "Rail 1 should be settled up to block 8");
+
+        Payments.Account memory clientAfterSettlement = helper.getAccountData(
+            payments,
+            address(token),
+            client
+        );
+        console.log(
+            "1. lockupLastSettledAt after settling rail 1:",
+            clientAfterSettlement.lockupLastSettledAt
+        );
+
+        // 2. Settle rail 2 - should settle up to current epoch (since it has enough funds)
+        Payments.Account memory clientBefore2 = helper.getAccountData(
+            payments,
+            address(token),
+            client
+        );
+
+        Payments.Account memory recipient2Before = helper.getAccountData(
+            payments,
+            address(token),
+            recipient2
+        );
+
+        vm.prank(client);
+        (uint256 settledAmount2, uint256 settledUpto2, ) = payments.settleRail(
+            railId2,
+            block.number
+        );
+
+        // Expected settlement values for rail 2
+        uint256 expectedAmount2 = rate2 * 7; // 7 blocks * 20 ether = 140 ether
+        assertEq(
+            settledAmount2,
+            expectedAmount2,
+            "Rail 2 settlement amount incorrect"
+        );
+        assertEq(
+            settledUpto2,
+            block.number,
+            "Rail 2 should settle up to current block"
+        );
+
+        // Verify balance changes for rail 2
+        settlementHelper.verifySettlementBalances(
+            payments,
+            address(token),
+            client,
+            recipient2,
+            settledAmount2,
+            clientBefore2.funds,
+            recipient2Before.funds
+        );
+
+        // 3. Change rate, lockup period and fixed lockup on rail 2
+        uint256 newRate2 = 25 ether;
+        uint256 newLockupPeriod2 = 6;
+        uint256 newFixedLockup2 = 15 ether;
+
+        // Calculate expected lockup changes
+        uint256 oldLockupAmount2 = rate2 * lockupPeriod2 + fixedLockup2; // 20*5 + 10 = 110 ether
+        uint256 newLockupAmount2 = newRate2 *
+            newLockupPeriod2 +
+            newFixedLockup2; // 25*6 + 15 = 165 ether
+        uint256 lockupDifference2 = newLockupAmount2 - oldLockupAmount2; // 165 - 110 = 55 ether
+
+        Payments.Account memory clientBeforeModify = helper.getAccountData(
+            payments,
+            address(token),
+            client
+        );
+
+        // Modify rail 2 settings
+        settlementHelper.modifyRailSettingsAndVerify(
+            payments,
+            railId2,
+            operator,
+            newRate2,
+            newLockupPeriod2,
+            newFixedLockup2
+        );
+
+        // Verify client lockup was updated correctly
+        Payments.Account memory clientAfterModify = helper.getAccountData(
+            payments,
+            address(token),
+            client
+        );
+        assertEq(
+            clientAfterModify.lockupCurrent,
+            clientBeforeModify.lockupCurrent + lockupDifference2,
+            "Client lockup should increase by the lockup difference"
+        );
+
+        // 4. Make one-time payment from rail 2
+        uint256 oneTimePaymentAmount = 10 ether;
+        helper.executeOneTimePayment(
+            payments,
+            railId2,
+            operator,
+            oneTimePaymentAmount
+        );
+
+        // Verify fixed lockup was reduced
+        Payments.RailView memory rail2AfterPayment = payments.getRail(railId2);
+        assertEq(
+            rail2AfterPayment.lockupFixed,
+            newFixedLockup2 - oneTimePaymentAmount,
+            "Fixed lockup not reduced correctly after one-time payment"
+        );
+
+        helper.advanceBlocks(100);
+
+        clientAfterSettlement = helper.getAccountData(
+            payments,
+            address(token),
+            client
+        );
+        console.log(
+            "2. lockupLastSettledAt before terminating rail 1:",
+            clientAfterSettlement.lockupLastSettledAt
+        );
+        console.log(
+            "   Current block number before termination:",
+            block.number
+        );
+
+        // Get the rail details before termination
+        Payments.RailView memory rail1BeforeTermination = payments.getRail(
+            railId1
+        );
+        console.log(
+            "   Rail 1 lockupPeriod:",
+            rail1BeforeTermination.lockupPeriod
+        );
+        console.log(
+            "   Expected endEpoch calculation:",
+            clientAfterSettlement.lockupLastSettledAt +
+                rail1BeforeTermination.lockupPeriod
+        );
+
+        console.log("CLIENT FUNDS:", clientAfterSettlement.funds);
+        console.log("LOCKED FUNDS:", clientAfterSettlement.lockupCurrent);
+        console.log("LOCKUP RATE:", clientAfterSettlement.lockupRate);
+
+        // 5. Terminate and settle rail 1
+        // IMPORTANT: When terminateRail is called, the settleAccountLockupBeforeAndAfterForRail
+        // modifier runs first which calls settleAccountLockup on the client's account.
+        //
+        // This calculation happens:
+        // - Current block: 108
+        // - Last explicitly settled: 8
+        // - Client has rate2 = 25 ether (after Rail 2 was modified)
+        // - Available client funds after previous operations: ~700 ether
+        // Out of that 305 is locked (50 *3 for rail 1 + 25 * 6 for rail 2 + 5 for rail2 fixed lockup = 305)
+        // So remaining unlocked is 395. So account can be settled for (395 / 75) = 5 epochs.
+        // - This advances lockupLastSettledAt from 8 to 13
+        //
+        // Then terminateRail uses this updated lockupLastSettledAt to calculate:
+        // endEpoch = lockupLastSettledAt + lockupPeriod = 13 + 3 = 16 for rail1
+        // for rail 2 it will 13 + 6 = 19
+
+        (uint256 settledAmount1Final, uint256 settledUpto11) = settlementHelper
+            .terminateAndSettleRail(
+                payments,
+                railId1,
+                client,
+                operator,
+                recipient,
+                address(token)
+            );
+
+        assertEq(settledUpto11, 16, "Rail 1 should be settled up to epoch 16");
+
+        (uint256 settledAmount2Final, uint256 settledUpto21) = settlementHelper
+            .terminateAndSettleRail(
+                payments,
+                railId2,
+                client,
+                operator,
+                recipient2,
+                address(token)
+            );
+
+        assertEq(settledUpto21, 19, "Rail 2 should be settled up to epoch 19");
+
+        // Final account check - all lockups should be gone
+        Payments.Account memory finalClientAccount = helper.getAccountData(
+            payments,
+            address(token),
+            client
+        );
+
+        // We're not checking lockupCurrent because the test is not fully finalizing all rails
+        // which may leave some lockup still in place
+        assertEq(
+            finalClientAccount.lockupCurrent,
+            0,
+            "Final client lockup should be 0"
+        );
+
+        // But we do expect the lockup rate to be zero as both rails should have their rates removed
+        assertEq(
+            finalClientAccount.lockupRate,
+            0,
+            "Final client lockup rate should be 0"
+        );
+
+        // Calculate expected remaining funds:
+        // Initial funds = 1200 ether (200 initial + 1000 additional)
+        //
+        // Outgoing funds:
+        // - Rail 1 initial settlement: 350 ether (7 blocks * 50 ether)
+        // - Rail 2 initial settlement: 140 ether (7 blocks * 20 ether)
+        // - One-time payment from Rail 2: 10 ether
+        // - Rail 1 final settlement: 400 ether (settled from epochs 9-16)
+        // - Rail 2 final settlement: (settled amount varies, captured in settledAmount2Final)
+        //
+        // So remaining funds should be 1200 ether minus all the payments above
+        uint256 expectedRemainingFunds = 1200 ether -
+            (settledAmount1 +
+                settledAmount1Final +
+                settledAmount2 +
+                oneTimePaymentAmount +
+                settledAmount2Final);
+
+        assertEq(
+            finalClientAccount.funds,
+            expectedRemainingFunds,
+            "Final client funds incorrect"
         );
     }
 

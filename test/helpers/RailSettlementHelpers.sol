@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Payments, IArbiter} from "../../src/Payments.sol";
 import {MockArbiter} from "../mocks/MockArbiter.sol";
 import {PaymentsTestHelpers} from "./PaymentsTestHelpers.sol";
+import {console} from "forge-std/console.sol";
 
 contract RailSettlementHelpers is Test {
     PaymentsTestHelpers public baseHelper;
@@ -227,6 +228,189 @@ contract RailSettlementHelpers is Test {
             toAccount.funds,
             originalToBalance + settlementAmount,
             "To account balance incorrect after settlement"
+        );
+    }
+
+    function settleRailInDebt(
+        Payments payments,
+        uint256 railId,
+        address client,
+        address recipient,
+        address token,
+        uint256 rate,
+        uint256 // lockupPeriod - unused but kept for interface compatibility
+    ) public returns (uint256 settledUpto) {
+        // Record starting balances
+        Payments.Account memory clientBefore = baseHelper.getAccountData(
+            payments,
+            token,
+            client
+        );
+
+        Payments.Account memory recipientBefore = baseHelper.getAccountData(
+            payments,
+            token,
+            recipient
+        );
+
+        uint256 settledAmount;
+        string memory note;
+
+        // Try to settle up to current block (should be limited by available funds)
+        vm.prank(client);
+        (settledAmount, settledUpto, note) = payments.settleRail(
+            railId,
+            block.number
+        );
+
+        // Get rail details after settlement attempt
+        Payments.RailView memory rail;
+        try payments.getRail(railId) returns (
+            Payments.RailView memory railView
+        ) {
+            rail = railView;
+        } catch {
+            // If rail doesn't exist anymore, just return the settled epoch
+            return settledUpto;
+        }
+
+        // Just verify that settlement occurred as expected
+        // We don't assume any specific amount because other rails might affect the available funds
+        if (settledAmount > 0) {
+            assertEq(
+                settledAmount % rate,
+                0,
+                "Settlement amount should be a multiple of the rate"
+            );
+        }
+
+        // Verify rail state reflects the partial settlement
+        verifyRailSettlementState(payments, railId, settledUpto);
+
+        // Verify balance changes
+        verifySettlementBalances(
+            payments,
+            token,
+            client,
+            recipient,
+            settledAmount,
+            clientBefore.funds,
+            recipientBefore.funds
+        );
+
+        return settledUpto;
+    }
+
+    function terminateAndSettleRail(
+        Payments payments,
+        uint256 railId,
+        address client,
+        address operator,
+        address recipient,
+        address token
+    ) public returns (uint256 settledAmount, uint256 settledUpto) {
+        // Debug log client account before terminating
+        Payments.Account memory clientBeforeTermination = baseHelper.getAccountData(
+            payments,
+            token,
+            client
+        );
+        console.log("Rail client lockupLastSettledAt right inside terminateAndSettleRail:", clientBeforeTermination.lockupLastSettledAt);
+        
+        // Terminate the rail as operator
+        vm.prank(operator);
+        payments.terminateRail(railId);
+
+        // Log block number before settlement
+        console.log("Current block number:", block.number);
+
+        // Get rail details after termination
+        Payments.RailView memory rail = payments.getRail(railId);
+        console.log("Rail end epoch after termination:", rail.endEpoch);
+
+        // Record balances before final settlement
+        Payments.Account memory clientBefore = baseHelper.getAccountData(
+            payments,
+            token,
+            client
+        );
+
+        Payments.Account memory recipientBefore = baseHelper.getAccountData(
+            payments,
+            token,
+            recipient
+        );
+
+        string memory note;
+
+        // Settle rail after termination
+        vm.prank(client);
+        (settledAmount, settledUpto, note) = payments.settleRail(
+            railId,
+            block.number
+        );
+
+        // Verify balance changes after termination settlement
+        verifySettlementBalances(
+            payments,
+            token,
+            client,
+            recipient,
+            settledAmount,
+            clientBefore.funds,
+            recipientBefore.funds
+        );
+
+        return (settledAmount, settledUpto);
+    }
+
+    function modifyRailSettingsAndVerify(
+        Payments payments,
+        uint256 railId,
+        address operator,
+        uint256 newRate,
+        uint256 newLockupPeriod,
+        uint256 newFixedLockup
+    ) public {
+        Payments.RailView memory railBefore = payments.getRail(railId);
+
+        // Modify rail settings
+        vm.startPrank(operator);
+
+        // First modify rate if needed
+        if (newRate != railBefore.paymentRate) {
+            payments.modifyRailPayment(railId, newRate, 0);
+        }
+
+        // Then modify lockup parameters
+        if (
+            newLockupPeriod != railBefore.lockupPeriod ||
+            newFixedLockup != railBefore.lockupFixed
+        ) {
+            payments.modifyRailLockup(railId, newLockupPeriod, newFixedLockup);
+        }
+
+        vm.stopPrank();
+
+        // Verify changes
+        Payments.RailView memory railAfter = payments.getRail(railId);
+
+        assertEq(
+            railAfter.paymentRate,
+            newRate,
+            "Rail payment rate not updated correctly"
+        );
+
+        assertEq(
+            railAfter.lockupPeriod,
+            newLockupPeriod,
+            "Rail lockup period not updated correctly"
+        );
+
+        assertEq(
+            railAfter.lockupFixed,
+            newFixedLockup,
+            "Rail fixed lockup not updated correctly"
         );
     }
 }

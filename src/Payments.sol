@@ -91,7 +91,6 @@ contract Payments is
         uint256 lockupPeriod;
         uint256 lockupFixed;
         uint256 settledUpTo;
-        uint256 rateChangeQueueLength;
         uint256 endEpoch;
     }
 
@@ -257,8 +256,7 @@ contract Payments is
                 lockupPeriod: rail.lockupPeriod,
                 lockupFixed: rail.lockupFixed,
                 settledUpTo: rail.settledUpTo,
-                endEpoch: rail.endEpoch,
-                rateChangeQueueLength: rail.rateChangeQueue.size()
+                endEpoch: rail.endEpoch
             });
     }
 

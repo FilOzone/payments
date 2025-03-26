@@ -90,9 +90,11 @@ contract AccessControlTest is Test {
         vm.stopPrank();
     }
 
-    function testTerminateRail_FailsWhenCalledByRecipient() public {
+    function testTerminateRail_RevertsWhenCalledByRecipient() public {
         vm.startPrank(recipient);
-        vm.expectRevert();
+        vm.expectRevert(
+            "caller is not authorized: must be operator or client with settled lockup"
+        );
         payments.terminateRail(railId);
         vm.stopPrank();
     }
@@ -182,5 +184,29 @@ contract AccessControlTest is Test {
         vm.expectRevert("only the rail client can perform this action");
         payments.settleTerminatedRailWithoutArbitration(railId);
         vm.stopPrank();
+    }
+
+    function testTerminateRail_OnlyOperatorCanTerminateWhenLockupNotFullySettled()
+        public
+    {
+        // Advance blocks to create an unsettled state
+        helper.advanceBlocks(500);
+
+        // Client should not be able to terminate because lockup is not fully settled
+        vm.startPrank(client);
+        vm.expectRevert(
+            "caller is not authorized: must be operator or client with settled lockup"
+        );
+        payments.terminateRail(railId);
+        vm.stopPrank();
+
+        // Operator should be able to terminate even when lockup is not fully settled
+        vm.startPrank(operator);
+        payments.terminateRail(railId);
+        vm.stopPrank();
+
+        // Verify the rail was terminated by checking its end epoch is set
+        Payments.RailView memory railView = payments.getRail(railId);
+        assertTrue(railView.endEpoch > 0, "Rail was not terminated properly");
     }
 }

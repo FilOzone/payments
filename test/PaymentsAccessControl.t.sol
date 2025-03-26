@@ -90,8 +90,9 @@ contract AccessControlTest is Test {
         vm.stopPrank();
     }
 
-    function testTerminateRail_SucceedsWhenCalledByRecipient() public {
+    function testTerminateRail_FailsWhenCalledByRecipient() public {
         vm.startPrank(recipient);
+        vm.expectRevert();
         payments.terminateRail(railId);
         vm.stopPrank();
     }
@@ -99,7 +100,7 @@ contract AccessControlTest is Test {
     function testTerminateRail_RevertsWhenCalledByUnauthorized() public {
         vm.startPrank(unauthorized);
         vm.expectRevert(
-            "failed to authorize: caller is not a rail participant"
+            "caller is not authorized: must be operator or client with settled lockup"
         );
         payments.terminateRail(railId);
         vm.stopPrank();

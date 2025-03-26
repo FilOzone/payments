@@ -308,6 +308,9 @@ contract NonTerminatedRailSettlementTest is Test {
         // advance 7 blocks so we reach block 8
         helper.advanceBlocks(7);
 
+        // at this point, rail needs to have 150 locked, this means rail can only pay out 50 so upto epoch 2
+        // (deposit_amount is 200)
+
         uint256 settledAmount;
         uint256 settledUpto;
         string memory note;
@@ -320,10 +323,9 @@ contract NonTerminatedRailSettlementTest is Test {
         );
 
         // Expected values based on observed behavior
-        uint256 expectedAmount = 200 ether;
+        uint256 expectedAmount = 50 ether;
         // after accounting for the lockup of 150
-        uint256 expectedSettledUpto = 5; // we can only settle for 4 epochs here as we dont have more funds
-
+        uint256 expectedSettledUpto = 2;
         // Verify settlement was limited by available funds
         assertEq(
             settledAmount,
@@ -362,8 +364,8 @@ contract NonTerminatedRailSettlementTest is Test {
         );
         assertEq(
             clientAfter.funds,
-            0,
-            "Client should have 0 ether left based on the observed behavior"
+            150 ether,
+            "Client should have 150 ether left based on the observed behavior"
         );
 
         // settling the rail again gets us no funds
@@ -392,8 +394,8 @@ contract NonTerminatedRailSettlementTest is Test {
         );
         assertEq(
             clientAccount.lockupCurrent,
-            0 ether,
-            "Client lockup current should be 0 ether"
+            150 ether,
+            "Client lockup current should be 150 ether"
         );
 
         // client deposits funds and then we can settle upto the current epoch
@@ -406,16 +408,16 @@ contract NonTerminatedRailSettlementTest is Test {
             additionalDeposit
         );
 
-        // Verify client account has the expected lockup
-        clientAccount = helper.getAccountData(payments, address(token), client);
-        assertEq(
-            clientAccount.lockupCurrent,
-            150 ether,
-            "Client lockup current should be 150 ether"
-        );
+        // we'd only settled upto epoch 2 earlier, this means we need to pay for 6 more epochs to fully settle account lockup
+        // which will be 300 ether (rate is 50)
 
-        // Record balances after deposit
+        // Verify client account has the expected lockup (300 for unsettled epochs and 150 for future lockup)
         clientBefore = helper.getAccountData(payments, address(token), client);
+        assertEq(
+            clientBefore.lockupCurrent,
+            450 ether,
+            "Client lockup current should be 450 ether"
+        );
 
         recipientBefore = helper.getAccountData(
             payments,
@@ -431,8 +433,7 @@ contract NonTerminatedRailSettlementTest is Test {
         );
 
         // Verify we can now settle up to the current block
-        uint256 blocksToSettle = block.number - expectedSettledUpto;
-        uint256 expectedNewAmount = rate * blocksToSettle;
+        uint256 expectedNewAmount = rate * 6;
 
         assertEq(
             settledAmount,
@@ -456,11 +457,91 @@ contract NonTerminatedRailSettlementTest is Test {
             recipientBefore.funds
         );
 
+        // rails still has funds locked for future lockup
         clientAccount = helper.getAccountData(payments, address(token), client);
         assertEq(
             clientAccount.lockupCurrent,
-            0 ether,
-            "Client lockup current should be 0 ether"
+            150 ether,
+            "Client lockup current should be 150 ether"
+        );
+
+        // advance by 5 blocks so rail is in debt again
+        helper.advanceBlocks(7);
+
+        // try to settle normally after debt
+        vm.prank(client);
+        (settledAmount, settledUpto, note) = payments.settleRail(
+            railId,
+            block.number
+        );
+
+        // Verify no additional settlement occurred
+        assertEq(
+            settledAmount,
+            0,
+            "Settlement amount should be zero when rail is in debt"
+        );
+        assertEq(
+            settledUpto,
+            8,
+            "Settlement epoch should not change when rail is in debt"
+        );
+
+        // Now terminate the rail as operator
+        vm.prank(operator);
+        payments.terminateRail(railId);
+
+        // Record balances before final settlement
+        clientBefore = helper.getAccountData(payments, address(token), client);
+        recipientBefore = helper.getAccountData(
+            payments,
+            address(token),
+            recipient
+        );
+
+        // Settle rail after termination
+        vm.prank(client);
+        (settledAmount, settledUpto, note) = payments.settleRail(
+            railId,
+            block.number
+        );
+
+        // Verify settlement completed
+        assertEq(
+            settledAmount,
+            150 ether,
+            "Settlement amount should be 150 ether after termination"
+        );
+        assertEq(
+            settledUpto,
+            11, // 8 epochs fully settled earlier + lockup covers 3 more epochs
+            "Settlement should reach current block 11  after termination"
+        );
+
+        // Verify balance changes after termination settlement
+        settlementHelper.verifySettlementBalances(
+            payments,
+            address(token),
+            client,
+            recipient,
+            settledAmount,
+            clientBefore.funds,
+            recipientBefore.funds
+        );
+
+        // Verify rail is completely finalized after full settlement
+        vm.prank(client);
+        vm.expectRevert(
+            "rail does not exist or is beyond it's last settlement after termination"
+        );
+        payments.getRail(railId);
+
+        // Check client's final account state
+        clientAccount = helper.getAccountData(payments, address(token), client);
+        assertEq(
+            clientAccount.lockupCurrent,
+            0,
+            "Client lockup current should be 0 after rail finalization"
         );
     }
 

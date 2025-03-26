@@ -144,8 +144,6 @@ contract RailSettlementHelpers is Test {
         // Advance blocks past the lockup period to force the rail into debt
         baseHelper.advanceBlocks(lockupPeriod + 1);
 
-        assertRailInDebt(payments, railId);
-
         return railId;
     }
 
@@ -197,11 +195,6 @@ contract RailSettlementHelpers is Test {
             expectedSettledUpto,
             "Rail settled upto incorrect"
         );
-    }
-
-    function assertRailInDebt(Payments payments, uint256 railId) public view {
-        bool isInDebt = payments.isRailInDebtPublic(railId);
-        assertTrue(isInDebt, "Rail is not in debt as expected");
     }
 
     function verifySettlementBalances(

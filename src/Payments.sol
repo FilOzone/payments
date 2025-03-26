@@ -1339,9 +1339,7 @@ contract Payments is
         if (oneTimePayment == 0) return;
 
         // Reduce lockup usage
-        approval.lockupUsage = approval.lockupUsage > oneTimePayment
-            ? approval.lockupUsage - oneTimePayment
-            : 0;
+        approval.lockupUsage = approval.lockupUsage - oneTimePayment;
 
         // Reduce lockup allowance
         approval.lockupAllowance = oneTimePayment > approval.lockupAllowance

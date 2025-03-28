@@ -827,7 +827,7 @@ contract Payments is
         // Handle terminated and fully settled rails that are still not finalised
         if (
             isRailTerminated(rail) &&
-            rail.settledUpTo >= maxSettlementEpochForTerminatedRail(rail)
+            rail.settledUpTo >= rail.endEpoch
         ) {
             finalizeTerminatedRail(rail, payer);
             return (0, rail.settledUpTo, "rail fully settled and finalized");
@@ -840,7 +840,7 @@ contract Payments is
         } else {
             maxSettlementEpoch = min(
                 untilEpoch,
-                maxSettlementEpochForTerminatedRail(rail)
+                rail.endEpoch
             );
         }
 

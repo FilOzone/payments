@@ -45,7 +45,8 @@ contract AccountLockupSettlementTest is Test {
             user1,
             operator,
             10 ether, // rateAllowance
-            100 ether // lockupAllowance
+            100 ether, // lockupAllowance
+            100 // max lockup period
         );
     }
 
@@ -117,7 +118,8 @@ contract AccountLockupSettlementTest is Test {
             operator,
             true,
             lockupRate, // rate allowance
-            100 ether // lockupAllowance
+            100 ether, // lockupAllowance
+            100 // max lockup period
         );
         vm.stopPrank();
 
@@ -203,7 +205,8 @@ contract AccountLockupSettlementTest is Test {
             operator,
             true,
             lockupRate, // Higher rate allowance
-            100000 ether // lockupAllowance
+            100000 ether, // lockupAllowance
+            100 // max lockup period
         );
         vm.stopPrank();
 
@@ -386,7 +389,8 @@ contract AccountLockupSettlementTest is Test {
             operator,
             true,
             0, // no rate allowance needed
-            DEPOSIT_AMOUNT * 3 // much higher lockup allowance
+            DEPOSIT_AMOUNT * 3, // much higher lockup allowance
+            100 // max lockup period
         );
         vm.stopPrank();
 

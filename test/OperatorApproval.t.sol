@@ -23,6 +23,7 @@ contract OperatorApprovalTest is Test {
     uint256 constant DEPOSIT_AMOUNT = 1000 ether;
     uint256 constant RATE_ALLOWANCE = 100 ether;
     uint256 constant LOCKUP_ALLOWANCE = 1000 ether;
+    uint256 constant MAX_LOCKUP_PERIOD = 10; // 10 blocks default max lockup period
 
     function setUp() public {
         helper = new PaymentsTestHelpers();
@@ -71,7 +72,8 @@ contract OperatorApprovalTest is Test {
             operator,
             true,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -83,7 +85,8 @@ contract OperatorApprovalTest is Test {
             address(0),
             true,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
     }
@@ -96,7 +99,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
 
         // Verify initial state
@@ -108,6 +112,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             0,
             0
         );
@@ -119,7 +124,8 @@ contract OperatorApprovalTest is Test {
             operator,
             true,
             RATE_ALLOWANCE * 2,
-            LOCKUP_ALLOWANCE * 2
+            LOCKUP_ALLOWANCE * 2,
+            MAX_LOCKUP_PERIOD * 2
         );
         vm.stopPrank();
 
@@ -132,6 +138,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE * 2,
             LOCKUP_ALLOWANCE * 2,
+            MAX_LOCKUP_PERIOD * 2,
             0,
             0
         );
@@ -143,7 +150,8 @@ contract OperatorApprovalTest is Test {
             operator,
             true,
             RATE_ALLOWANCE / 2,
-            LOCKUP_ALLOWANCE / 2
+            LOCKUP_ALLOWANCE / 2,
+            MAX_LOCKUP_PERIOD / 2
         );
         vm.stopPrank();
 
@@ -156,6 +164,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE / 2,
             LOCKUP_ALLOWANCE / 2,
+            MAX_LOCKUP_PERIOD / 2,
             0,
             0
         );
@@ -169,7 +178,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
 
         // Revoke approval
@@ -179,7 +189,8 @@ contract OperatorApprovalTest is Test {
             operator,
             false,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -192,6 +203,7 @@ contract OperatorApprovalTest is Test {
             false,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             0,
             0
         );
@@ -203,7 +215,8 @@ contract OperatorApprovalTest is Test {
             operator,
             true,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -216,6 +229,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             0,
             0
         );
@@ -229,7 +243,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
 
         // Create a rail
@@ -251,6 +266,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             0,
             0
         );
@@ -270,6 +286,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             initialRate,
             0
         );
@@ -289,6 +306,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             increasedRate,
             0
         );
@@ -308,6 +326,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             decreasedRate,
             0
         );
@@ -336,6 +355,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             decreasedRate + rate2,
             0
         );
@@ -350,7 +370,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             limitedRateAllowance,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
 
         // Create rail
@@ -385,7 +406,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
 
         // Create rail
@@ -425,6 +447,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             paymentRate,
             expectedLockupUsage
         );
@@ -448,6 +471,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             paymentRate,
             updatedExpectedLockupUsage
         );
@@ -471,6 +495,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             paymentRate,
             finalExpectedLockupUsage
         );
@@ -485,7 +510,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             RATE_ALLOWANCE,
-            limitedLockupAllowance
+            limitedLockupAllowance,
+            MAX_LOCKUP_PERIOD
         );
 
         // Create rail
@@ -511,6 +537,103 @@ contract OperatorApprovalTest is Test {
         payments.modifyRailLockup(railId, 0, excessiveLockup);
         vm.stopPrank();
     }
+    
+    // NEW TEST: Verify max lockup period enforcement
+    function testMaxLockupPeriodEnforcement() public {
+        // Setup initial approval with limited lockup period
+        uint256 limitedMaxLockupPeriod = 5; // 5 blocks max lockup period
+        helper.setupOperatorApproval(
+            payments,
+            address(token),
+            client,
+            operator,
+            RATE_ALLOWANCE,
+            LOCKUP_ALLOWANCE,
+            limitedMaxLockupPeriod
+        );
+
+        // Create rail
+        uint256 railId = helper.createRail(
+            payments,
+            address(token),
+            client,
+            recipient,
+            operator,
+            address(0)
+        );
+
+        // Set payment rate
+        uint256 paymentRate = 10 ether;
+        vm.startPrank(operator);
+        payments.modifyRailPayment(railId, paymentRate, 0);
+        vm.stopPrank();
+
+        // Set lockup period exactly at the limit
+        vm.startPrank(operator);
+        payments.modifyRailLockup(railId, limitedMaxLockupPeriod, 50 ether);
+        vm.stopPrank();
+
+        // Now try to exceed the max lockup period - should revert
+        vm.startPrank(operator);
+        vm.expectRevert("requested lockup period exceeds operator's maximum allowed lockup period");
+        payments.modifyRailLockup(railId, limitedMaxLockupPeriod + 1, 50 ether);
+        vm.stopPrank();
+    }
+    
+    // Verify that operators can reduce lockup period even if it's over the max
+    function testReducingLockupPeriodBelowMax() public {
+        // Setup initial approval with high max lockup period
+        uint256 initialMaxLockupPeriod = 20; // 20 blocks initially
+        helper.setupOperatorApproval(
+            payments,
+            address(token),
+            client,
+            operator,
+            RATE_ALLOWANCE,
+            LOCKUP_ALLOWANCE,
+            initialMaxLockupPeriod
+        );
+
+        // Create rail
+        uint256 railId = helper.createRail(
+            payments,
+            address(token),
+            client,
+            recipient,
+            operator,
+            address(0)
+        );
+
+        // Set payment rate and high lockup period
+        uint256 paymentRate = 10 ether;
+        vm.startPrank(operator);
+        payments.modifyRailPayment(railId, paymentRate, 0);
+        payments.modifyRailLockup(railId, 15, 50 ether); // 15 blocks period
+        vm.stopPrank();
+
+        // Now client reduces max lockup period
+        vm.startPrank(client);
+        payments.setOperatorApproval(
+            address(token),
+            operator,
+            true,
+            RATE_ALLOWANCE,
+            LOCKUP_ALLOWANCE,
+            5 // 5 blocks new max
+        );
+        vm.stopPrank();
+
+        // Operator should be able to reduce period below the new max
+        vm.startPrank(operator);
+        payments.modifyRailLockup(railId, 4, 50 ether); // Lower to 4 blocks
+        vm.stopPrank();
+
+        // But not increase it above the new max, even though it's lower than what it was
+        vm.startPrank(operator);
+        vm.expectRevert("requested lockup period exceeds operator's maximum allowed lockup period");
+        payments.modifyRailLockup(railId, 6, 50 ether); // Try to increase to 6 blocks, which is over the new max of 5
+        vm.stopPrank();
+    }
 
     function testAllowanceEdgeCases() public {
         // 1. Test exact allowance consumption
@@ -522,7 +645,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             exactRateAllowance,
-            exactLockupAllowance
+            exactLockupAllowance,
+            MAX_LOCKUP_PERIOD
         );
 
         // Create rail
@@ -554,6 +678,7 @@ contract OperatorApprovalTest is Test {
             true,
             exactRateAllowance,
             exactLockupAllowance,
+            MAX_LOCKUP_PERIOD,
             exactRateAllowance,
             exactLockupAllowance
         );
@@ -564,6 +689,7 @@ contract OperatorApprovalTest is Test {
             address(token),
             client,
             secondOperator,
+            0,
             0,
             0
         );
@@ -589,6 +715,12 @@ contract OperatorApprovalTest is Test {
         vm.expectRevert("operation exceeds operator lockup allowance");
         payments.modifyRailLockup(railId2, 0, 1);
         vm.stopPrank();
+        
+        // Attempt to set non-zero lockup period (should fail)
+        vm.startPrank(secondOperator);
+        vm.expectRevert("requested lockup period exceeds operator's maximum allowed lockup period");
+        payments.modifyRailLockup(railId2, 1, 0);
+        vm.stopPrank();
     }
 
     function testOperatorAuthorizationBoundaries() public {
@@ -605,7 +737,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
 
         uint256 railId = helper.createRail(
@@ -630,7 +763,8 @@ contract OperatorApprovalTest is Test {
             operator,
             false,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -651,12 +785,13 @@ contract OperatorApprovalTest is Test {
             secondOperator,
             true,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
         // Verify operator approval was not set for client
-        (bool isApproved, , , , ) = payments.operatorApprovals(
+        (bool isApproved, , , , , ) = payments.operatorApprovals(
             address(token),
             client,
             secondOperator
@@ -675,7 +810,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
 
         // Create rail with fixed lockup
@@ -773,7 +909,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             RATE_ALLOWANCE,
-            1000 ether
+            1000 ether,
+            MAX_LOCKUP_PERIOD
         );
 
         // Create rail
@@ -801,7 +938,8 @@ contract OperatorApprovalTest is Test {
             operator,
             true,
             RATE_ALLOWANCE,
-            500 ether // below fixed lockup of 800 ether
+            500 ether, // below fixed lockup of 800 ether
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -825,7 +963,8 @@ contract OperatorApprovalTest is Test {
             operator,
             true,
             RATE_ALLOWANCE,
-            0 // zero allowance
+            0, // zero allowance
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -853,7 +992,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             90 ether,
-            30 ether
+            30 ether,
+            MAX_LOCKUP_PERIOD
         );
 
         // Operator creates a rail using 50 rate/20 lockup
@@ -878,7 +1018,8 @@ contract OperatorApprovalTest is Test {
             operator,
             true,
             40 ether, // below current usage of 50 ether
-            15 ether // below current usage of 20 ether
+            15 ether, // below current usage of 20 ether
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -893,6 +1034,7 @@ contract OperatorApprovalTest is Test {
             ,
             /*bool isApproved*/ uint256 rateAllowance,
             uint256 lockupAllowance,
+            ,
             uint256 rateUsage,
             uint256 lockupUsage
         ) = payments.operatorApprovals(address(token), client, operator);
@@ -934,7 +1076,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             100 ether, // 100 ether rate allowance
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
 
         // Create rail and set rate
@@ -958,7 +1101,8 @@ contract OperatorApprovalTest is Test {
             operator,
             true,
             30 ether, // below current usage of 50 ether
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -980,7 +1124,8 @@ contract OperatorApprovalTest is Test {
             operator,
             true,
             0, // zero allowance
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -1013,7 +1158,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             50 ether,
-            1000 ether
+            1000 ether,
+            MAX_LOCKUP_PERIOD
         );
 
         // Set fixed lockup
@@ -1029,7 +1175,8 @@ contract OperatorApprovalTest is Test {
             operator,
             true,
             50 ether,
-            300 ether // below current usage of 500 ether
+            300 ether, // below current usage of 500 ether
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -1055,7 +1202,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
 
         // Create two rails with different parameters
@@ -1113,6 +1261,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             expectedRateUsage,
             expectedLockupUsage
         );
@@ -1130,7 +1279,8 @@ contract OperatorApprovalTest is Test {
             operator,
             false,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -1157,7 +1307,8 @@ contract OperatorApprovalTest is Test {
             operator,
             true,
             20 ether, // Only enough for current rails
-            100 ether
+            100 ether,
+            MAX_LOCKUP_PERIOD
         );
         vm.stopPrank();
 
@@ -1223,7 +1374,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE
+            LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD
         );
 
         // Client 1, Token 2
@@ -1233,7 +1385,8 @@ contract OperatorApprovalTest is Test {
             client,
             operator,
             RATE_ALLOWANCE * 2,
-            LOCKUP_ALLOWANCE * 2
+            LOCKUP_ALLOWANCE * 2,
+            MAX_LOCKUP_PERIOD * 2
         );
 
         // Client 2, Token 1
@@ -1243,7 +1396,8 @@ contract OperatorApprovalTest is Test {
             secondClient,
             operator,
             RATE_ALLOWANCE / 2,
-            LOCKUP_ALLOWANCE / 2
+            LOCKUP_ALLOWANCE / 2,
+            MAX_LOCKUP_PERIOD / 2
         );
 
         // Create rails for different combinations
@@ -1293,6 +1447,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE,
             LOCKUP_ALLOWANCE,
+            MAX_LOCKUP_PERIOD,
             10 ether,
             0
         );
@@ -1305,6 +1460,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE * 2,
             LOCKUP_ALLOWANCE * 2,
+            MAX_LOCKUP_PERIOD * 2,
             20 ether,
             0
         );
@@ -1317,6 +1473,7 @@ contract OperatorApprovalTest is Test {
             true,
             RATE_ALLOWANCE / 2,
             LOCKUP_ALLOWANCE / 2,
+            MAX_LOCKUP_PERIOD / 2,
             5 ether,
             0
         );

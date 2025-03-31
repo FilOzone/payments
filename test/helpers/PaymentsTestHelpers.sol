@@ -185,7 +185,8 @@ contract PaymentsTestHelpers is Test {
         address from,
         address operator,
         uint256 rateAllowance,
-        uint256 lockupAllowance
+        uint256 lockupAllowance,
+        uint256 maxLockupPeriod
     ) public {
         vm.startPrank(from);
         payments.setOperatorApproval(
@@ -193,9 +194,31 @@ contract PaymentsTestHelpers is Test {
             operator,
             true,
             rateAllowance,
-            lockupAllowance
+            lockupAllowance,
+            maxLockupPeriod
         );
         vm.stopPrank();
+    }
+    
+    // Overloaded method for backward compatibility with tests that don't specify maxLockupPeriod
+    function setupOperatorApproval(
+        Payments payments,
+        address token,
+        address from,
+        address operator,
+        uint256 rateAllowance,
+        uint256 lockupAllowance
+    ) public {
+        // Use a very large default max lockup period to avoid affecting existing tests
+        setupOperatorApproval(
+            payments,
+            token,
+            from,
+            operator,
+            rateAllowance,
+            lockupAllowance,
+            type(uint256).max
+        );
     }
 
     function advanceBlocks(uint256 blocks) public {
@@ -238,6 +261,7 @@ contract PaymentsTestHelpers is Test {
         bool expectedIsApproved,
         uint256 expectedRateAllowance,
         uint256 expectedLockupAllowance,
+        uint256 expectedMaxLockupPeriod,
         uint256 expectedRateUsage,
         uint256 expectedLockupUsage
     ) public view {
@@ -245,6 +269,7 @@ contract PaymentsTestHelpers is Test {
             bool isApproved,
             uint256 rateAllowance,
             uint256 lockupAllowance,
+            uint256 maxLockupPeriod,
             uint256 rateUsage,
             uint256 lockupUsage
         ) = payments.operatorApprovals(token, client, operator);
@@ -264,6 +289,52 @@ contract PaymentsTestHelpers is Test {
             expectedLockupAllowance,
             "Lockup allowance mismatch"
         );
+        assertEq(
+            maxLockupPeriod,
+            expectedMaxLockupPeriod,
+            "Max lockup period mismatch"
+        );
+        assertEq(rateUsage, expectedRateUsage, "Rate usage mismatch");
+        assertEq(lockupUsage, expectedLockupUsage, "Lockup usage mismatch");
+    }
+    
+    // Overloaded method for backward compatibility with tests that don't specify maxLockupPeriod
+    function verifyOperatorAllowances(
+        Payments payments,
+        address token,
+        address client,
+        address operator,
+        bool expectedIsApproved,
+        uint256 expectedRateAllowance,
+        uint256 expectedLockupAllowance,
+        uint256 expectedRateUsage,
+        uint256 expectedLockupUsage
+    ) public view {
+        (
+            bool isApproved,
+            uint256 rateAllowance,
+            uint256 lockupAllowance,
+            uint256 maxLockupPeriod,
+            uint256 rateUsage,
+            uint256 lockupUsage
+        ) = payments.operatorApprovals(token, client, operator);
+
+        assertEq(
+            isApproved,
+            expectedIsApproved,
+            "Operator approval status mismatch"
+        );
+        assertEq(
+            rateAllowance,
+            expectedRateAllowance,
+            "Rate allowance mismatch"
+        );
+        assertEq(
+            lockupAllowance,
+            expectedLockupAllowance,
+            "Lockup allowance mismatch"
+        );
+        // Don't verify maxLockupPeriod in this overload
         assertEq(rateUsage, expectedRateUsage, "Rate usage mismatch");
         assertEq(lockupUsage, expectedLockupUsage, "Lockup usage mismatch");
     }
@@ -373,6 +444,7 @@ contract PaymentsTestHelpers is Test {
             bool isApproved,
             uint256 rateAllowance,
             uint256 lockupAllowance,
+            uint256 maxLockupPeriod,
             uint256 rateUsage,
             uint256 lockupUsage
         )

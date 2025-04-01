@@ -257,8 +257,9 @@ contract Payments is
                 lockupPeriod: rail.lockupPeriod,
                 lockupFixed: rail.lockupFixed,
                 settledUpTo: rail.settledUpTo,
-                endEpoch: rail.endEpoch,
-                rateChangeQueueLength: rail.rateChangeQueue.size()
+                rateChangeQueueLength: rail.rateChangeQueue.size(),
+                endEpoch: rail.endEpoch
+
             });
     }
 
@@ -827,10 +828,8 @@ contract Payments is
         Account storage payer = accounts[rail.token][rail.from];
 
         // Handle terminated and fully settled rails that are still not finalised
-        if (
-            isRailTerminated(rail) &&
-            rail.settledUpTo >= maxSettlementEpochForTerminatedRail(rail)
-        ) {
+
+        if (isRailTerminated(rail) && rail.settledUpTo >= rail.endEpoch) {
             finalizeTerminatedRail(rail, payer);
             return (0, rail.settledUpTo, "rail fully settled and finalized");
         }
@@ -840,10 +839,7 @@ contract Payments is
         if (!isRailTerminated(rail)) {
             maxSettlementEpoch = min(untilEpoch, payer.lockupLastSettledAt);
         } else {
-            maxSettlementEpoch = min(
-                untilEpoch,
-                maxSettlementEpochForTerminatedRail(rail)
-            );
+            maxSettlementEpoch = min(untilEpoch, rail.endEpoch);
         }
 
         uint256 startEpoch = rail.settledUpTo;

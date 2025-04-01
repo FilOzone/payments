@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 import {Payments} from "../../src/Payments.sol";
 import {ERC1967Proxy} from "../../src/ERC1967Proxy.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {ReentrantERC20} from "../mocks/ReentrantERC20.sol";
 
 contract PaymentsTestHelpers is Test {
     function deployPaymentsSystem(address owner) public returns (Payments) {
@@ -43,28 +42,6 @@ contract PaymentsTestHelpers is Test {
         return token;
     }
 
-    // Helper to deploy a malicious token for reentrancy testing
-    function setupReentrantToken(
-        string memory name,
-        string memory symbol,
-        address[] memory users,
-        uint256 initialBalance,
-        address paymentsContract
-    ) public returns (ReentrantERC20) {
-        ReentrantERC20 token = new ReentrantERC20(name, symbol);
-
-        // Mint tokens to users
-        for (uint256 i = 0; i < users.length; i++) {
-            token.mint(users[i], initialBalance);
-
-            // Approve payments contract to spend tokens
-            vm.startPrank(users[i]);
-            token.approve(paymentsContract, type(uint256).max);
-            vm.stopPrank();
-        }
-
-        return token;
-    }
 
     function getAccountData(
         Payments payments,

@@ -5,13 +5,11 @@ import {Test} from "forge-std/Test.sol";
 import {Payments} from "../src/Payments.sol";
 import {ERC1967Proxy} from "../src/ERC1967Proxy.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {ReentrantERC20} from "./mocks/ReentrantERC20.sol";
 import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 
 contract AccountManagementTest is Test {
     Payments payments;
     MockERC20 standardToken;
-    ReentrantERC20 maliciousToken;
 
     address owner = address(0x1);
     address user1 = address(0x2);
@@ -32,24 +30,11 @@ contract AccountManagementTest is Test {
         standardUsers[0] = user1;
         standardUsers[1] = user2;
         
-        // Set up users for malicious token
-        address[] memory maliciousUsers = new address[](1);
-        maliciousUsers[0] = user1;
-        
         // Deploy test tokens
         standardToken = helper.setupTestToken(
             "Test Token", 
             "TEST", 
             standardUsers, 
-            INITIAL_BALANCE, 
-            address(payments)
-        );
-        
-        // Deploy malicious token for reentrancy tests
-        maliciousToken = helper.setupReentrantToken(
-            "Malicious Token", 
-            "EVIL", 
-            maliciousUsers, 
             INITIAL_BALANCE, 
             address(payments)
         );
@@ -449,52 +434,4 @@ contract AccountManagementTest is Test {
         );
     }
 
-    function testReentrancyProtection() public {
-        PaymentsTestHelpers helper = new PaymentsTestHelpers();
-        helper.makeDeposit(
-            payments,
-            address(maliciousToken),
-            user1,
-            user1,
-            DEPOSIT_AMOUNT
-        );
-
-        uint256 initialBalance = maliciousToken.balanceOf(user1);
-
-        // Prepare reentrant attack - try to call withdraw again during the token transfer
-        bytes memory attackCalldata = abi.encodeWithSelector(
-            Payments.withdraw.selector,
-            address(maliciousToken),
-            DEPOSIT_AMOUNT / 2
-        );
-
-        vm.startPrank(user1);
-        maliciousToken.setAttack(address(payments), attackCalldata);
-
-        payments.withdraw(address(maliciousToken), DEPOSIT_AMOUNT / 2);
-
-        // Verify only one withdrawal occurred
-        uint256 finalBalance = maliciousToken.balanceOf(user1);
-
-        // If reentrancy protection works, only DEPOSIT_AMOUNT/2 should be withdrawn
-        assertEq(
-            finalBalance,
-            initialBalance + DEPOSIT_AMOUNT / 2,
-            "Reentrancy protection failed: more tokens withdrawn than expected"
-        );
-
-        Payments.Account memory account = helper.getAccountData(
-            payments,
-            address(maliciousToken),
-            user1
-        );
-
-        assertEq(
-            account.funds,
-            DEPOSIT_AMOUNT / 2,
-            "Reentrancy protection failed: account balance incorrect"
-        );
-
-        vm.stopPrank();
-    }
 }

@@ -92,7 +92,6 @@ contract Payments is
         uint256 lockupFixed;
         uint256 settledUpTo;
         uint256 endEpoch;
-        uint256 rateChangeQueueLength;
     }
 
     // token => client => operator => Approval
@@ -257,7 +256,6 @@ contract Payments is
                 lockupPeriod: rail.lockupPeriod,
                 lockupFixed: rail.lockupFixed,
                 settledUpTo: rail.settledUpTo,
-                rateChangeQueueLength: rail.rateChangeQueue.size(),
                 endEpoch: rail.endEpoch
 
             });
@@ -601,7 +599,7 @@ contract Payments is
             }
 
             require(
-                newRate == oldRate,
+                newRate <= oldRate,
                 "failed to modify rail: cannot change rate on terminated rail"
             );
         } else {

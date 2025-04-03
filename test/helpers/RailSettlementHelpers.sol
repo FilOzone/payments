@@ -81,13 +81,7 @@ contract RailSettlementHelpers is Test {
         }
         vm.stopPrank();
 
-        // Verify the rate change queue length
-        Payments.RailView memory rail = payments.getRail(railId);
-        assertEq(
-            rail.rateChangeQueueLength,
-            rates.length - 1,
-            "Rate change queue length does not match expected"
-        );
+       
 
         return railId;
     }

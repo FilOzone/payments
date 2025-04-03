@@ -5,19 +5,57 @@ import {Test} from "forge-std/Test.sol";
 import {Payments} from "../../src/Payments.sol";
 import {ERC1967Proxy} from "../../src/ERC1967Proxy.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {BaseTestHelper} from "./BaseTestHelper.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {console} from "forge-std/console.sol";
+contract PaymentsTestHelpers is Test, BaseTestHelper {
+    // Common constants
+    uint256 public constant INITIAL_BALANCE = 1000 ether;
+    uint256 public constant DEPOSIT_AMOUNT = 100 ether;
 
-contract PaymentsTestHelpers is Test {
-    function deployPaymentsSystem(address owner) public returns (Payments) {
+    Payments public payments;
+    IERC20 public testToken;
+
+    // Standard test environment setup with common addresses and token
+    function setupStandardTestEnvironment() public {
+        vm.startPrank(OWNER);
+        Payments paymentsImplementation = new Payments();
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(paymentsImplementation),
+            abi.encodeWithSelector(Payments.initialize.selector)
+        );
+        payments = Payments(address(proxy));
+        vm.stopPrank();
+
+        // Setup test token and assign to common users
+        address[] memory users = new address[](6);
+        users[0] = OWNER;
+        users[1] = USER1;
+        users[2] = USER2;
+        users[3] = OPERATOR;
+        users[4] = OPERATOR2;
+        users[5] = ARBITER;
+
+        testToken = setupTestToken(
+            "Test Token",
+            "TEST",
+            users,
+            INITIAL_BALANCE,
+            address(payments)
+        );
+    }
+
+    function deployPaymentsSystem(address owner) private returns (Payments) {
         vm.startPrank(owner);
         Payments paymentsImplementation = new Payments();
         ERC1967Proxy proxy = new ERC1967Proxy(
             address(paymentsImplementation),
             abi.encodeWithSelector(Payments.initialize.selector)
         );
-        Payments payments = Payments(address(proxy));
+        Payments paymentsInstance = Payments(address(proxy));
         vm.stopPrank();
 
-        return payments;
+        return paymentsInstance;
     }
 
     function setupTestToken(
@@ -27,25 +65,22 @@ contract PaymentsTestHelpers is Test {
         uint256 initialBalance,
         address paymentsContract
     ) public returns (MockERC20) {
-        MockERC20 token = new MockERC20(name, symbol);
+        MockERC20 newToken = new MockERC20(name, symbol);
 
         // Mint tokens to users
         for (uint256 i = 0; i < users.length; i++) {
-            token.mint(users[i], initialBalance);
+            newToken.mint(users[i], initialBalance);
 
             // Approve payments contract to spend tokens (i.e. allowance)
             vm.startPrank(users[i]);
-            token.approve(paymentsContract, type(uint256).max);
+            newToken.approve(paymentsContract, type(uint256).max);
             vm.stopPrank();
         }
 
-        return token;
+        return newToken;
     }
 
-
     function getAccountData(
-        Payments payments,
-        address token,
         address user
     ) public view returns (Payments.Account memory) {
         (
@@ -53,7 +88,7 @@ contract PaymentsTestHelpers is Test {
             uint256 lockupCurrent,
             uint256 lockupRate,
             uint256 lockupLastSettledAt
-        ) = payments.accounts(token, user);
+        ) = payments.accounts(address(testToken), user);
 
         return
             Payments.Account({
@@ -64,115 +99,350 @@ contract PaymentsTestHelpers is Test {
             });
     }
 
-    function makeDeposit(
-        Payments payments,
-        address token,
-        address from,
-        address to,
-        uint256 amount
-    ) public {
+    function makeDeposit(address from, address to, uint256 amount) public {
+        // Capture pre-deposit balances
+        uint256 fromERC20BalanceBefore = testToken.balanceOf(from);
+        uint256 paymentsERC20BalanceBefore = testToken.balanceOf(
+            address(payments)
+        );
+        Payments.Account memory toAccountBefore = getAccountData(to);
+
+        // Make the deposit
         vm.startPrank(from);
-        payments.deposit(token, to, amount);
+        payments.deposit(address(testToken), to, amount);
         vm.stopPrank();
+
+        // Verify ERC-20 token balances
+        uint256 fromERC20BalanceAfter = testToken.balanceOf(from);
+        uint256 paymentsERC20BalanceAfter = testToken.balanceOf(
+            address(payments)
+        );
+        Payments.Account memory toAccountAfter = getAccountData(to);
+
+        // Verify balances
+        assertEq(
+            fromERC20BalanceAfter,
+            fromERC20BalanceBefore - amount,
+            "Sender's ERC20 balance not reduced correctly"
+        );
+        assertEq(
+            paymentsERC20BalanceAfter,
+            paymentsERC20BalanceBefore + amount,
+            "Payments contract ERC20 balance not increased correctly"
+        );
+        assertEq(
+            toAccountAfter.funds,
+            toAccountBefore.funds + amount,
+            "Recipient's account balance not increased correctly"
+        );
+        console.log("toAccountAfter.funds", toAccountAfter.funds);
     }
 
-    function makeWithdrawal(
-        Payments payments,
-        address token,
-        address from,
-        uint256 amount
-    ) public {
-        vm.startPrank(from);
-        payments.withdraw(token, amount);
-        vm.stopPrank();
+    function makeWithdrawal(address from, uint256 amount) public {
+        _performWithdrawal(
+            from,
+            from, // recipient is the same as sender
+            amount,
+            true // use the standard withdraw function
+        );
     }
 
     function expectWithdrawalToFail(
-        Payments payments,
-        address token,
         address from,
         uint256 amount,
         bytes memory expectedError
     ) public {
         vm.startPrank(from);
         vm.expectRevert(expectedError);
-        payments.withdraw(token, amount);
+        payments.withdraw(address(testToken), amount);
         vm.stopPrank();
     }
 
-    function makeWithdrawalTo(
-        Payments payments,
-        address token,
+    function makeWithdrawalTo(address from, address to, uint256 amount) public {
+        _performWithdrawal(
+            from,
+            to,
+            amount,
+            false // use the withdrawTo function
+        );
+    }
+
+    function _performWithdrawal(
         address from,
         address to,
-        uint256 amount
-    ) public {
+        uint256 amount,
+        bool isStandardWithdrawal
+    ) private {
+        // Capture pre-withdrawal balances
+        uint256 fromAccountBalanceBefore = getAccountData(from).funds;
+        uint256 recipientERC20BalanceBefore = testToken.balanceOf(to);
+        uint256 paymentsERC20BalanceBefore = testToken.balanceOf(
+            address(payments)
+        );
+
+        // Make the withdrawal
         vm.startPrank(from);
-        payments.withdrawTo(token, to, amount);
+        if (isStandardWithdrawal) {
+            payments.withdraw(address(testToken), amount);
+        } else {
+            payments.withdrawTo(address(testToken), to, amount);
+        }
         vm.stopPrank();
+
+        // Verify balances
+        uint256 fromAccountBalanceAfter = getAccountData(from).funds;
+        uint256 recipientERC20BalanceAfter = testToken.balanceOf(to);
+        uint256 paymentsERC20BalanceAfter = testToken.balanceOf(
+            address(payments)
+        );
+
+        // Assert balances changed correctly
+        assertEq(
+            fromAccountBalanceAfter,
+            fromAccountBalanceBefore - amount,
+            "Sender's account balance not decreased correctly"
+        );
+        assertEq(
+            recipientERC20BalanceAfter,
+            recipientERC20BalanceBefore + amount,
+            "Recipient's ERC20 balance not increased correctly"
+        );
+        assertEq(
+            paymentsERC20BalanceAfter,
+            paymentsERC20BalanceBefore - amount,
+            "Payments contract ERC20 balance not decreased correctly"
+        );
     }
 
     function createRail(
-        Payments payments,
-        address token,
         address from,
         address to,
         address railOperator,
         address arbiter
     ) public returns (uint256) {
         vm.startPrank(railOperator);
-        uint256 railId = payments.createRail(token, from, to, arbiter);
+        uint256 railId = payments.createRail(
+            address(testToken),
+            from,
+            to,
+            arbiter
+        );
         vm.stopPrank();
+
+        // Verify rail was created with the correct parameters
+        Payments.RailView memory rail = payments.getRail(railId);
+        assertEq(rail.token, address(testToken), "Rail token address mismatch");
+        assertEq(rail.from, from, "Rail sender address mismatch");
+        assertEq(rail.to, to, "Rail recipient address mismatch");
+        assertEq(rail.arbiter, arbiter, "Rail arbiter address mismatch");
+        assertEq(rail.operator, railOperator, "Rail operator address mismatch");
+
         return railId;
     }
 
     function setupRailWithParameters(
-        Payments payments,
-        address token,
         address from,
         address to,
         address railOperator,
         uint256 paymentRate,
         uint256 lockupPeriod,
-        uint256 lockupFixed
-    ) public returns (uint256) {
-        uint256 railId = createRail(
-            payments,
-            token,
-            from,
-            to,
-            railOperator,
-            address(0)
-        );
+        uint256 lockupFixed,
+        address arbiter
+    ) public returns (uint256 railId) {
+        // Calculate required allowances for the rail
+        uint256 requiredRateAllowance = paymentRate;
+        uint256 requiredLockupAllowance = lockupFixed +
+            (paymentRate * lockupPeriod);
 
-        // Set payment rate
+        // Get current operator allowances
+        (
+            bool isApproved,
+            uint256 rateAllowance,
+            uint256 lockupAllowance,
+            ,
+
+        ) = payments.operatorApprovals(address(testToken), from, railOperator);
+
+        // Ensure operator has sufficient allowances before creating the rail
+        if (
+            !isApproved ||
+            rateAllowance < requiredRateAllowance ||
+            lockupAllowance < requiredLockupAllowance
+        ) {
+            vm.startPrank(from);
+            payments.setOperatorApproval(
+                address(testToken),
+                railOperator,
+                true,
+                requiredRateAllowance > rateAllowance
+                    ? requiredRateAllowance
+                    : rateAllowance,
+                requiredLockupAllowance > lockupAllowance
+                    ? requiredLockupAllowance
+                    : lockupAllowance
+            );
+            vm.stopPrank();
+        }
+
+        railId = createRail(from, to, railOperator, arbiter);
+
+        // Get operator usage before modifications
+        (, , , uint256 rateUsageBefore, uint256 lockupUsageBefore) = payments
+            .operatorApprovals(address(testToken), from, railOperator);
+
+        // Get rail parameters before modifications to accurately calculate expected usage changes
+        Payments.RailView memory railBefore;
+        try payments.getRail(railId) returns (
+            Payments.RailView memory railData
+        ) {
+            railBefore = railData;
+        } catch {
+            // If this is a new rail, all values will be zero
+            railBefore.paymentRate = 0;
+            railBefore.lockupPeriod = 0;
+            railBefore.lockupFixed = 0;
+        }
+
+        // Set payment rate and lockup parameters
         vm.startPrank(railOperator);
         payments.modifyRailPayment(railId, paymentRate, 0);
-
-        // Set lockup parameters
         payments.modifyRailLockup(railId, lockupPeriod, lockupFixed);
         vm.stopPrank();
+
+        // Verify rail parameters were set correctly
+        Payments.RailView memory rail = payments.getRail(railId);
+        assertEq(rail.paymentRate, paymentRate, "Rail payment rate mismatch");
+        assertEq(
+            rail.lockupPeriod,
+            lockupPeriod,
+            "Rail lockup period mismatch"
+        );
+        assertEq(rail.lockupFixed, lockupFixed, "Rail fixed lockup mismatch");
+        assertEq(rail.arbiter, arbiter, "Rail arbiter address mismatch");
+
+        // Get operator usage after modifications
+        (, , , uint256 rateUsageAfter, uint256 lockupUsageAfter) = payments
+            .operatorApprovals(address(testToken), from, railOperator);
+
+        // Calculate expected change in rate usage
+        int256 expectedRateChange;
+        if (paymentRate > railBefore.paymentRate) {
+            expectedRateChange = int256(paymentRate - railBefore.paymentRate);
+        } else {
+            expectedRateChange = -int256(railBefore.paymentRate - paymentRate);
+        }
+
+        // Calculate old and new lockup values to determine the change
+        uint256 oldLockupTotal = railBefore.lockupFixed +
+            (railBefore.paymentRate * railBefore.lockupPeriod);
+        uint256 newLockupTotal = lockupFixed + (paymentRate * lockupPeriod);
+        int256 expectedLockupChange;
+
+        if (newLockupTotal > oldLockupTotal) {
+            expectedLockupChange = int256(newLockupTotal - oldLockupTotal);
+        } else {
+            expectedLockupChange = -int256(oldLockupTotal - newLockupTotal);
+        }
+
+        // Verify operator usage has been updated correctly
+        if (expectedRateChange > 0) {
+            assertEq(
+                rateUsageAfter,
+                rateUsageBefore + uint256(expectedRateChange),
+                "Operator rate usage not increased correctly"
+            );
+        } else {
+            assertEq(
+                rateUsageBefore,
+                rateUsageAfter + uint256(-expectedRateChange),
+                "Operator rate usage not decreased correctly"
+            );
+        }
+
+        if (expectedLockupChange > 0) {
+            assertEq(
+                lockupUsageAfter,
+                lockupUsageBefore + uint256(expectedLockupChange),
+                "Operator lockup usage not increased correctly"
+            );
+        } else {
+            assertEq(
+                lockupUsageBefore,
+                lockupUsageAfter + uint256(-expectedLockupChange),
+                "Operator lockup usage not decreased correctly"
+            );
+        }
 
         return railId;
     }
 
     function setupOperatorApproval(
-        Payments payments,
-        address token,
         address from,
         address operator,
         uint256 rateAllowance,
         uint256 lockupAllowance
     ) public {
+        // Get initial usage values for verification
+        (, , , uint256 initialRateUsage, uint256 initialLockupUsage) = payments
+            .operatorApprovals(address(testToken), from, operator);
+
+        // Set approval
         vm.startPrank(from);
         payments.setOperatorApproval(
-            token,
+            address(testToken),
             operator,
             true,
             rateAllowance,
             lockupAllowance
         );
         vm.stopPrank();
+
+        // Verify operator allowances after setting them
+        verifyOperatorAllowances(
+            from,
+            operator,
+            true, // isApproved
+            rateAllowance, // rateAllowance
+            lockupAllowance, // lockupAllowance
+            initialRateUsage, // rateUsage shouldn't change
+            initialLockupUsage // lockupUsage shouldn't change
+        );
+    }
+
+    function revokeOperatorApprovalAndVerify(
+        address from,
+        address operator
+    ) public {
+        // Get current values for verification
+        (
+            ,
+            uint256 rateAllowance,
+            uint256 lockupAllowance,
+            uint256 rateUsage,
+            uint256 lockupUsage
+        ) = payments.operatorApprovals(address(testToken), from, operator);
+
+        // Revoke approval
+        vm.startPrank(from);
+        payments.setOperatorApproval(
+            address(testToken),
+            operator,
+            false,
+            rateAllowance,
+            lockupAllowance
+        );
+        vm.stopPrank();
+
+        // Verify operator allowances after revoking
+        verifyOperatorAllowances(
+            from,
+            operator,
+            false, // isApproved should be false
+            rateAllowance, // rateAllowance should remain the same
+            lockupAllowance, // lockupAllowance should remain the same
+            rateUsage, // rateUsage shouldn't change
+            lockupUsage // lockupUsage shouldn't change
+        );
     }
 
     function advanceBlocks(uint256 blocks) public {
@@ -180,15 +450,13 @@ contract PaymentsTestHelpers is Test {
     }
 
     function assertAccountState(
-        Payments payments,
-        address token,
         address user,
         uint256 expectedFunds,
         uint256 expectedLockup,
         uint256 expectedRate,
         uint256 expectedLastSettled
     ) public view {
-        Payments.Account memory account = getAccountData(payments, token, user);
+        Payments.Account memory account = getAccountData(user);
         assertEq(account.funds, expectedFunds, "Account funds incorrect");
         assertEq(
             account.lockupCurrent,
@@ -208,8 +476,6 @@ contract PaymentsTestHelpers is Test {
     }
 
     function verifyOperatorAllowances(
-        Payments payments,
-        address token,
         address client,
         address operator,
         bool expectedIsApproved,
@@ -224,7 +490,7 @@ contract PaymentsTestHelpers is Test {
             uint256 lockupAllowance,
             uint256 rateUsage,
             uint256 lockupUsage
-        ) = payments.operatorApprovals(token, client, operator);
+        ) = payments.operatorApprovals(address(testToken), client, operator);
 
         assertEq(
             isApproved,
@@ -245,102 +511,8 @@ contract PaymentsTestHelpers is Test {
         assertEq(lockupUsage, expectedLockupUsage, "Lockup usage mismatch");
     }
 
-    // Setup a rail with specific parameters and return balances
-    function setupRailWithFixedLockup(
-        Payments payments,
-        address token,
-        address client,
-        address recipient,
-        address operator,
-        uint256 paymentRate,
-        uint256 fixedLockup,
-        uint256 lockupPeriod
-    )
-        public
-        returns (
-            uint256 railId,
-            Payments.Account memory clientBefore,
-            Payments.Account memory recipientBefore
-        )
-    {
-        // Create rail
-        railId = createRail(
-            payments,
-            token,
-            client,
-            recipient,
-            operator,
-            address(0)
-        );
-
-        // Set payment rate and fixed lockup
-        vm.startPrank(operator);
-        payments.modifyRailPayment(railId, paymentRate, 0);
-        payments.modifyRailLockup(railId, lockupPeriod, fixedLockup);
-        vm.stopPrank();
-
-        // Get account states before any payment
-        clientBefore = getAccountData(payments, token, client);
-        recipientBefore = getAccountData(payments, token, recipient);
-
-        return (railId, clientBefore, recipientBefore);
-    }
-
-    // Verify one-time payment effects
-    function verifyOneTimePayment(
-        Payments payments,
-        uint256 railId,
-        uint256 paymentAmount,
-        address token,
-        address client,
-        address recipient,
-        address operator,
-        Payments.Account memory clientBefore,
-        Payments.Account memory recipientBefore,
-        uint256 expectedRemainingLockup
-    ) public {
-        // Make the payment
-        vm.startPrank(operator);
-        payments.modifyRailPayment(railId, 0, paymentAmount);
-        vm.stopPrank();
-
-        // Check account balances after payment
-        Payments.Account memory clientAfter = getAccountData(
-            payments,
-            token,
-            client
-        );
-        Payments.Account memory recipientAfter = getAccountData(
-            payments,
-            token,
-            recipient
-        );
-
-        // Verify funds transferred correctly
-        assertEq(
-            clientAfter.funds,
-            clientBefore.funds - paymentAmount,
-            "Client balance incorrect"
-        );
-        assertEq(
-            recipientAfter.funds,
-            recipientBefore.funds + paymentAmount,
-            "Recipient balance incorrect"
-        );
-
-        // Verify remaining fixed lockup
-        Payments.RailView memory rail = payments.getRail(railId);
-        assertEq(
-            rail.lockupFixed,
-            expectedRemainingLockup,
-            "Fixed lockup not updated correctly"
-        );
-    }
-
     // Get current operator allowance and usage
     function getOperatorAllowanceAndUsage(
-        Payments payments,
-        address token,
         address client,
         address operator
     )
@@ -354,35 +526,37 @@ contract PaymentsTestHelpers is Test {
             uint256 lockupUsage
         )
     {
-        return payments.operatorApprovals(token, client, operator);
+        return payments.operatorApprovals(address(testToken), client, operator);
     }
 
-    // Execute one-time payment and verify
     function executeOneTimePayment(
-        Payments payments,
         uint256 railId,
-        address operator,
+        address operatorAddress,
         uint256 oneTimeAmount
     ) public {
         Payments.RailView memory railBefore = payments.getRail(railId);
-        address token = railBefore.token;
-        address client = railBefore.from;
-        address recipient = railBefore.to;
+        address railClient = railBefore.from;
+        address railRecipient = railBefore.to;
 
         // Get initial balances
-        Payments.Account memory clientBefore = getAccountData(
-            payments,
-            token,
-            client
-        );
-        Payments.Account memory recipientBefore = getAccountData(
-            payments,
-            token,
-            recipient
-        );
+        Payments.Account memory clientBefore = getAccountData(railClient);
+        Payments.Account memory recipientBefore = getAccountData(railRecipient);
+
+        // Get operator allowance and usage before payment
+        (
+            ,
+            ,
+            uint256 lockupAllowanceBefore,
+            ,
+            uint256 lockupUsageBefore
+        ) = payments.operatorApprovals(
+                address(testToken),
+                railClient,
+                operatorAddress
+            );
 
         // Make one-time payment
-        vm.startPrank(operator);
+        vm.startPrank(operatorAddress);
         payments.modifyRailPayment(
             railId,
             railBefore.paymentRate,
@@ -391,16 +565,8 @@ contract PaymentsTestHelpers is Test {
         vm.stopPrank();
 
         // Verify balance changes
-        Payments.Account memory clientAfter = getAccountData(
-            payments,
-            token,
-            client
-        );
-        Payments.Account memory recipientAfter = getAccountData(
-            payments,
-            token,
-            recipient
-        );
+        Payments.Account memory clientAfter = getAccountData(railClient);
+        Payments.Account memory recipientAfter = getAccountData(railRecipient);
 
         assertEq(
             clientAfter.funds,
@@ -427,6 +593,31 @@ contract PaymentsTestHelpers is Test {
             clientAfter.lockupCurrent,
             clientBefore.lockupCurrent - oneTimeAmount,
             "Client lockup not reduced correctly after one-time payment"
+        );
+
+        // Verify operator lockup allowance and usage are both reduced
+        (
+            ,
+            ,
+            uint256 lockupAllowanceAfter,
+            ,
+            uint256 lockupUsageAfter
+        ) = payments.operatorApprovals(
+                address(testToken),
+                railClient,
+                operatorAddress
+            );
+
+        assertEq(
+            lockupAllowanceBefore - oneTimeAmount,
+            lockupAllowanceAfter,
+            "Operator lockup allowance not reduced correctly after one-time payment"
+        );
+
+        assertEq(
+            lockupUsageBefore - oneTimeAmount,
+            lockupUsageAfter,
+            "Operator lockup usage not reduced correctly after one-time payment"
         );
     }
 }

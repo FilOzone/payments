@@ -20,56 +20,7 @@ contract RailSettlementHelpers is Test {
         string note;
     }
 
-    function createRailWithArbiter(
-        Payments payments,
-        address token,
-        address from,
-        address to,
-        address operator,
-        address arbiter
-    ) public returns (uint256) {
-        require(
-            arbiter != address(0),
-            "RailSettlementHelpers: arbiter cannot be zero address"
-        );
-        vm.startPrank(operator);
-        uint256 railId = payments.createRail(token, from, to, arbiter);
-        vm.stopPrank();
-        return railId;
-    }
-
-    function setupRailWithArbiter(
-        Payments payments,
-        address token,
-        address from,
-        address to,
-        address operator,
-        address arbiter,
-        uint256 paymentRate,
-        uint256 lockupPeriod,
-        uint256 lockupFixed
-    ) public returns (uint256) {
-        require(arbiter != address(0), "Arbiter address cannot be zero");
-        uint256 railId = createRailWithArbiter(
-            payments,
-            token,
-            from,
-            to,
-            operator,
-            arbiter
-        );
-
-        vm.startPrank(operator);
-        payments.modifyRailPayment(railId, paymentRate, 0);
-        payments.modifyRailLockup(railId, lockupPeriod, lockupFixed);
-        vm.stopPrank();
-
-        return railId;
-    }
-
     function setupRailWithArbitrerAndRateChangeQueue(
-        Payments payments,
-        address token,
         address from,
         address to,
         address operator,
@@ -82,32 +33,50 @@ contract RailSettlementHelpers is Test {
             arbiter != address(0),
             "RailSettlementHelpers: arbiter cannot be zero address"
         );
-        // Initial setup with first rate
-        uint256 railId = setupRailWithArbiter(
-            payments,
-            token,
+
+        // Setup operator approval with sufficient allowances
+        uint256 maxRate = 0;
+        for (uint256 i = 0; i < rates.length; i++) {
+            if (rates[i] > maxRate) {
+                maxRate = rates[i];
+            }
+        }
+
+        // Calculate total lockup needed
+        uint256 totalLockupAllowance = lockupFixed + (maxRate * lockupPeriod);
+
+        // Setup operator approval with the necessary allowances
+        baseHelper.setupOperatorApproval(
+            from,
+            operator,
+            maxRate, // Rate allowance
+            totalLockupAllowance // Lockup allowance
+        );
+
+        // Create rail with parameters
+        uint256 railId = baseHelper.setupRailWithParameters(
             from,
             to,
             operator,
-            arbiter,
-            rates[0],
+            rates[0], // Initial rate
             lockupPeriod,
-            lockupFixed
+            lockupFixed,
+            arbiter
         );
 
         // Apply rate changes for the rest of the rates
         vm.startPrank(operator);
         for (uint256 i = 1; i < rates.length; i++) {
             // Each change will enqueue the previous rate
-            payments.modifyRailPayment(railId, rates[i], 0);
+            baseHelper.payments().modifyRailPayment(railId, rates[i], 0);
 
             // Advance one block to ensure the changes are at different epochs
-            vm.roll(block.number + 1);
+            baseHelper.advanceBlocks(1);
         }
         vm.stopPrank();
 
         // Verify the rate change queue length
-        Payments.RailView memory rail = payments.getRail(railId);
+        Payments.RailView memory rail = baseHelper.payments().getRail(railId);
         assertEq(
             rail.rateChangeQueueLength,
             rates.length - 1,
@@ -118,28 +87,25 @@ contract RailSettlementHelpers is Test {
     }
 
     function createInDebtRail(
-        Payments payments,
-        address token,
         address from,
         address to,
         address operator,
         uint256 paymentRate,
         uint256 lockupPeriod,
-        uint256 fundAmount
+        uint256 fundAmount,
+        uint256 fixedLockup
     ) public returns (uint256) {
-        // Create deposit with limited funds
-        baseHelper.makeDeposit(payments, token, from, from, fundAmount);
+        baseHelper.makeDeposit(from, from, fundAmount);
 
         // Create a rail with specified parameters
         uint256 railId = baseHelper.setupRailWithParameters(
-            payments,
-            token,
             from,
             to,
             operator,
             paymentRate,
             lockupPeriod,
-            0 // No fixed lockup
+            fixedLockup,
+            address(0)
         );
 
         // Advance blocks past the lockup period to force the rail into debt
@@ -155,20 +121,27 @@ contract RailSettlementHelpers is Test {
     }
 
     function settleRailAndVerify(
-        Payments payments,
         uint256 railId,
         uint256 untilEpoch,
         uint256 expectedAmount,
         uint256 expectedUpto
     ) public returns (SettlementResult memory result) {
+        // Get the rail details to identify payer and payee
+        Payments.RailView memory rail = baseHelper.payments().getRail(railId);
+        address payer = rail.from;
+        address payee = rail.to;
+
+        // Get balances before settlement
+        Payments.Account memory payerBefore = baseHelper.getAccountData(payer);
+        Payments.Account memory payeeBefore = baseHelper.getAccountData(payee);
+
         uint256 settlementAmount;
         uint256 settledUpto;
         string memory note;
 
-        (settlementAmount, settledUpto, note) = payments.settleRail(
-            railId,
-            untilEpoch
-        );
+        (settlementAmount, settledUpto, note) = baseHelper
+            .payments()
+            .settleRail(railId, untilEpoch);
 
         // Verify results
         assertEq(
@@ -182,186 +155,59 @@ contract RailSettlementHelpers is Test {
             "Settled upto doesn't match expected"
         );
 
+        // Verify payer and payee balance changes
+        Payments.Account memory payerAfter = baseHelper.getAccountData(payer);
+        Payments.Account memory payeeAfter = baseHelper.getAccountData(payee);
+
+        assertEq(
+            payerBefore.funds - payerAfter.funds,
+            settlementAmount,
+            "Payer's balance reduction doesn't match settlement amount"
+        );
+        assertEq(
+            payeeAfter.funds - payeeBefore.funds,
+            settlementAmount,
+            "Payee's balance increase doesn't match settlement amount"
+        );
+
+        assertEq(rail.settledUpTo, expectedUpto, "Rail settled upto incorrect");
+
         return SettlementResult(settlementAmount, settledUpto, note);
     }
 
-    function verifyRailSettlementState(
-        Payments payments,
-        uint256 railId,
-        uint256 expectedSettledUpto
-    ) public view {
-        Payments.RailView memory rail = payments.getRail(railId);
-        assertEq(
-            rail.settledUpTo,
-            expectedSettledUpto,
-            "Rail settled upto incorrect"
-        );
-    }
-
-    function verifySettlementBalances(
-        Payments payments,
-        address token,
-        address from,
-        address to,
-        uint256 settlementAmount,
-        uint256 originalFromBalance,
-        uint256 originalToBalance
-    ) public view {
-        Payments.Account memory fromAccount = baseHelper.getAccountData(
-            payments,
-            token,
-            from
-        );
-        Payments.Account memory toAccount = baseHelper.getAccountData(
-            payments,
-            token,
-            to
-        );
-
-        assertEq(
-            fromAccount.funds,
-            originalFromBalance - settlementAmount,
-            "From account balance incorrect after settlement"
-        );
-
-        assertEq(
-            toAccount.funds,
-            originalToBalance + settlementAmount,
-            "To account balance incorrect after settlement"
-        );
-    }
-
-    function settleRailInDebt(
-        Payments payments,
-        uint256 railId,
-        address client,
-        address recipient,
-        address token,
-        uint256 rate,
-        uint256 // lockupPeriod - unused but kept for interface compatibility
-    ) public returns (uint256 settledUpto) {
-        // Record starting balances
-        Payments.Account memory clientBefore = baseHelper.getAccountData(
-            payments,
-            token,
-            client
-        );
-
-        Payments.Account memory recipientBefore = baseHelper.getAccountData(
-            payments,
-            token,
-            recipient
-        );
-
-        uint256 settledAmount;
-        string memory note;
-
-        // Try to settle up to current block (should be limited by available funds)
-        vm.prank(client);
-        (settledAmount, settledUpto, note) = payments.settleRail(
-            railId,
-            block.number
-        );
-
-        // Get rail details after settlement attempt
-        Payments.RailView memory rail;
-        try payments.getRail(railId) returns (
-            Payments.RailView memory railView
-        ) {
-            rail = railView;
-        } catch {
-            // If rail doesn't exist anymore, just return the settled epoch
-            return settledUpto;
-        }
-
-        // Just verify that settlement occurred as expected
-        // We don't assume any specific amount because other rails might affect the available funds
-        if (settledAmount > 0) {
-            assertEq(
-                settledAmount % rate,
-                0,
-                "Settlement amount should be a multiple of the rate"
-            );
-        }
-
-        // Verify rail state reflects the partial settlement
-        verifyRailSettlementState(payments, railId, settledUpto);
-
-        // Verify balance changes
-        verifySettlementBalances(
-            payments,
-            token,
-            client,
-            recipient,
-            settledAmount,
-            clientBefore.funds,
-            recipientBefore.funds
-        );
-
-        return settledUpto;
-    }
-
     function terminateAndSettleRail(
-        Payments payments,
         uint256 railId,
-        address client,
-        address operator,
-        address recipient,
-        address token
-    ) public returns (uint256 settledAmount, uint256 settledUpto) {
-        // Debug log client account before terminating
-        Payments.Account memory clientBeforeTermination = baseHelper.getAccountData(
-            payments,
-            token,
-            client
-        );
-        console.log("Rail client lockupLastSettledAt right inside terminateAndSettleRail:", clientBeforeTermination.lockupLastSettledAt);
-        
+        uint256 expectedAmount,
+        uint256 expectedUpto
+    ) public returns (SettlementResult memory result) {
+        // Get rail details to extract client and operator addresses
+        Payments.RailView memory rail = baseHelper.payments().getRail(railId);
+        address client = rail.from;
+        address operator = rail.operator;
+
         // Terminate the rail as operator
         vm.prank(operator);
-        payments.terminateRail(railId);
+        baseHelper.payments().terminateRail(railId);
 
-        // Log block number before settlement
-        console.log("Current block number:", block.number);
-
-        // Get rail details after termination
-        Payments.RailView memory rail = payments.getRail(railId);
-        console.log("Rail end epoch after termination:", rail.endEpoch);
-
-        // Record balances before final settlement
-        Payments.Account memory clientBefore = baseHelper.getAccountData(
-            payments,
-            token,
+        // Verify rail was properly terminated
+        rail = baseHelper.payments().getRail(railId);
+        Payments.Account memory clientAccount = baseHelper.getAccountData(
             client
         );
-
-        Payments.Account memory recipientBefore = baseHelper.getAccountData(
-            payments,
-            token,
-            recipient
+        assertTrue(rail.endEpoch > 0, "Rail should be terminated");
+        assertEq(
+            rail.endEpoch,
+            clientAccount.lockupLastSettledAt + rail.lockupPeriod,
+            "Rail end epoch should be account lockup last settled at + rail lockup period"
         );
 
-        string memory note;
-
-        // Settle rail after termination
-        vm.prank(client);
-        (settledAmount, settledUpto, note) = payments.settleRail(
-            railId,
-            block.number
-        );
-
-        // Verify balance changes after termination settlement
-        verifySettlementBalances(
-            payments,
-            token,
-            client,
-            recipient,
-            settledAmount,
-            clientBefore.funds,
-            recipientBefore.funds
-        );
-
-        return (settledAmount, settledUpto);
+        return
+            settleRailAndVerify(
+                railId,
+                block.number,
+                expectedAmount,
+                expectedUpto
+            );
     }
 
     function modifyRailSettingsAndVerify(
@@ -373,6 +219,22 @@ contract RailSettlementHelpers is Test {
         uint256 newFixedLockup
     ) public {
         Payments.RailView memory railBefore = payments.getRail(railId);
+        address client = railBefore.from;
+
+        // Get operator allowance usage before modifications
+        (, , , uint256 rateUsageBefore, uint256 lockupUsageBefore) = payments
+            .operatorApprovals(
+                address(baseHelper.testToken()),
+                client,
+                operator
+            );
+
+        // Calculate current lockup total
+        uint256 oldLockupTotal = railBefore.lockupFixed +
+            (railBefore.paymentRate * railBefore.lockupPeriod);
+
+        // Calculate new lockup total
+        uint256 newLockupTotal = newFixedLockup + (newRate * newLockupPeriod);
 
         // Modify rail settings
         vm.startPrank(operator);
@@ -412,5 +274,61 @@ contract RailSettlementHelpers is Test {
             newFixedLockup,
             "Rail fixed lockup not updated correctly"
         );
+
+        // Get operator allowance usage after modifications
+        (, , , uint256 rateUsageAfter, uint256 lockupUsageAfter) = payments
+            .operatorApprovals(
+                address(baseHelper.testToken()),
+                client,
+                operator
+            );
+
+        // Verify rate usage changes correctly
+        if (newRate > railBefore.paymentRate) {
+            // Rate increased
+            assertEq(
+                rateUsageAfter,
+                rateUsageBefore + (newRate - railBefore.paymentRate),
+                "Rate usage not increased correctly after rate increase"
+            );
+        } else if (newRate < railBefore.paymentRate) {
+            // Rate decreased
+            assertEq(
+                rateUsageBefore,
+                rateUsageAfter + (railBefore.paymentRate - newRate),
+                "Rate usage not decreased correctly after rate decrease"
+            );
+        } else {
+            // Rate unchanged
+            assertEq(
+                rateUsageBefore,
+                rateUsageAfter,
+                "Rate usage changed unexpectedly when rate was not modified"
+            );
+        }
+
+        // Verify lockup usage changes correctly
+        if (newLockupTotal > oldLockupTotal) {
+            // Lockup increased
+            assertEq(
+                lockupUsageAfter,
+                lockupUsageBefore + (newLockupTotal - oldLockupTotal),
+                "Lockup usage not increased correctly after lockup increase"
+            );
+        } else if (newLockupTotal < oldLockupTotal) {
+            // Lockup decreased
+            assertEq(
+                lockupUsageBefore,
+                lockupUsageAfter + (oldLockupTotal - newLockupTotal),
+                "Lockup usage not decreased correctly after lockup decrease"
+            );
+        } else {
+            // Lockup unchanged
+            assertEq(
+                lockupUsageBefore,
+                lockupUsageAfter,
+                "Lockup usage changed unexpectedly when lockup was not modified"
+            );
+        }
     }
 }

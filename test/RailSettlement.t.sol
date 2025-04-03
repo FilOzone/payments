@@ -78,61 +78,27 @@ contract RailSettlementTest is Test, BaseTestHelper {
         helper.advanceBlocks(7);
         
         // With 200 ether deposit and 150 ether locked, we can only pay for 1 epoch (50 ether)
-        // Get balances before settlement
-        Payments.Account memory userBefore = helper.getAccountData(USER1);
-        Payments.Account memory recipientBefore = helper.getAccountData(USER2);
-        
-        // Settle rail
-        vm.prank(USER1);
-        (uint256 settledAmount, uint256 settledUpto,) = payments.settleRail(railId, block.number);
-        
-        // Verification: With 200 ether deposit and 150 ether locked, the rail can only settle 1 epoch beyond initial
         uint256 expectedAmount = 50 ether;
         uint256 expectedEpoch = 2; // Initial epoch (1) + 1 epoch
         
-        // Verify results
-        assertEq(settledAmount, expectedAmount, "First settlement amount incorrect");
-        assertEq(settledUpto, expectedEpoch, "First settled up to incorrect");
+        // First settlement
+        vm.prank(USER1);
+        settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, expectedEpoch);
         
-        // Verify balances
-        Payments.Account memory userAfter = helper.getAccountData(USER1);
-        Payments.Account memory recipientAfter = helper.getAccountData(USER2);
-        
-        assertEq(userBefore.funds - userAfter.funds, settledAmount, "User funds not reduced correctly");
-        assertEq(recipientAfter.funds - recipientBefore.funds, settledAmount, "Recipient funds not increased correctly");
-
         // Settle again - should be a no-op since we're already settled to the expected epoch
         vm.prank(USER1);
-        (settledAmount, settledUpto,) = payments.settleRail(railId, block.number);
+        settlementHelper.settleRailAndVerify(railId, block.number, 0, expectedEpoch);
         
-        assertEq(settledAmount, 0, "Second settlement amount should be 0");
-        assertEq(settledUpto, expectedEpoch, "Second settled up to should not change");
-
         // Add more funds and settle again
         uint256 additionalDeposit = 300 ether;
         helper.makeDeposit(USER1, USER1, additionalDeposit);
-
-        // Get balances before third settlement
-        userBefore = helper.getAccountData(USER1);
-        recipientBefore = helper.getAccountData(USER2);
         
         // Should be able to settle the remaining 6 epochs
         uint256 expectedAmount2 = rate * 6; // 6 more epochs * 50 ether
         
-        // Settle rail again
+        // Third settlement
         vm.prank(USER1);
-        (settledAmount, settledUpto,) = payments.settleRail(railId, block.number);
-        
-        // Verify results
-        assertEq(settledAmount, expectedAmount2, "Third settlement amount incorrect");
-        assertEq(settledUpto, block.number, "Third settled up to incorrect");
-        
-        // Verify balances again
-        userAfter = helper.getAccountData(USER1);
-        recipientAfter = helper.getAccountData(USER2);
-        
-        assertEq(userBefore.funds - userAfter.funds, expectedAmount2, "User funds not reduced correctly");
-        assertEq(recipientAfter.funds - recipientBefore.funds, expectedAmount2, "Recipient funds not increased correctly");
+        settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount2, block.number);
     }
 
     //--------------------------------
@@ -163,12 +129,11 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Settle with arbitration
         vm.prank(USER1);
-        (uint256 settledAmount, uint256 settledUpto, string memory note) = 
-            payments.settleRail(railId, block.number);
-
-        assertEq(settledAmount, expectedAmount, "Arbiter should approve full amount");
-        assertEq(settledUpto, block.number, "Arbiter should approve full duration");
-        assertEq(note, "Standard approved payment", "Arbiter note should match");
+        RailSettlementHelpers.SettlementResult memory result = 
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
+        
+        // Verify arbiter note
+        assertEq(result.note, "Standard approved payment", "Arbiter note should match");
     }
 
     function testArbitrationWithReducedAmount() public {
@@ -196,12 +161,46 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Settle with arbitration
         vm.prank(USER1);
-        (uint256 settledAmount, uint256 settledUpto, string memory note) = 
-            payments.settleRail(railId, block.number);
+        RailSettlementHelpers.SettlementResult memory result = 
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
+        
+        // Verify arbiter note
+        assertEq(result.note, "Arbiter reduced payment amount", "Arbiter note should match");
+    }
 
-        assertEq(settledAmount, expectedAmount, "Amount should be reduced by arbiter");
-        assertEq(settledUpto, block.number, "Settlement should reach current block");
-        assertEq(note, "Arbiter reduced payment amount", "Arbiter note should match");
+    function testArbitrationWithReducedDuration() public {
+        // Deploy an arbiter that reduces settlement duration
+        MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.REDUCE_DURATION);
+        arbiter.configure(60); // 60% of the original duration
+
+        // Create a rail with the arbiter
+        uint256 rate = 10 ether;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            rate,
+            10, // lockupPeriod
+            0, // No fixed lockup
+            address(arbiter) // Reduced duration arbiter
+        );
+
+        // Advance several blocks
+        uint256 advanceBlocks = 5;
+        helper.advanceBlocks(advanceBlocks);
+
+        // Calculate expected settlement duration (60% of 5 blocks)
+        uint256 expectedDuration = (advanceBlocks * 60) / 100;
+        uint256 expectedSettledUpto = block.number - advanceBlocks + expectedDuration;
+        uint256 expectedAmount = rate * expectedDuration; // expectedDuration blocks * 10 ether
+
+        // Settle with arbitration
+        vm.prank(USER1);
+        RailSettlementHelpers.SettlementResult memory result = 
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, expectedSettledUpto);
+        
+        // Verify arbiter note
+        assertEq(result.note, "Arbiter reduced settlement duration", "Arbiter note should match");
     }
 
     function testMaliciousArbiterHandling() public {
@@ -264,26 +263,11 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Advance several blocks
         helper.advanceBlocks(3);
 
-        // Get balances before first settlement
-        Payments.Account memory userBefore = helper.getAccountData(USER1);
-        Payments.Account memory recipientBefore = helper.getAccountData(USER2);
-        
-        // Settle rail
-        vm.prank(USER1);
-        (uint256 settledAmount, uint256 settledUpto,) = payments.settleRail(railId, block.number);
-        
-        // Verify first settlement
+        // First settlement
         uint256 expectedAmount1 = rate * 3; // 3 blocks * 10 ether
-        assertEq(settledAmount, expectedAmount1, "First settlement amount incorrect");
-        assertEq(settledUpto, block.number, "First settled up to incorrect");
+        vm.prank(USER1);
+        settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount1, block.number);
         
-        // Verify balances
-        Payments.Account memory userAfter = helper.getAccountData(USER1);
-        Payments.Account memory recipientAfter = helper.getAccountData(USER2);
-        
-        assertEq(userBefore.funds - userAfter.funds, settledAmount, "User funds not reduced correctly");
-        assertEq(recipientAfter.funds - recipientBefore.funds, settledAmount, "Recipient funds not increased correctly");
-
         // Terminate the rail
         vm.prank(OPERATOR);
         payments.terminateRail(railId);
@@ -301,25 +285,26 @@ contract RailSettlementTest is Test, BaseTestHelper {
         helper.advanceBlocks(10);
 
         // Get balances before final settlement
-        userBefore = helper.getAccountData(USER1);
-        recipientBefore = helper.getAccountData(USER2);
-        
-        // Final settlement after termination
+        Payments.Account memory userBefore = helper.getAccountData(USER1);
+        Payments.Account memory recipientBefore = helper.getAccountData(USER2);
+
+        // Final settlement after termination 
         vm.prank(USER1);
-        (settledAmount, settledUpto,) = payments.settleRail(railId, block.number);
+        (uint256 settledAmount, uint256 settledUpto,) = 
+            payments.settleRail(railId, block.number);
         
         // Should settle up to endEpoch, which is lockupPeriod blocks after the last settlement
         uint256 expectedAmount2 = rate * lockupPeriod; // lockupPeriod = 5 blocks
         assertEq(settledAmount, expectedAmount2, "Final settlement amount incorrect");
         assertEq(settledUpto, rail.endEpoch, "Final settled up to incorrect");
-        
-        // Verify balances again
-        userAfter = helper.getAccountData(USER1);
-        recipientAfter = helper.getAccountData(USER2);
+
+        // Get balances after settlement
+        Payments.Account memory userAfter = helper.getAccountData(USER1);
+        Payments.Account memory recipientAfter = helper.getAccountData(USER2);
         
         assertEq(userBefore.funds - userAfter.funds, expectedAmount2, "User funds not reduced correctly in final settlement");
         assertEq(recipientAfter.funds - recipientBefore.funds, expectedAmount2, "Recipient funds not increased correctly in final settlement");
-
+        
         // Verify account lockup is cleared after full settlement
         assertEq(userAfter.lockupCurrent, 0, "Account lockup should be cleared after full rail settlement");
         assertEq(userAfter.lockupRate, 0, "Account lockup rate should be zero after full rail settlement");
@@ -340,15 +325,14 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Settle immediately without advancing blocks - should be a no-op
         vm.prank(USER1);
-        (uint256 settledAmount, uint256 settledUpto, string memory note) = 
-            payments.settleRail(railId, block.number);
+        RailSettlementHelpers.SettlementResult memory result = 
+            settlementHelper.settleRailAndVerify(railId, block.number, 0, block.number);
 
-        // Verify no settlement occurred
-        assertEq(settledAmount, 0, "Settlement amount should be zero");
+        // Verify the note indicates already settled
         assertTrue(
-            bytes(note).length > 0 &&
+            bytes(result.note).length > 0 &&
                 stringsEqual(
-                    note,
+                    result.note,
                     string.concat(
                         "already settled up to epoch ",
                         vm.toString(block.number)

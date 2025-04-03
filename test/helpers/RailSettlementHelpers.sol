@@ -9,9 +9,15 @@ import {console} from "forge-std/console.sol";
 
 contract RailSettlementHelpers is Test {
     PaymentsTestHelpers public baseHelper;
-
+    Payments public payments;
+    
     constructor() {
         baseHelper = new PaymentsTestHelpers();
+    }
+    
+    function initialize(Payments _payments, PaymentsTestHelpers _baseHelper) public {
+        payments = _payments;
+        baseHelper = _baseHelper;
     }
 
     struct SettlementResult {
@@ -68,7 +74,7 @@ contract RailSettlementHelpers is Test {
         vm.startPrank(operator);
         for (uint256 i = 1; i < rates.length; i++) {
             // Each change will enqueue the previous rate
-            baseHelper.payments().modifyRailPayment(railId, rates[i], 0);
+            payments.modifyRailPayment(railId, rates[i], 0);
 
             // Advance one block to ensure the changes are at different epochs
             baseHelper.advanceBlocks(1);
@@ -76,7 +82,7 @@ contract RailSettlementHelpers is Test {
         vm.stopPrank();
 
         // Verify the rate change queue length
-        Payments.RailView memory rail = baseHelper.payments().getRail(railId);
+        Payments.RailView memory rail = payments.getRail(railId);
         assertEq(
             rail.rateChangeQueueLength,
             rates.length - 1,
@@ -126,22 +132,31 @@ contract RailSettlementHelpers is Test {
         uint256 expectedAmount,
         uint256 expectedUpto
     ) public returns (SettlementResult memory result) {
+        console.log("settleRailAndVerify");
         // Get the rail details to identify payer and payee
-        Payments.RailView memory rail = baseHelper.payments().getRail(railId);
+        Payments.RailView memory rail = payments.getRail(railId);
         address payer = rail.from;
         address payee = rail.to;
 
         // Get balances before settlement
-        Payments.Account memory payerBefore = baseHelper.getAccountData(payer);
-        Payments.Account memory payeeBefore = baseHelper.getAccountData(payee);
+        Payments.Account memory payerAccountBefore = baseHelper.getAccountData(payer);
+        Payments.Account memory payeeAccountBefore = baseHelper.getAccountData(payee);
+
+        console.log("payerFundsBefore", payerAccountBefore.funds);
+        console.log("payerLockupBefore", payerAccountBefore.lockupCurrent);
+        console.log("payeeFundsBefore", payeeAccountBefore.funds);
+        console.log("payeeLockupBefore", payeeAccountBefore.lockupCurrent);
 
         uint256 settlementAmount;
         uint256 settledUpto;
         string memory note;
 
-        (settlementAmount, settledUpto, note) = baseHelper
-            .payments()
+        (settlementAmount, settledUpto, note) = payments
             .settleRail(railId, untilEpoch);
+
+        console.log("settlementAmount", settlementAmount);
+        console.log("settledUpto", settledUpto);
+        console.log("note", note);
 
         // Verify results
         assertEq(
@@ -156,20 +171,23 @@ contract RailSettlementHelpers is Test {
         );
 
         // Verify payer and payee balance changes
-        Payments.Account memory payerAfter = baseHelper.getAccountData(payer);
-        Payments.Account memory payeeAfter = baseHelper.getAccountData(payee);
+        Payments.Account memory payerAccountAfter = baseHelper.getAccountData(payer);
+        Payments.Account memory payeeAccountAfter = baseHelper.getAccountData(payee);
+        console.log("payerFundsAfter", payerAccountAfter.funds);
+        console.log("payeeFundsAfter", payeeAccountAfter.funds);
 
         assertEq(
-            payerBefore.funds - payerAfter.funds,
+            payerAccountBefore.funds - payerAccountAfter.funds,
             settlementAmount,
             "Payer's balance reduction doesn't match settlement amount"
         );
         assertEq(
-            payeeAfter.funds - payeeBefore.funds,
+            payeeAccountAfter.funds - payeeAccountBefore.funds,
             settlementAmount,
             "Payee's balance increase doesn't match settlement amount"
         );
 
+        rail = payments.getRail(railId);
         assertEq(rail.settledUpTo, expectedUpto, "Rail settled upto incorrect");
 
         return SettlementResult(settlementAmount, settledUpto, note);
@@ -181,23 +199,21 @@ contract RailSettlementHelpers is Test {
         uint256 expectedUpto
     ) public returns (SettlementResult memory result) {
         // Get rail details to extract client and operator addresses
-        Payments.RailView memory rail = baseHelper.payments().getRail(railId);
+        Payments.RailView memory rail = payments.getRail(railId);
         address client = rail.from;
         address operator = rail.operator;
 
         // Terminate the rail as operator
         vm.prank(operator);
-        baseHelper.payments().terminateRail(railId);
+        payments.terminateRail(railId);
 
         // Verify rail was properly terminated
-        rail = baseHelper.payments().getRail(railId);
-        Payments.Account memory clientAccount = baseHelper.getAccountData(
-            client
-        );
+        rail = payments.getRail(railId);
+        (,,, uint256 lockupLastSettledAt) = payments.accounts(address(baseHelper.testToken()), client);
         assertTrue(rail.endEpoch > 0, "Rail should be terminated");
         assertEq(
             rail.endEpoch,
-            clientAccount.lockupLastSettledAt + rail.lockupPeriod,
+            lockupLastSettledAt + rail.lockupPeriod,
             "Rail end epoch should be account lockup last settled at + rail lockup period"
         );
 
@@ -211,18 +227,18 @@ contract RailSettlementHelpers is Test {
     }
 
     function modifyRailSettingsAndVerify(
-        Payments payments,
+        Payments paymentsContract,
         uint256 railId,
         address operator,
         uint256 newRate,
         uint256 newLockupPeriod,
         uint256 newFixedLockup
     ) public {
-        Payments.RailView memory railBefore = payments.getRail(railId);
+        Payments.RailView memory railBefore = paymentsContract.getRail(railId);
         address client = railBefore.from;
 
         // Get operator allowance usage before modifications
-        (, , , uint256 rateUsageBefore, uint256 lockupUsageBefore) = payments
+        (, , , uint256 rateUsageBefore, uint256 lockupUsageBefore) = paymentsContract
             .operatorApprovals(
                 address(baseHelper.testToken()),
                 client,
@@ -241,7 +257,7 @@ contract RailSettlementHelpers is Test {
 
         // First modify rate if needed
         if (newRate != railBefore.paymentRate) {
-            payments.modifyRailPayment(railId, newRate, 0);
+            paymentsContract.modifyRailPayment(railId, newRate, 0);
         }
 
         // Then modify lockup parameters
@@ -249,13 +265,13 @@ contract RailSettlementHelpers is Test {
             newLockupPeriod != railBefore.lockupPeriod ||
             newFixedLockup != railBefore.lockupFixed
         ) {
-            payments.modifyRailLockup(railId, newLockupPeriod, newFixedLockup);
+            paymentsContract.modifyRailLockup(railId, newLockupPeriod, newFixedLockup);
         }
 
         vm.stopPrank();
 
         // Verify changes
-        Payments.RailView memory railAfter = payments.getRail(railId);
+        Payments.RailView memory railAfter = paymentsContract.getRail(railId);
 
         assertEq(
             railAfter.paymentRate,
@@ -276,7 +292,7 @@ contract RailSettlementHelpers is Test {
         );
 
         // Get operator allowance usage after modifications
-        (, , , uint256 rateUsageAfter, uint256 lockupUsageAfter) = payments
+        (, , , uint256 rateUsageAfter, uint256 lockupUsageAfter) = paymentsContract
             .operatorApprovals(
                 address(baseHelper.testToken()),
                 client,

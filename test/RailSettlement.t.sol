@@ -13,6 +13,7 @@ import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
 
 contract RailSettlementTest is Test, BaseTestHelper {
     PaymentsTestHelpers helper;
+    RailSettlementHelpers settlementHelper;
     Payments payments;
     MockERC20 token;
 
@@ -24,6 +25,11 @@ contract RailSettlementTest is Test, BaseTestHelper {
         helper.setupStandardTestEnvironment();
         payments = helper.payments();
         token = MockERC20(address(helper.testToken()));
+        
+        // Create settlement helper with the helper that has the initialized payment contract
+        settlementHelper = new RailSettlementHelpers();
+        // Initialize the settlement helper with our Payments instance
+        settlementHelper.initialize(payments, helper);
         
         // Make deposits to test accounts for testing
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
@@ -51,26 +57,9 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Settle for the elapsed blocks
         uint256 expectedAmount = rate * 5; // 5 blocks * 5 ether
+        console.log("block.number", block.number);
 
-        // Get payment data before settlement
-        Payments.Account memory fromBefore = helper.getAccountData(USER1);
-        Payments.Account memory toBefore = helper.getAccountData(USER2);
-
-        // Settle rail
-        vm.prank(USER1);
-        (uint256 settledAmount, uint256 settledUpto,) = 
-            payments.settleRail(railId, block.number);
-
-        // Verify settlement amount
-        assertEq(settledAmount, expectedAmount, "Settlement amount incorrect");
-        assertEq(settledUpto, block.number, "Settled upto incorrect");
-
-        // Verify account balances changed correctly
-        Payments.Account memory fromAfter = helper.getAccountData(USER1);
-        Payments.Account memory toAfter = helper.getAccountData(USER2);
-
-        assertEq(fromBefore.funds - fromAfter.funds, settledAmount, "Payer balance not reduced correctly");
-        assertEq(toAfter.funds - toBefore.funds, settledAmount, "Recipient balance not increased correctly");
+        settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
     }
 
     function testSettleRailInDebt() public {
@@ -89,52 +78,61 @@ contract RailSettlementTest is Test, BaseTestHelper {
         helper.advanceBlocks(7);
         
         // With 200 ether deposit and 150 ether locked, we can only pay for 1 epoch (50 ether)
-        // Get payment data before settlement
-        Payments.Account memory fromBefore = helper.getAccountData(USER1);
-        Payments.Account memory toBefore = helper.getAccountData(USER2);
-
+        // Get balances before settlement
+        Payments.Account memory userBefore = helper.getAccountData(USER1);
+        Payments.Account memory recipientBefore = helper.getAccountData(USER2);
+        
         // Settle rail
         vm.prank(USER1);
-        (uint256 settledAmount, uint256 settledUpto,) = 
-            payments.settleRail(railId, block.number);
-
+        (uint256 settledAmount, uint256 settledUpto,) = payments.settleRail(railId, block.number);
+        
         // Verification: With 200 ether deposit and 150 ether locked, the rail can only settle 1 epoch beyond initial
         uint256 expectedAmount = 50 ether;
         uint256 expectedEpoch = 2; // Initial epoch (1) + 1 epoch
+        
+        // Verify results
+        assertEq(settledAmount, expectedAmount, "First settlement amount incorrect");
+        assertEq(settledUpto, expectedEpoch, "First settled up to incorrect");
+        
+        // Verify balances
+        Payments.Account memory userAfter = helper.getAccountData(USER1);
+        Payments.Account memory recipientAfter = helper.getAccountData(USER2);
+        
+        assertEq(userBefore.funds - userAfter.funds, settledAmount, "User funds not reduced correctly");
+        assertEq(recipientAfter.funds - recipientBefore.funds, settledAmount, "Recipient funds not increased correctly");
 
-        assertEq(settledAmount, expectedAmount, "Settlement amount incorrect");
-        assertEq(settledUpto, expectedEpoch, "Settled upto incorrect");
-
-        // Verify account balances changed correctly
-        Payments.Account memory fromAfter = helper.getAccountData(USER1);
-        Payments.Account memory toAfter = helper.getAccountData(USER2);
-
-        assertEq(fromBefore.funds - fromAfter.funds, settledAmount, "Payer balance not reduced correctly");
-        assertEq(toAfter.funds - toBefore.funds, settledAmount, "Recipient balance not increased correctly");
+        // Settle again - should be a no-op since we're already settled to the expected epoch
+        vm.prank(USER1);
+        (settledAmount, settledUpto,) = payments.settleRail(railId, block.number);
+        
+        assertEq(settledAmount, 0, "Second settlement amount should be 0");
+        assertEq(settledUpto, expectedEpoch, "Second settled up to should not change");
 
         // Add more funds and settle again
         uint256 additionalDeposit = 300 ether;
         helper.makeDeposit(USER1, USER1, additionalDeposit);
 
-        // Get balances before second settlement
-        fromBefore = helper.getAccountData(USER1);
-        toBefore = helper.getAccountData(USER2);
-
+        // Get balances before third settlement
+        userBefore = helper.getAccountData(USER1);
+        recipientBefore = helper.getAccountData(USER2);
+        
+        // Should be able to settle the remaining 6 epochs
+        uint256 expectedAmount2 = rate * 6; // 6 more epochs * 50 ether
+        
         // Settle rail again
         vm.prank(USER1);
         (settledAmount, settledUpto,) = payments.settleRail(railId, block.number);
-
-        // Should be able to settle the remaining 6 epochs
-        expectedAmount = rate * 6; // 6 more epochs * 50 ether
-        assertEq(settledAmount, expectedAmount, "Second settlement amount incorrect");
-        assertEq(settledUpto, block.number, "Second settled upto incorrect");
-
-        // Verify account balances changed correctly
-        fromAfter = helper.getAccountData(USER1);
-        toAfter = helper.getAccountData(USER2);
-
-        assertEq(fromBefore.funds - fromAfter.funds, settledAmount, "Second payer balance reduction incorrect");
-        assertEq(toAfter.funds - toBefore.funds, settledAmount, "Second recipient balance increase incorrect");
+        
+        // Verify results
+        assertEq(settledAmount, expectedAmount2, "Third settlement amount incorrect");
+        assertEq(settledUpto, block.number, "Third settled up to incorrect");
+        
+        // Verify balances again
+        userAfter = helper.getAccountData(USER1);
+        recipientAfter = helper.getAccountData(USER2);
+        
+        assertEq(userBefore.funds - userAfter.funds, expectedAmount2, "User funds not reduced correctly");
+        assertEq(recipientAfter.funds - recipientBefore.funds, expectedAmount2, "Recipient funds not increased correctly");
     }
 
     //--------------------------------
@@ -160,27 +158,17 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Advance several blocks
         helper.advanceBlocks(5);
 
-        // Get payment data before settlement
-        Payments.Account memory fromBefore = helper.getAccountData(USER1);
-        Payments.Account memory toBefore = helper.getAccountData(USER2);
+        // Verify standard arbiter approves full amount
+        uint256 expectedAmount = rate * 5; // 5 blocks * 5 ether
 
         // Settle with arbitration
         vm.prank(USER1);
         (uint256 settledAmount, uint256 settledUpto, string memory note) = 
             payments.settleRail(railId, block.number);
 
-        // Verify standard arbiter approves full amount
-        uint256 expectedAmount = rate * 5; // 5 blocks * 5 ether
         assertEq(settledAmount, expectedAmount, "Arbiter should approve full amount");
         assertEq(settledUpto, block.number, "Arbiter should approve full duration");
         assertEq(note, "Standard approved payment", "Arbiter note should match");
-
-        // Verify account balances changed correctly
-        Payments.Account memory fromAfter = helper.getAccountData(USER1);
-        Payments.Account memory toAfter = helper.getAccountData(USER2);
-
-        assertEq(fromBefore.funds - fromAfter.funds, settledAmount, "Payer balance not reduced correctly");
-        assertEq(toAfter.funds - toBefore.funds, settledAmount, "Recipient balance not increased correctly");
     }
 
     function testArbitrationWithReducedAmount() public {
@@ -203,27 +191,17 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Advance several blocks
         helper.advanceBlocks(5);
 
-        // Get payment data before settlement
-        Payments.Account memory fromBefore = helper.getAccountData(USER1);
-        Payments.Account memory toBefore = helper.getAccountData(USER2);
+        // Verify reduced amount (80% of original)
+        uint256 expectedAmount = (rate * 5 * 80) / 100; // 5 blocks * 10 ether * 80%
 
         // Settle with arbitration
         vm.prank(USER1);
         (uint256 settledAmount, uint256 settledUpto, string memory note) = 
             payments.settleRail(railId, block.number);
 
-        // Verify reduced amount (80% of original)
-        uint256 expectedAmount = (rate * 5 * 80) / 100; // 5 blocks * 10 ether * 80%
         assertEq(settledAmount, expectedAmount, "Amount should be reduced by arbiter");
         assertEq(settledUpto, block.number, "Settlement should reach current block");
         assertEq(note, "Arbiter reduced payment amount", "Arbiter note should match");
-
-        // Verify account balances changed correctly
-        Payments.Account memory fromAfter = helper.getAccountData(USER1);
-        Payments.Account memory toAfter = helper.getAccountData(USER2);
-
-        assertEq(fromBefore.funds - fromAfter.funds, settledAmount, "Payer balance not reduced correctly");
-        assertEq(toAfter.funds - toBefore.funds, settledAmount, "Recipient balance not increased correctly");
     }
 
     function testMaliciousArbiterHandling() public {
@@ -286,14 +264,25 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Advance several blocks
         helper.advanceBlocks(3);
 
-        // Settle rail to the current point
-        vm.prank(USER1);
-        (uint256 settledAmount1, uint256 settledUpto1,) = 
-            payments.settleRail(railId, block.number);
+        // Get balances before first settlement
+        Payments.Account memory userBefore = helper.getAccountData(USER1);
+        Payments.Account memory recipientBefore = helper.getAccountData(USER2);
         
+        // Settle rail
+        vm.prank(USER1);
+        (uint256 settledAmount, uint256 settledUpto,) = payments.settleRail(railId, block.number);
+        
+        // Verify first settlement
         uint256 expectedAmount1 = rate * 3; // 3 blocks * 10 ether
-        assertEq(settledAmount1, expectedAmount1, "First settlement amount incorrect");
-        assertEq(settledUpto1, block.number, "First settled upto incorrect");
+        assertEq(settledAmount, expectedAmount1, "First settlement amount incorrect");
+        assertEq(settledUpto, block.number, "First settled up to incorrect");
+        
+        // Verify balances
+        Payments.Account memory userAfter = helper.getAccountData(USER1);
+        Payments.Account memory recipientAfter = helper.getAccountData(USER2);
+        
+        assertEq(userBefore.funds - userAfter.funds, settledAmount, "User funds not reduced correctly");
+        assertEq(recipientAfter.funds - recipientBefore.funds, settledAmount, "Recipient funds not increased correctly");
 
         // Terminate the rail
         vm.prank(OPERATOR);
@@ -312,29 +301,28 @@ contract RailSettlementTest is Test, BaseTestHelper {
         helper.advanceBlocks(10);
 
         // Get balances before final settlement
-        Payments.Account memory fromBefore = helper.getAccountData(USER1);
-        Payments.Account memory toBefore = helper.getAccountData(USER2);
-
-        // Settle after termination - should be limited to the endEpoch
+        userBefore = helper.getAccountData(USER1);
+        recipientBefore = helper.getAccountData(USER2);
+        
+        // Final settlement after termination
         vm.prank(USER1);
-        (uint256 settledAmount2, uint256 settledUpto2,) = 
-            payments.settleRail(railId, block.number);
-
-        // Should settle up to endEpoch, which is 5 more blocks after the last settlement
-        uint256 expectedAmount2 = rate * 5; // lockupPeriod = 5 blocks
-        assertEq(settledAmount2, expectedAmount2, "Final settlement amount incorrect");
-        assertEq(settledUpto2, rail.endEpoch, "Final settled upto should match endEpoch");
-
-        // Verify account balances changed correctly
-        Payments.Account memory fromAfter = helper.getAccountData(USER1);
-        Payments.Account memory toAfter = helper.getAccountData(USER2);
-
-        assertEq(fromBefore.funds - fromAfter.funds, settledAmount2, "Payer balance not reduced correctly after termination");
-        assertEq(toAfter.funds - toBefore.funds, settledAmount2, "Recipient balance not increased correctly after termination");
+        (settledAmount, settledUpto,) = payments.settleRail(railId, block.number);
+        
+        // Should settle up to endEpoch, which is lockupPeriod blocks after the last settlement
+        uint256 expectedAmount2 = rate * lockupPeriod; // lockupPeriod = 5 blocks
+        assertEq(settledAmount, expectedAmount2, "Final settlement amount incorrect");
+        assertEq(settledUpto, rail.endEpoch, "Final settled up to incorrect");
+        
+        // Verify balances again
+        userAfter = helper.getAccountData(USER1);
+        recipientAfter = helper.getAccountData(USER2);
+        
+        assertEq(userBefore.funds - userAfter.funds, expectedAmount2, "User funds not reduced correctly in final settlement");
+        assertEq(recipientAfter.funds - recipientBefore.funds, expectedAmount2, "Recipient funds not increased correctly in final settlement");
 
         // Verify account lockup is cleared after full settlement
-        assertEq(fromAfter.lockupCurrent, 0, "Account lockup should be cleared after full rail settlement");
-        assertEq(fromAfter.lockupRate, 0, "Account lockup rate should be zero after full rail settlement");
+        assertEq(userAfter.lockupCurrent, 0, "Account lockup should be cleared after full rail settlement");
+        assertEq(userAfter.lockupRate, 0, "Account lockup rate should be zero after full rail settlement");
     }
 
     function testSettleAlreadyFullySettledRail() public {

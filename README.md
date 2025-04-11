@@ -2,6 +2,16 @@
 
 The FWS Payments contract enables ERC20 token payment flows through "rails" - automated payment channels between clients and recipients. The contract supports continuous payments, one-time transfers, and payment arbitration.
 
+- [Key Concepts](#key-concepts)
+- [Core Functions](#core-functions)
+  - [Account Management](#account-management)
+  - [Operator Management](#operator-management)
+  - [Rail Management](#rail-management)
+  - [Settlement](#settlement)
+  - [Arbitration](#arbitration)
+- [Worked Example](#worked-example)
+- [Emergency Scenarios](#emergency-scenarios)
+
 ## Key Concepts
 
 - **Account**: Represents a user's token balance and locked funds

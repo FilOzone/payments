@@ -191,3 +191,202 @@ The contract supports optional payment arbitration through the `IArbiter` interf
 1. During settlement, the arbiter contract is called
 2. The arbiter can adjust payment amounts or partially settle epochs
 3. This provides dispute resolution capabilities for complex payment arrangements
+
+## Worked Example
+
+This worked example demonstrates how users interact with the FWS Payments contract through a typical service deal lifecycle.
+
+### 1. Initial Funding
+
+A client first deposits tokens to fund their account in the payments contract:
+
+```solidity
+// 1. Client approves the Payments contract to spend tokens
+IERC20(tokenAddress).approve(paymentsContractAddress, 100 * 10**18); // 100 tokens
+
+// A client or anyone else can deposit to the client's account
+Payments(paymentsContractAddress).deposit(
+    tokenAddress,   // ERC20 token address
+    clientAddress,  // Recipient's address (the client)
+    100 * 10**18    // Amount to deposit (100 tokens)
+);
+```
+
+After this operation, the client's `Account.funds` is credited with 100 tokens, enabling them to use services within the FWS ecosystem.
+
+This operation _may_ be deferred until the funds are actually required, funding is always "on-demand".
+
+### 2. Operator Approval
+
+Before using a service, the client must approve the service's contract as an operator:
+
+```solidity
+// Client approves a service contract as an operator
+Payments(paymentsContractAddress).setOperatorApproval(
+    tokenAddress,           // ERC20 token address
+    serviceContractAddress, // Operator address (service contract)
+    true,                   // Approval status
+    5 * 10**18,             // Maximum rate (tokens per epoch) the operator can allocate
+    20 * 10**18             // Maximum lockup the operator can set
+);
+```
+
+This approval has two key components:
+
+- The `rateAllowance` (5 tokens/epoch) limits the total continuous payment rate across all rails created by this operator
+- The `lockupAllowance` (20 tokens) limits the total fixed amount the operator can lock up for one-time payments or escrow
+
+### 3. Deal Proposal (Rail Creation)
+
+When a client proposes a deal with a service provider, the service contract (acting as an operator) creates a payment rail:
+
+```solidity
+// Service contract creates a rail
+uint256 railId = Payments(paymentsContractAddress).createRail(
+    tokenAddress,     // Token used for payments
+    clientAddress,    // Payer (client)
+    serviceProvider,  // Payee (service provider)
+    arbiterAddress    // Optional arbiter (can be address(0) for no arbitration)
+);
+
+// Set up initial lockup for onboarding costs - for example, 10 tokens as fixed lockup
+Payments(paymentsContractAddress).modifyRailLockup(
+    railId,         // Rail ID
+    100,            // Lockup period (100 epochs)
+    10 * 10**18     // Fixed lockup amount (10 tokens for onboarding)
+);
+```
+
+At this point:
+
+- A rail is established between the client and service provider
+- The rail has a `fixedLockup` of 10 tokens and a `lockupPeriod` of 100 epochs
+- The payment `rate` is still 0 (service hasn't started yet)
+- The client's account lockup threshold is increased by 10 tokens
+
+### 4. Deal Acceptance and Service Start
+
+When the service provider accepts the deal:
+
+```solidity
+// Service contract (operator) increases the payment rate and makes a one-time payment
+Payments(paymentsContractAddress).modifyRailPayment(
+    railId,           // Rail ID
+    2 * 10**18,       // New payment rate (2 tokens per epoch)
+    3 * 10**18        // One-time onboarding payment (3 tokens)
+);
+```
+
+This operation:
+
+- Makes an immediate one-time payment of 3 tokens to the service provider, deducted from the rail's fixed lockup
+- Updates the client's `lockupCurrent` to include rate × `lockupPeriod`
+- The client's account now locks `2 × 100 + (10-3) = 207` tokens including the remaining fixed lockup, locking an additional 2 tokens every epoch
+
+### 5. Periodic Settlement
+
+Payment settlement can be triggered by any rail participant:
+
+```solidity
+// Settlement call - can be made by client, service provider, or operator
+(uint256 amount, uint256 settledEpoch, string memory note) = Payments(paymentsContractAddress).settleRail(
+    railId,        // Rail ID
+    block.number   // Settle up to current epoch
+);
+```
+
+This settlement:
+
+- Calculates amount owed based on rail's rate and time elapsed
+- Transfers tokens from client's account to service provider's account
+- If an arbiter is specified, it may modify the payment amount or limit settlement epochs
+- Records the epoch up to which the rail has been settled
+
+A rail may only be settled if either (a) the client's account is fully funded or (b) the rail is terminated (in which case the rail may be settled up to the rail's "end epoch").
+
+### 6. Deal Modification
+
+If service terms change during the deal:
+
+```solidity
+// Operator modifies payment parameters
+Payments(paymentsContractAddress).modifyRailPayment(
+    railId,           // Rail ID
+    4 * 10**18,       // Increased rate (4 tokens per epoch)
+    0                 // No one-time payment
+);
+
+// If lockup terms need changing
+Payments(paymentsContractAddress).modifyRailLockup(
+    railId,         // Rail ID
+    150,            // Extended lockup period (150 epochs)
+    15 * 10**18     // Increased fixed lockup (15 tokens)
+);
+```
+
+### 7. Deal Cancellation
+
+When a user cancels a deal, the service contract will modify the rail's payment to take that into account. In this case, the service contract sets the rail's payment rate to zero and pays a fixed termination fee out of the rail's "fixed" lockup.
+
+```solidity
+// Service contract reduces payment rate and possibly issues a termination payment
+Payments(paymentsContractAddress).modifyRailPayment(
+    railId,        // Rail ID
+    0,             // Zero out payment rate
+    5 * 10**18     // Termination fee (5 tokens)
+);
+```
+
+### 9. Final Settlement and Withdrawal
+
+After a terminated rail reaches its `endEpoch`, it can be fully settled to unlock all remaining funds.
+
+```solidity
+// Final settlement
+(uint256 amount, uint256 settledEpoch, string memory note) = Payments(paymentsContractAddress).settleRail(
+    railId,        // Rail ID
+    rails[railId].endEpoch // Settle up to end epoch
+);
+
+// Client withdraws remaining funds
+Payments(paymentsContractAddress).withdraw(
+    tokenAddress,    // Token address
+    remainingAmount  // Amount to withdraw
+);
+```
+
+## Emergency Scenarios
+
+If some component in the system (operator, arbiter, client, SP) misbehaves, all parties have escape hatches that allow them to walk away with predictable losses.
+
+### Reducing Operator Allowance
+
+At any time, the client can reduce the operator's allowance (e.g., to zero) and/or change whether or not the operator is allowed to create new rails. Such modifications won't affect existing rails, although the operator will not be able to increase the payment rates on any rails they manage until they're back under their limits.
+
+### Rail Termination (by client)
+
+If something goes wrong (e.g., the operator is buggy and is refusing to terminate deals, stop payment, etc.), the client may terminate the to prevent future payment beyond the rail's lockup period. The client must ensure that their account is fully funded before they can terminate any rails.
+
+```solidity
+// Client terminates the rail
+Payments(paymentsContractAddress).terminateRail(railId);
+```
+
+Termination:
+
+- Forcibly reduces the rail's payment rate to zero `lockupPeriod` epochs into the future.
+- Immediately stops locking new funds to the rail.
+- Causes any fixed funds locked to the rail to automatically unlock after the `lockupPeriod` elapses.
+
+### Rail Termination (by operator)
+
+At any time, even if the client's account isn't fully funded, the operator can terminate a rail. This will allow the recipient to settle any funds available in the rail to receive partial payment.
+
+### Rail Settlement Without Arbitration
+
+If an arbiter contract is malfunctioning, the _client_ may forcibly settle the rail the rail "in full" (skipping arbitration) to prevent the funds from getting stuck in the rail pending final arbitration. This can only be done after the rail has been terminated (either by the client or by the operator), and should be used as a last resort.
+
+```solidity
+// Emergency settlement for terminated rails with stuck arbitration
+(uint256 amount, uint256 settledEpoch, string memory note) = Payments(paymentsContractAddress).settleTerminatedRailWithoutArbitration(railId);
+```

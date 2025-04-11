@@ -224,11 +224,12 @@ contract Payments is
         settleAccountLockup(payer);
 
         // Verify full settlement if required
+        // TODO: give the user feedback on what they need to deposit in their account to complete the operation.
         require(
             !settleFull || isAccountLockupFullySettled(payer),
             isBefore
-                ? "account lockup not fully settled before function execution"
-                : "account lockup not fully settled after function execution"
+                ? "payers's account lockup target was not met as a precondition of the requested operation"
+                : "the requested operation would cause the payer's account lockup target to exceed the funds available in the account"
         );
 
         require(
@@ -292,8 +293,8 @@ contract Payments is
     /// @param railId The ID of the rail to terminate.
     /// @custom:constraint Caller must be a rail client or operator.
     /// @custom:constraint Rail must be active and not already terminated.
-    /// @custom:constraint If called by the client, the payer's account must be fully funded (lockup must be fully settled).
-    /// @custom:constraint If called by the operator, the payer's account lockup settlement is not checked.
+    /// @custom:constraint If called by the client, the payer's account must be fully funded.
+    /// @custom:constraint If called by the operator, the payer's funding status isn't checked.
     function terminateRail(
         uint256 railId
     )
@@ -451,7 +452,7 @@ contract Payments is
 
     /// @notice Modifies the fixed lockup and lockup period of a rail.
     /// - If the rail has already been terminated, the lockup period may not be altered and the fixed lockup may only be reduced.
-    /// - If the rail is active, the lockup may only be modified if the payer's account is fully funded and the payer's account must have enough funds to cover the new lockup.
+    /// - If the rail is active, the lockup may only be modified if the payer's account is fully funded and will remain fully funded after the operation.
     /// @param railId The ID of the rail to modify.
     /// @param period The new lockup period (in epochs/blocks).
     /// @param lockupFixed The new fixed lockup amount.
@@ -560,9 +561,8 @@ contract Payments is
     }
 
     /// @notice Modifies the payment rate and optionally makes a one-time payment.
-    /// - If the rail has already been terminated, one-time payments can be made but the rate may not be increased (only decreased).
-    /// - If the payer doesn't have enough funds in their account to settle the rail up to the current epoch, the rail's payment rate may not be changed at all (increased or decreased).
-    /// - If the payer's account isn't fully funded, the rail's payment rate may not be increased but it may be decreased.
+    /// - If the rail has already been terminated, one-time payments can be made and the rate may always be decreased (but never increased) regardless of the status of the payer's account.
+    /// - If the payer's account isn't fully funded and the rail is active (not terminated), the rail's payment rate may not be changed at all (increased or decreased).
     /// - Regardless of the payer's account status, one-time payments will always go through provided that the rail has sufficient fixed lockup to cover the payment.
     /// @param railId The ID of the rail to modify.
     /// @param newRate The new payment rate (per epoch). This new rate applies starting the next epoch after the current one.

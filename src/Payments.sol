@@ -762,7 +762,7 @@ contract Payments is
         nonReentrant
         validateRailActive(railId)
         validateRailTerminated(railId)
-        onlyRailClient(railId)
+        onlyRailOperator(railId)
         settleAccountLockupBeforeAndAfterForRail(railId, false, 0)
         returns (
             uint256 totalSettledAmount,
@@ -795,6 +795,7 @@ contract Payments is
         public
         nonReentrant
         validateRailActive(railId)
+        onlyRailOperator(railId)
         settleAccountLockupBeforeAndAfterForRail(railId, false, 0)
         returns (
             uint256 totalSettledAmount,

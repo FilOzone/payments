@@ -72,7 +72,7 @@ contract Payments is
     }
 
     // Counter for generating unique rail IDs
-    uint256 private _nextRailId;
+    uint256 private _nextRailId = 1;
 
     // token => owner => Account
     mapping(address => mapping(address => Account)) public accounts;
@@ -257,7 +257,6 @@ contract Payments is
                 lockupFixed: rail.lockupFixed,
                 settledUpTo: rail.settledUpTo,
                 endEpoch: rail.endEpoch
-
             });
     }
 

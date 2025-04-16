@@ -2,6 +2,7 @@
 
 The FWS Payments contract enables ERC20 token payment flows through "rails" - automated payment channels between clients and recipients. The contract supports continuous payments, one-time transfers, and payment arbitration.
 
+- [Architecture](#architecture)
 - [Key Concepts](#key-concepts)
 - [Core Functions](#core-functions)
   - [Account Management](#account-management)
@@ -11,6 +12,112 @@ The FWS Payments contract enables ERC20 token payment flows through "rails" - au
   - [Arbitration](#arbitration)
 - [Worked Example](#worked-example)
 - [Emergency Scenarios](#emergency-scenarios)
+
+## Architecture
+
+```mermaid
+graph TD
+    subgraph "Contracts"
+        Payments["Payments.sol<br/>(Main Contract)"]
+        RateChangeQueue["RateChangeQueue.sol<br/>(Library)"]
+        ERC1967Proxy["ERC1967Proxy.sol<br/>(Proxy Contract)"]
+    end
+
+    subgraph "Actors"
+        Client["Client<br/>(Payer)"]
+        ServiceProvider["Service Provider<br/>(Payee)"]
+        Operator["Operator<br/>(Rail Manager)"]
+        Arbiter["Arbiter<br/>(Payment Mediator)"]
+    end
+
+    subgraph "Core Data Structures"
+        Account["Account<br/>- funds<br/>- lockupCurrent<br/>- lockupRate<br/>- lockupLastSettledAt"]
+        Rail["Rail<br/>- token<br/>- from/to<br/>- operator<br/>- arbiter<br/>- paymentRate<br/>- lockupPeriod<br/>- settledUpTo<br/>- rateChangeQueue"]
+        OperatorApproval["OperatorApproval<br/>- isApproved<br/>- rateAllowance<br/>- lockupAllowance<br/>- rateUsage<br/>- lockupUsage"]
+    end
+
+    Client -->|1. deposits tokens| Payments
+    Client -->|2. approves| Operator
+    Operator -->|3. creates rail| Payments
+    Operator -->|4. modifies rail<br/>payment & lockup| Payments
+    Payments -->|5. transfers tokens<br/>during settlement| ServiceProvider
+    Arbiter -.->|optional: mediates<br/>payment disputes| Payments
+    
+    Payments -->|uses| RateChangeQueue
+    ERC1967Proxy -->|delegates to| Payments
+    
+    Payments ---|manages| Account
+    Payments ---|manages| Rail
+    Payments ---|manages| OperatorApproval
+
+    classDef contractNode fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef actorNode fill:#bbf,stroke:#333,stroke-width:1px;
+    classDef dataNode fill:#bfb,stroke:#333,stroke-width:1px;
+    
+    class Payments,RateChangeQueue,ERC1967Proxy contractNode;
+    class Client,ServiceProvider,Operator,Arbiter actorNode;
+    class Account,Rail,OperatorApproval dataNode;
+```
+
+### Payment Flows
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Operator
+    participant Payments
+    participant ServiceProvider
+    participant Arbiter
+    
+    Note over Client,ServiceProvider: Setup Phase
+    Client->>Payments: deposit(token, client, amount)
+    Client->>Payments: setOperatorApproval(token, operator, true, rateAllowance, lockupAllowance)
+    
+    Note over Client,ServiceProvider: Rail Creation
+    Operator->>Payments: createRail(token, client, serviceProvider, arbiter)
+    Operator->>Payments: modifyRailLockup(railId, period, fixedAmount)
+    
+    Note over Client,ServiceProvider: Service Start
+    Operator->>Payments: modifyRailPayment(railId, rate, oneTimePayment)
+    Note right of Payments: One-time payment transfers immediately
+    Payments->>ServiceProvider: Transfer one-time payment
+    
+    Note over Client,ServiceProvider: Ongoing Payments
+    loop Every settlement period
+        alt Settlement trigger
+            Client->>Payments: settleRail(railId, currentEpoch)
+        else
+            ServiceProvider->>Payments: settleRail(railId, currentEpoch)
+        else
+            Operator->>Payments: settleRail(railId, currentEpoch)
+        end
+        
+        opt Arbitration if enabled
+            Payments->>Arbiter: arbitratePayment(railId, proposedAmount, fromEpoch, toEpoch)
+            Arbiter-->>Payments: ArbitrationResult(modifiedAmount, settleUpto, note)
+        end
+        
+        Payments->>ServiceProvider: Transfer settled payment
+    end
+    
+    Note over Client,ServiceProvider: Termination
+    alt Regular termination
+        Operator->>Payments: modifyRailPayment(railId, 0, terminationFee)
+        Payments->>ServiceProvider: Transfer termination fee
+    else Emergency termination
+        Client->>Payments: terminateRail(railId)
+    end
+    
+    Note over Client,ServiceProvider: Final Settlement
+    alt With arbiter
+        ServiceProvider->>Payments: settleRail(railId, endEpoch)
+    else Without arbiter (if arbiter is malfunctioning)
+        Client->>Payments: settleTerminatedRailWithoutArbitration(railId)
+    end
+    
+    Client->>Payments: withdraw(token, remainingAmount)
+```
+
 
 ## Key Concepts
 

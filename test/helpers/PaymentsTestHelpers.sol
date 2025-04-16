@@ -225,7 +225,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             address(testToken),
             from,
             to,
-            arbiter
+            arbiter,
+            0 // commissionRateBps
         );
         vm.stopPrank();
 

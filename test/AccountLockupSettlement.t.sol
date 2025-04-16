@@ -230,7 +230,8 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             address(helper.testToken()),
             USER1,
             USER2,
-            address(0)
+            address(0),
+            0
         );
 
       

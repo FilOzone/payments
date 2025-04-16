@@ -436,7 +436,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         // 1. Test unapproved operator
         vm.startPrank(OPERATOR);
         // Try to create a rail and expect it to fail
-        try payments.createRail(address(helper.testToken()), USER1, USER2, address(0)) returns (uint256) {
+        try payments.createRail(address(helper.testToken()), USER1, USER2, address(0), 0) returns (uint256) {
             // If we get here, the function did not revert
             assertTrue(false, "createRail should have reverted with 'operator not approved'");
         } catch Error(string memory reason) {
@@ -482,7 +482,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         vm.startPrank(OPERATOR);
         // Try to create a rail and expect it to fail
-        try payments.createRail(address(helper.testToken()), USER1, USER2, address(0)) returns (uint256) {
+        try payments.createRail(address(helper.testToken()), USER1, USER2, address(0), 0) returns (uint256) {
             // If we get here, the function did not revert
             assertTrue(false, "createRail should have reverted with 'operator not approved'");
         } catch Error(string memory reason) {
@@ -932,7 +932,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         // Testing that operator shouldn't be able to create a new rail using try/catch
         vm.startPrank(OPERATOR);
         // Try to create a rail and expect it to fail
-        try payments.createRail(address(helper.testToken()), USER1, USER2, address(0)) returns (uint256) {
+        try payments.createRail(address(helper.testToken()), USER1, USER2, address(0), 0) returns (uint256) {
             // If we get here, the function did not revert
             assertTrue(false, "createRail should have reverted with 'operator not approved'");
         } catch Error(string memory reason) {

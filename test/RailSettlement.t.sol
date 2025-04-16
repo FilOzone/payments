@@ -155,9 +155,24 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Verify reduced amount (80% of original)
         uint256 expectedAmount = (rate * 5 * 80) / 100; // 5 blocks * 10 ether * 80%
 
-        // Settle with arbitration
+        // Calculate expected contract fee (1% of the arbitrated amount)
+        uint256 paymentFee = (expectedAmount * payments.PAYMENT_COMISSION_BPS()) / payments.COMMISSION_MAX_BPS();
+        uint256 netPayeeAmount = expectedAmount - paymentFee;
+
+        // Capture fee balance before settlement
+        uint256 feesBefore = payments.accumulatedFees(address(token));
+
+        // Settle with arbitration - verify against NET payee amount
         RailSettlementHelpers.SettlementResult memory result = 
             settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
+        
+        // Verify accumulated fees increased correctly
+        uint256 feesAfter = payments.accumulatedFees(address(token));
+        assertEq(feesAfter, feesBefore + paymentFee, "Accumulated fees did not increase correctly");
+        assertEq(result.netPayeeAmount, netPayeeAmount, "Net payee amount incorrect");
+        assertEq(result.paymentFee, paymentFee, "Payment fee incorrect");
+        assertEq(result.operatorCommission, 0, "Operator commission incorrect");
+
         // Verify arbiter note
         assertEq(result.note, "Arbiter reduced payment amount", "Arbiter note should match");
     }
@@ -282,7 +297,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Final settlement after termination 
         vm.prank(USER1);
-        (uint256 settledAmount, uint256 settledUpto,) = 
+        (uint256 settledAmount, uint256 netPayeeAmount, uint256 paymentFee, uint256 operatorCommission, uint256 settledUpto,) = 
             payments.settleRail(railId, block.number);
         
         // Should settle up to endEpoch, which is lockupPeriod blocks after the last settlement
@@ -295,7 +310,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         Payments.Account memory recipientAfter = helper.getAccountData(USER2);
         
         assertEq(userBefore.funds - userAfter.funds, expectedAmount2, "User funds not reduced correctly in final settlement");
-        assertEq(recipientAfter.funds - recipientBefore.funds, expectedAmount2, "Recipient funds not increased correctly in final settlement");
+        assertEq(recipientAfter.funds - recipientBefore.funds, netPayeeAmount, "Recipient funds not increased correctly in final settlement");
         
         // Verify account lockup is cleared after full settlement
         assertEq(userAfter.lockupCurrent, 0, "Account lockup should be cleared after full rail settlement");
@@ -318,6 +333,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Settle immediately without advancing blocks - should be a no-op
         RailSettlementHelpers.SettlementResult memory result = 
             settlementHelper.settleRailAndVerify(railId, block.number, 0, block.number);
+
+        console.log("result.note", result.note);
 
         // Verify the note indicates already settled
         assertTrue(

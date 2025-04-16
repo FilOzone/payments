@@ -43,6 +43,8 @@ contract Payments is
     // Maximum commission rate in basis points (100% = 10000 BPS)
     uint256 public constant COMMISSION_MAX_BPS = 10000;
 
+    uint256 public constant PAYMENT_COMISSION_BPS = 100; //(1 % comission)
+
     struct Account {
         uint256 funds;
         uint256 lockupCurrent;
@@ -112,6 +114,9 @@ contract Payments is
 
     // token => payee => max commission BPS 
     mapping(address => mapping(address => PayeeCommissionLimit)) public payeeCommissionLimits;
+
+    // token => amount of accumulated fees owned by the contract owner
+    mapping(address => uint256) public accumulatedFees;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -757,7 +762,7 @@ contract Payments is
 
         // If there is no arbiter, settle the rail immediately
         if (rail.arbiter == address(0)) {
-            (, uint256 settledUpto, ) = settleRail(railId, block.number);
+            (,,,, uint256 settledUpto, ) = settleRail(railId, block.number);
             require(
                 settledUpto == block.number,
                 "failed to settle rail up to current epoch"
@@ -796,6 +801,9 @@ contract Payments is
     /// @notice Settles payments for a terminated rail without arbitration. This may only be called by the payee and after the terminated rail's max settlement epoch has passed. It's an escape-hatch to unblock payments in an otherwise stuck rail (e.g., due to a buggy arbiter contract) and it always pays in full.
     /// @param railId The ID of the rail to settle.
     /// @return totalSettledAmount The total amount settled and transferred.
+    /// @return totalNetPayeeAmount The net amount credited to the payee after fees.
+    /// @return totalPaymentFee The fee retained by the payment contract.
+    /// @return totalOperatorCommission The commission credited to the operator.
     /// @return finalSettledEpoch The epoch up to which settlement was actually completed.
     /// @return note Additional information about the settlement.
     function settleTerminatedRailWithoutArbitration(
@@ -809,6 +817,9 @@ contract Payments is
         settleAccountLockupBeforeAndAfterForRail(railId, false, 0)
         returns (
             uint256 totalSettledAmount,
+            uint256 totalNetPayeeAmount,
+            uint256 totalPaymentFee,
+            uint256 totalOperatorCommission,
             uint256 finalSettledEpoch,
             string memory note
         )
@@ -829,6 +840,9 @@ contract Payments is
     /// @param railId The ID of the rail to settle.
     /// @param untilEpoch The epoch up to which to settle (must not exceed current block number).
     /// @return totalSettledAmount The total amount settled and transferred.
+    /// @return totalNetPayeeAmount The net amount credited to the payee after fees.
+    /// @return totalPaymentFee The fee retained by the payment contract.
+    /// @return totalOperatorCommission The commission credited to the operator.
     /// @return finalSettledEpoch The epoch up to which settlement was actually completed.
     /// @return note Additional information about the settlement (especially from arbitration).
     function settleRail(
@@ -842,6 +856,9 @@ contract Payments is
         settleAccountLockupBeforeAndAfterForRail(railId, false, 0)
         returns (
             uint256 totalSettledAmount,
+            uint256 totalNetPayeeAmount,
+            uint256 totalPaymentFee,
+            uint256 totalOperatorCommission,
             uint256 finalSettledEpoch,
             string memory note
         )
@@ -857,6 +874,9 @@ contract Payments is
         internal
         returns (
             uint256 totalSettledAmount,
+            uint256 totalNetPayeeAmount,
+            uint256 totalPaymentFee,
+            uint256 totalOperatorCommission,
             uint256 finalSettledEpoch,
             string memory note
         )
@@ -873,7 +893,7 @@ contract Payments is
 
         if (isRailTerminated(rail) && rail.settledUpTo >= rail.endEpoch) {
             finalizeTerminatedRail(rail, payer);
-            return (0, rail.settledUpTo, "rail fully settled and finalized");
+            return (0, 0, 0, 0, rail.settledUpTo, "rail fully settled and finalized");
         }
 
         // Calculate the maximum settlement epoch based on account lockup
@@ -887,14 +907,18 @@ contract Payments is
         uint256 startEpoch = rail.settledUpTo;
         // Nothing to settle (already settled or zero-duration)
         if (startEpoch >= maxSettlementEpoch) {
-            return (
-                0,
-                startEpoch,
-                string.concat(
-                    "already settled up to epoch ",
-                    Strings.toString(maxSettlementEpoch)
-                )
-            );
+            return
+                checkAndFinalizeTerminatedRail(
+                    rail,
+                    payer,
+                    0,
+                    0,
+                    0,
+                    0,
+                    maxSettlementEpoch,
+                    "zero rate payment rail",
+                    "zero rate terminated rail fully settled and finalized"
+                );
         }
 
         // For zero rate rails with empty queue, just advance the settlement epoch
@@ -908,6 +932,9 @@ contract Payments is
                     rail,
                     payer,
                     0,
+                    0,
+                    0,
+                    0,
                     maxSettlementEpoch,
                     "zero rate payment rail",
                     "zero rate terminated rail fully settled and finalized"
@@ -916,7 +943,7 @@ contract Payments is
 
         // Process settlement depending on whether rate changes exist
         if (rail.rateChangeQueue.isEmpty()) {
-            (uint256 amount, string memory segmentNote) = _settleSegment(
+            (uint256 amount, uint256 netPayeeAmount, uint256 paymentFee, uint256 operatorCommission, string memory segmentNote) = _settleSegment(
                 railId,
                 startEpoch,
                 maxSettlementEpoch,
@@ -931,6 +958,9 @@ contract Payments is
                     rail,
                     payer,
                     amount,
+                    netPayeeAmount,
+                    paymentFee,
+                    operatorCommission,
                     rail.settledUpTo,
                     segmentNote,
                     string.concat(
@@ -941,6 +971,9 @@ contract Payments is
         } else {
             (
                 uint256 settledAmount,
+                uint256 netPayeeAmount,
+                uint256 paymentFee,
+                uint256 operatorCommission,
                 string memory settledNote
             ) = _settleWithRateChanges(
                     railId,
@@ -955,6 +988,9 @@ contract Payments is
                     rail,
                     payer,
                     settledAmount,
+                    netPayeeAmount,
+                    paymentFee,
+                    operatorCommission,
                     rail.settledUpTo,
                     settledNote,
                     string.concat(
@@ -965,25 +1001,27 @@ contract Payments is
         }
     }
 
-    // Helper function to check and finalize a terminated rail if needed
     function checkAndFinalizeTerminatedRail(
         Rail storage rail,
         Account storage payer,
-        uint256 amount,
+        uint256 totalSettledAmount,
+        uint256 totalNetPayeeAmount,
+        uint256 totalPaymentFee,
+        uint256 totalOperatorCommission,
         uint256 finalEpoch,
         string memory regularNote,
         string memory finalizedNote
-    ) internal returns (uint256, uint256, string memory) {
+    ) internal returns (uint256, uint256, uint256, uint256, uint256, string memory) {
         // Check if rail is a terminated rail that's now fully settled
         if (
             isRailTerminated(rail) &&
             rail.settledUpTo >= maxSettlementEpochForTerminatedRail(rail)
         ) {
             finalizeTerminatedRail(rail, payer);
-            return (amount, finalEpoch, finalizedNote);
+            return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalEpoch, finalizedNote);
         }
 
-        return (amount, finalEpoch, regularNote);
+        return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalEpoch, regularNote);
     }
 
     function finalizeTerminatedRail(
@@ -1014,11 +1052,14 @@ contract Payments is
         uint256 startEpoch,
         uint256 targetEpoch,
         bool skipArbitration
-    ) internal returns (uint256 totalSettled, string memory note) {
+    ) internal returns (uint256 totalSettledAmount, uint256 totalNetPayeeAmount, uint256 totalPaymentFee, uint256 totalOperatorCommission, string memory note) {
         Rail storage rail = rails[railId];
         RateChangeQueue.Queue storage rateQueue = rail.rateChangeQueue;
 
-        totalSettled = 0;
+        totalSettledAmount = 0;
+        totalNetPayeeAmount = 0;
+        totalPaymentFee = 0;
+        totalOperatorCommission = 0;
         uint256 processedEpoch = startEpoch;
         note = "";
 
@@ -1052,13 +1093,16 @@ contract Payments is
                 // if current rate is zero, there's nothing left to do and we've finished settlement
                 if (segmentRate == 0) {
                     rail.settledUpTo = targetEpoch;
-                    return (totalSettled, "Zero rate payment rail");
+                    return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, "Zero rate payment rail");
                 }
             }
 
             // Settle the current segment with potentially arbitrated outcomes
             (
-                uint256 segmentAmount,
+                uint256 segmentSettledAmount,
+                uint256 segmentNetPayeeAmount,
+                uint256 segmentPaymentFee,
+                uint256 segmentOperatorCommission,
                 string memory arbitrationNote
             ) = _settleSegment(
                     railId,
@@ -1070,15 +1114,18 @@ contract Payments is
 
             // If arbiter returned no progress, exit early without updating state
             if (rail.settledUpTo <= processedEpoch) {
-                return (totalSettled, arbitrationNote);
+                return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, arbitrationNote);
             }
 
-            // Add the settled amount to our running total
-            totalSettled += segmentAmount;
+            // Add the settled amounts to our running totals
+            totalSettledAmount += segmentSettledAmount;
+            totalNetPayeeAmount += segmentNetPayeeAmount;
+            totalPaymentFee += segmentPaymentFee;
+            totalOperatorCommission += segmentOperatorCommission;
 
             // If arbiter partially settled the segment, exit early
             if (rail.settledUpTo < segmentEndBoundary) {
-                return (totalSettled, arbitrationNote);
+                return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, arbitrationNote);
             }
 
             // Successfully settled full segment, update tracking values
@@ -1092,7 +1139,7 @@ contract Payments is
         }
 
         // We've successfully settled up to the target epoch
-        return (totalSettled, note);
+        return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, note);
     }
 
     function _settleSegment(
@@ -1101,14 +1148,14 @@ contract Payments is
         uint256 epochEnd,
         uint256 rate,
         bool skipArbitration
-    ) internal returns (uint256 settledAmount, string memory note) {
+    ) internal returns (uint256 totalSettledAmount,uint256 netPayeeAmount, uint256 paymentFee, uint256 operatorCommission, string memory note) {
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
         Account storage payee = accounts[rail.token][rail.to];
 
         // Calculate the default settlement values (without arbitration)
         uint256 duration = epochEnd - epochStart;
-        settledAmount = rate * duration;
+        uint256 settledAmount = rate * duration;
         uint256 settledUntilEpoch = epochEnd;
         note = "";
 
@@ -1157,21 +1204,46 @@ contract Payments is
             "failed to settle: insufficient lockup to cover settlement"
         );
 
-        // Transfer funds from payer to payee
+        // Transfer funds from payer (always pays full settled amount)
         payer.funds -= settledAmount;
-        
-        // Calculate commission for the operator
-        uint256 commissionAmount = (settledAmount * rail.commissionRateBps) / COMMISSION_MAX_BPS;
-        uint256 payeeAmount = settledAmount - commissionAmount;
-        
-        // Add funds to payee and operator
-        payee.funds += payeeAmount;
-        if (commissionAmount > 0) {
-            Account storage operator = accounts[rail.token][rail.operator];
-            operator.funds += commissionAmount;
+
+        // Calculate payment contract fee (if any) based on full settled amount
+        paymentFee = 0;
+        if (PAYMENT_COMISSION_BPS > 0) {
+            paymentFee = (settledAmount * PAYMENT_COMISSION_BPS) /
+                COMMISSION_MAX_BPS;
         }
 
-        // Reduce the lockup by the settled amount
+        // Calculate amount remaining after contract fee
+        uint256 amountAfterPaymentFee = settledAmount - paymentFee;
+
+        // Calculate operator commission (if any) based on remaining amount
+        operatorCommission = 0;
+        if (rail.commissionRateBps > 0) {
+            operatorCommission = (amountAfterPaymentFee * rail.commissionRateBps) /
+                COMMISSION_MAX_BPS;
+        }
+
+        // Calculate net amount for payee
+        netPayeeAmount = amountAfterPaymentFee - operatorCommission;
+
+        // Credit payee
+        payee.funds += netPayeeAmount;
+
+        // Credit operator (if commission exists)
+        if (operatorCommission > 0) {
+            Account storage operatorAccount = accounts[rail.token][
+                rail.operator
+            ];
+            operatorAccount.funds += operatorCommission;
+        }
+        // Note: The paymentFee remains in the contract implicitly
+        // but is tracked for owner withdrawal
+        if (paymentFee > 0) {
+            accumulatedFees[rail.token] += paymentFee;
+        }
+
+        // Reduce the lockup by the total settled amount
         payer.lockupCurrent -= settledAmount;
 
         // Update the rail's settled epoch
@@ -1183,7 +1255,7 @@ contract Payments is
             "failed to settle: invariant violation: insufficient funds to cover lockup after settlement"
         );
 
-        return (settledAmount, note);
+        return (settledAmount, netPayeeAmount, paymentFee, operatorCommission, note);
     }
 
     function isAccountLockupFullySettled(
@@ -1346,6 +1418,26 @@ contract Payments is
         approval.lockupAllowance = oneTimePayment > approval.lockupAllowance
             ? 0
             : approval.lockupAllowance - oneTimePayment;
+    }
+
+    /// @notice Allows the contract owner to withdraw accumulated payment fees.
+    /// @param token The ERC20 token address of the fees to withdraw.
+    /// @param to The address to send the withdrawn fees to.
+    /// @param amount The amount of fees to withdraw.
+    function withdrawFees(
+        address token,
+        address to,
+        uint256 amount
+    ) external onlyOwner nonReentrant validateNonZeroAddress(token, "token") validateNonZeroAddress(to, "to") {
+        require(amount > 0, "amount must be greater than zero");
+        uint256 currentFees = accumulatedFees[token];
+        require(amount <= currentFees, "amount exceeds accumulated fees");
+
+        // Decrease tracked fees first to prevent reentrancy issues
+        accumulatedFees[token] = currentFees - amount;
+
+        // Perform the transfer
+        IERC20(token).safeTransfer(to, amount);
     }
 }
 

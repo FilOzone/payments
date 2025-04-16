@@ -22,6 +22,9 @@ contract RailSettlementHelpers is Test {
 
     struct SettlementResult {
         uint256 totalAmount;
+        uint256 netPayeeAmount;
+        uint256 paymentFee;
+        uint256 operatorCommission;
         uint256 settledUpto;
         string note;
     }
@@ -142,15 +145,21 @@ contract RailSettlementHelpers is Test {
         console.log("payeeLockupBefore", payeeAccountBefore.lockupCurrent);
 
         uint256 settlementAmount;
+        uint256 netPayeeAmount;
+        uint256 paymentFee;
+        uint256 operatorCommission;
         uint256 settledUpto;
         string memory note;
 
         vm.startPrank(payer);
-        (settlementAmount, settledUpto, note) = payments
+        (settlementAmount, netPayeeAmount, paymentFee, operatorCommission, settledUpto, note) = payments
             .settleRail(railId, untilEpoch);
         vm.stopPrank();
 
         console.log("settlementAmount", settlementAmount);
+        console.log("netPayeeAmount", netPayeeAmount);
+        console.log("paymentFee", paymentFee);
+        console.log("operatorCommission", operatorCommission);
         console.log("settledUpto", settledUpto);
         console.log("note", note);
 
@@ -179,14 +188,14 @@ contract RailSettlementHelpers is Test {
         );
         assertEq(
             payeeAccountAfter.funds - payeeAccountBefore.funds,
-            settlementAmount,
-            "Payee's balance increase doesn't match settlement amount"
+            netPayeeAmount,
+            "Payee's balance increase doesn't match net payee amount"
         );
 
         rail = payments.getRail(railId);
         assertEq(rail.settledUpTo, expectedUpto, "Rail settled upto incorrect");
 
-        return SettlementResult(settlementAmount, settledUpto, note);
+        return SettlementResult(settlementAmount, netPayeeAmount, paymentFee, operatorCommission, settledUpto, note);
     }
 
     function terminateAndSettleRail(

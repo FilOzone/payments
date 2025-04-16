@@ -907,18 +907,17 @@ contract Payments is
         uint256 startEpoch = rail.settledUpTo;
         // Nothing to settle (already settled or zero-duration)
         if (startEpoch >= maxSettlementEpoch) {
-            return
-                checkAndFinalizeTerminatedRail(
-                    rail,
-                    payer,
-                    0,
-                    0,
-                    0,
-                    0,
-                    maxSettlementEpoch,
-                    "zero rate payment rail",
-                    "zero rate terminated rail fully settled and finalized"
-                );
+            return (
+                0,
+                0,
+                0,
+                0,
+                startEpoch,
+                string.concat(
+                    "already settled up to epoch ",
+                    Strings.toString(maxSettlementEpoch)
+                )
+            );
         }
 
         // For zero rate rails with empty queue, just advance the settlement epoch

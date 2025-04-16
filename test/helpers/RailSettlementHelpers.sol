@@ -145,8 +145,10 @@ contract RailSettlementHelpers is Test {
         uint256 settledUpto;
         string memory note;
 
+        vm.startPrank(payer);
         (settlementAmount, settledUpto, note) = payments
             .settleRail(railId, untilEpoch);
+        vm.stopPrank();
 
         console.log("settlementAmount", settlementAmount);
         console.log("settledUpto", settledUpto);

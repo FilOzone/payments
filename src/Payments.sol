@@ -40,6 +40,9 @@ contract Payments is
     using SafeERC20 for IERC20;
     using RateChangeQueue for RateChangeQueue.Queue;
 
+    // Maximum commission rate in basis points (100% = 10000 BPS)
+    uint256 public constant COMMISSION_MAX_BPS = 10000;
+
     struct Account {
         uint256 funds;
         uint256 lockupCurrent;
@@ -61,6 +64,8 @@ contract Payments is
         uint256 settledUpTo;
         RateChangeQueue.Queue rateChangeQueue;
         uint256 endEpoch; // Final epoch up to which the rail can be settled (0 if not terminated)
+        // Operator commission rate in basis points (e.g., 100 BPS = 1%)
+        uint256 commissionRateBps;
     }
 
     struct OperatorApproval {
@@ -71,8 +76,13 @@ contract Payments is
         uint256 lockupUsage; // Track actual usage for lockup
     }
 
+    struct PayeeCommissionLimit {
+        uint256 maxBps;
+        bool isSet;
+    }
+
     // Counter for generating unique rail IDs
-    uint256 private _nextRailId;
+    uint256 private _nextRailId = 1;
 
     // token => owner => Account
     mapping(address => mapping(address => Account)) public accounts;
@@ -92,11 +102,16 @@ contract Payments is
         uint256 lockupFixed;
         uint256 settledUpTo;
         uint256 endEpoch;
+        // Operator commission rate in basis points (e.g., 100 BPS = 1%)
+        uint256 commissionRateBps;
     }
 
     // token => client => operator => Approval
     mapping(address => mapping(address => mapping(address => OperatorApproval)))
         public operatorApprovals;
+
+    // token => payee => max commission BPS 
+    mapping(address => mapping(address => PayeeCommissionLimit)) public payeeCommissionLimits;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -257,8 +272,8 @@ contract Payments is
                 lockupPeriod: rail.lockupPeriod,
                 lockupFixed: rail.lockupFixed,
                 settledUpTo: rail.settledUpTo,
-                endEpoch: rail.endEpoch
-
+                endEpoch: rail.endEpoch,
+                commissionRateBps: rail.commissionRateBps
             });
     }
 
@@ -287,6 +302,17 @@ contract Payments is
         approval.isApproved = approved;
         approval.rateAllowance = rateAllowance;
         approval.lockupAllowance = lockupAllowance;
+    }
+
+    /// @notice Sets the maximum commission rate (in BPS) the caller (payee) will accept for a given token.
+    /// @param token The ERC20 token address.
+    /// @param maxBps The maximum commission in basis points (0-10000).
+    function setPayeeMaxCommission(address token, uint256 maxBps) external validateNonZeroAddress(token, "token") {
+        require(maxBps <= COMMISSION_MAX_BPS, "max commission exceeds maximum");
+        payeeCommissionLimits[token][msg.sender] = PayeeCommissionLimit({
+            maxBps: maxBps,
+            isSet: true
+        });
     }
 
     /// @notice Terminates a payment rail, preventing further payments after the rail's lockup period. After calling this method, the lockup period cannot be changed, and the rail's rate and fixed lockup may only be reduced.
@@ -413,13 +439,15 @@ contract Payments is
     /// @param from The client address (payer) for this rail.
     /// @param to The recipient address for payments on this rail.
     /// @param arbiter Optional address of an arbiter contract (can be address(0) for no arbitration).
+    /// @param commissionRateBps Optional operator commission in basis points (0-10000).
     /// @return The ID of the newly created rail.
     /// @custom:constraint Caller must be approved as an operator by the client (from address).
     function createRail(
         address token,
         address from,
         address to,
-        address arbiter
+        address arbiter,
+        uint256 commissionRateBps
     )
         external
         nonReentrant
@@ -436,6 +464,20 @@ contract Payments is
         ];
         require(approval.isApproved, "operator not approved");
 
+        // Validate commission rate
+        require(
+            commissionRateBps <= COMMISSION_MAX_BPS,
+            "commission rate exceeds maximum"
+        );
+
+        PayeeCommissionLimit memory payeeCommissionLimit = payeeCommissionLimits[token][to];
+        if (payeeCommissionLimit.isSet) {
+            require(
+                commissionRateBps <= payeeCommissionLimit.maxBps,
+                "commission exceeds payee limit"
+            );
+        }
+
         uint256 railId = _nextRailId++;
 
         Rail storage rail = rails[railId];
@@ -446,6 +488,7 @@ contract Payments is
         rail.arbiter = arbiter;
         rail.settledUpTo = block.number;
         rail.endEpoch = 0;
+        rail.commissionRateBps = commissionRateBps;
 
         return railId;
     }
@@ -795,6 +838,7 @@ contract Payments is
         public
         nonReentrant
         validateRailActive(railId)
+        onlyRailParticipant(railId)
         settleAccountLockupBeforeAndAfterForRail(railId, false, 0)
         returns (
             uint256 totalSettledAmount,
@@ -1115,7 +1159,17 @@ contract Payments is
 
         // Transfer funds from payer to payee
         payer.funds -= settledAmount;
-        payee.funds += settledAmount;
+        
+        // Calculate commission for the operator
+        uint256 commissionAmount = (settledAmount * rail.commissionRateBps) / COMMISSION_MAX_BPS;
+        uint256 payeeAmount = settledAmount - commissionAmount;
+        
+        // Add funds to payee and operator
+        payee.funds += payeeAmount;
+        if (commissionAmount > 0) {
+            Account storage operator = accounts[rail.token][rail.operator];
+            operator.funds += commissionAmount;
+        }
 
         // Reduce the lockup by the settled amount
         payer.lockupCurrent -= settledAmount;

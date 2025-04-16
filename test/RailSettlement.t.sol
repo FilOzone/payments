@@ -82,11 +82,9 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedEpoch = 2; // Initial epoch (1) + 1 epoch
         
         // First settlement
-        vm.prank(USER1);
         settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, expectedEpoch);
         
         // Settle again - should be a no-op since we're already settled to the expected epoch
-        vm.prank(USER1);
         settlementHelper.settleRailAndVerify(railId, block.number, 0, expectedEpoch);
         
         // Add more funds and settle again
@@ -97,7 +95,6 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedAmount2 = rate * 6; // 6 more epochs * 50 ether
         
         // Third settlement
-        vm.prank(USER1);
         settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount2, block.number);
     }
 
@@ -128,7 +125,6 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedAmount = rate * 5; // 5 blocks * 5 ether
 
         // Settle with arbitration
-        vm.prank(USER1);
         RailSettlementHelpers.SettlementResult memory result = 
             settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
         
@@ -160,10 +156,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedAmount = (rate * 5 * 80) / 100; // 5 blocks * 10 ether * 80%
 
         // Settle with arbitration
-        vm.prank(USER1);
         RailSettlementHelpers.SettlementResult memory result = 
             settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
-        
         // Verify arbiter note
         assertEq(result.note, "Arbiter reduced payment amount", "Arbiter note should match");
     }
@@ -195,7 +189,6 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedAmount = rate * expectedDuration; // expectedDuration blocks * 10 ether
 
         // Settle with arbitration
-        vm.prank(USER1);
         RailSettlementHelpers.SettlementResult memory result = 
             settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, expectedSettledUpto);
         
@@ -265,7 +258,6 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // First settlement
         uint256 expectedAmount1 = rate * 3; // 3 blocks * 10 ether
-        vm.prank(USER1);
         settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount1, block.number);
         
         // Terminate the rail
@@ -324,7 +316,6 @@ contract RailSettlementTest is Test, BaseTestHelper {
         );
 
         // Settle immediately without advancing blocks - should be a no-op
-        vm.prank(USER1);
         RailSettlementHelpers.SettlementResult memory result = 
             settlementHelper.settleRailAndVerify(railId, block.number, 0, block.number);
 

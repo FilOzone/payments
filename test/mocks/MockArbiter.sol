@@ -48,7 +48,8 @@ contract MockArbiter is IArbiter {
         uint256 /* railId */,
         uint256 proposedAmount,
         uint256 fromEpoch,
-        uint256 toEpoch
+        uint256 toEpoch,
+        uint256 /* rate */
     ) external view override returns (ArbitrationResult memory result) {
         if (mode == ArbiterMode.STANDARD) {
             return

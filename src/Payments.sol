@@ -26,7 +26,8 @@ interface IArbiter {
         // the epoch up to and including which the rail has already been settled
         uint256 fromEpoch,
         // the epoch up to and including which arbitration is requested; payment will be arbitrated for (toEpoch - fromEpoch) epochs
-        uint256 toEpoch
+        uint256 toEpoch,
+        uint256 rate
     ) external returns (ArbitrationResult memory result);
 }
 
@@ -1165,7 +1166,8 @@ contract Payments is
                 railId,
                 settledAmount,
                 epochStart,
-                epochEnd
+                epochEnd,
+                rate
             );
 
             // Ensure arbiter doesn't settle beyond our segment's end boundary

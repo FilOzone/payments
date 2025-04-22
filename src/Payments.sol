@@ -1538,7 +1538,7 @@ contract Payments is
             : payeeRails[token][addr];
         uint256 railsLength = allRailIds.length;
 
-        RailInfo[] memory tempResults = new RailInfo[](railsLength);
+        RailInfo[] memory result = new RailInfo[](railsLength);
         uint256 resultCount = 0;
 
         for (uint256 i = 0; i < railsLength; i++) {
@@ -1555,7 +1555,7 @@ contract Payments is
             }
 
             // Add valid rail to our temporary array
-            tempResults[resultCount] = RailInfo({
+            result[resultCount] = RailInfo({
                 railId: railId,
                 isTerminated: rail.endEpoch > 0,
                 endEpoch: rail.endEpoch
@@ -1563,17 +1563,7 @@ contract Payments is
             resultCount++;
         }
 
-        // Create correctly sized final result array
-        RailInfo[] memory result = new RailInfo[](resultCount);
-
-        // Only copy if we have results (avoid unnecessary operations)
-        if (resultCount > 0) {
-            for (uint256 i = 0; i < resultCount; i++) {
-                result[i] = tempResults[i];
-            }
-        }
-
-        return result;
+        return result[:resultCount];
     }
 }
 

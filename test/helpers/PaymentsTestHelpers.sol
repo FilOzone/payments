@@ -542,6 +542,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         // Get initial balances
         Payments.Account memory clientBefore = getAccountData(railClient);
         Payments.Account memory recipientBefore = getAccountData(railRecipient);
+        Payments.Account memory operatorBefore = getAccountData(operatorAddress);
 
         // Get operator allowance and usage before payment
         (
@@ -568,6 +569,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         // Verify balance changes
         Payments.Account memory clientAfter = getAccountData(railClient);
         Payments.Account memory recipientAfter = getAccountData(railRecipient);
+        Payments.Account memory operatorAfter = getAccountData(operatorAddress);
 
         assertEq(
             clientAfter.funds,
@@ -585,6 +587,12 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         
         if (commissionRate > 0) {
             operatorCommission = (amountAfterFee * commissionRate) / payments.COMMISSION_MAX_BPS();
+            // Verify operator commission is non-zero when commission rate is non-zero
+            assertGt(
+                operatorCommission,
+                0,
+                "Operator commission should be non-zero when commission rate is non-zero"
+            );
         }
         
         uint256 netPayeeAmount = amountAfterFee - operatorCommission;
@@ -594,6 +602,15 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             recipientBefore.funds + netPayeeAmount,
             "Recipient funds not increased correctly after one-time payment"
         );
+        
+        // Verify operator account is credited with commission
+        if (operatorCommission > 0) {
+            assertEq(
+                operatorAfter.funds,
+                operatorBefore.funds + operatorCommission,
+                "Operator funds not increased correctly with commission amount"
+            );
+        }
 
         // Verify fixed lockup was reduced
         Payments.RailView memory railAfter = payments.getRail(railId);

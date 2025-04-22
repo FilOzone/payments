@@ -61,7 +61,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
         uint256 lockupPeriod = 2;
 
         // Create rail with the desired rate
-        helper.setupRailWithParameters(
+        uint256 railId = helper.setupRailWithParameters(
             USER1,
             USER2,
             OPERATOR,
@@ -70,6 +70,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             0, // no fixed lockup
             address(0) // no fixed lockup
         );
+        assertEq(railId, 1);
 
         // Note: Settlement begins at the current block
         // Advance blocks to create a settlement gap

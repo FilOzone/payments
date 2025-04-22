@@ -143,6 +143,7 @@ contract Payments is
     function initialize() public initializer {
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
+        _nextRailId = 1;
     }
 
     function _authorizeUpgrade(

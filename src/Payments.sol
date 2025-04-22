@@ -39,6 +39,12 @@ contract Payments is
 {
     using SafeERC20 for IERC20;
     using RateChangeQueue for RateChangeQueue.Queue;
+    
+    string public constant VERSION = "0.0.0";
+    
+    function getVersion() public pure returns (string memory) {
+        return VERSION;
+    }
 
     struct Account {
         uint256 funds;

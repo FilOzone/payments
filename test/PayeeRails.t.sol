@@ -1,0 +1,244 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.20;
+
+import {Test} from "forge-std/Test.sol";
+import {Payments, IArbiter} from "../src/Payments.sol";
+import {MockERC20} from "./mocks/MockERC20.sol";
+import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
+import {RailSettlementHelpers} from "./helpers/RailSettlementHelpers.sol";
+import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
+import {console} from "forge-std/console.sol";
+
+contract PayeeRailsTest is Test, BaseTestHelper {
+    PaymentsTestHelpers helper;
+    RailSettlementHelpers settlementHelper;
+    Payments payments;
+    MockERC20 token;
+    
+    // Define additional address for testing
+    address public constant USER3 = address(0x7);
+
+    // Secondary token for multi-token testing
+    MockERC20 token2;
+
+    uint256 constant INITIAL_BALANCE = 5000 ether;
+    uint256 constant DEPOSIT_AMOUNT = 200 ether;
+    
+    // Rail IDs for tests
+    uint256 rail1Id;
+    uint256 rail2Id;
+    uint256 rail3Id;
+    uint256 rail4Id; // Different token
+    uint256 rail5Id; // Different payee
+
+    function setUp() public {
+        helper = new PaymentsTestHelpers();
+        helper.setupStandardTestEnvironment();
+        payments = helper.payments();
+        token = MockERC20(address(helper.testToken()));
+        
+        // Create settlement helper
+        settlementHelper = new RailSettlementHelpers();
+        settlementHelper.initialize(payments, helper);
+        
+        // Create a second token for multi-token tests
+        token2 = new MockERC20("Token 2", "TK2");
+        token2.mint(USER1, INITIAL_BALANCE);
+        
+        // Make deposits to test accounts
+        helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
+        
+        // For token2
+        vm.startPrank(USER1);
+        token2.approve(address(payments), type(uint256).max);
+        payments.deposit(address(token2), USER1, DEPOSIT_AMOUNT);
+        vm.stopPrank();
+        
+        // Setup operator approvals
+        helper.setupOperatorApproval(
+            USER1,          // from
+            OPERATOR,       // operator
+            15 ether,       // rate allowance (sum of all rates: 5+3+2+1 = 11 ether)
+            200 ether       // lockup allowance
+        );
+        
+        // Setup approval for token2
+        vm.startPrank(USER1);
+        payments.setOperatorApproval(
+            address(token2),
+            OPERATOR,
+            true,           // approved
+            10 ether,       // rate allowance
+            100 ether       // lockup allowance
+        );
+        vm.stopPrank();
+        
+        // Create different rails for testing
+        createTestRails();
+    }
+    
+    function createTestRails() internal {
+        // Rail 1: Standard rail with token1 and USER2 as payee
+        rail1Id = helper.setupRailWithParameters(
+            USER1,           // from
+            USER2,           // to (payee)
+            OPERATOR,        // operator
+            5 ether,         // rate
+            10,              // lockupPeriod
+            0,               // No fixed lockup
+            address(0)       // No arbiter
+        );
+        
+        // Rail 2: Another rail with token1 and USER2 as payee
+        rail2Id = helper.setupRailWithParameters(
+            USER1,           // from
+            USER2,           // to (payee)
+            OPERATOR,        // operator
+            3 ether,         // rate
+            10,              // lockupPeriod
+            0,               // No fixed lockup
+            address(0)       // No arbiter
+        );
+        
+        // Rail 3: Will be terminated
+        rail3Id = helper.setupRailWithParameters(
+            USER1,           // from
+            USER2,           // to (payee)
+            OPERATOR,        // operator
+            2 ether,         // rate
+            5,               // lockupPeriod
+            0,               // No fixed lockup
+            address(0)       // No arbiter
+        );
+        
+        // Rail 4: With token2 and USER2 as payee
+        vm.startPrank(OPERATOR);
+        rail4Id = payments.createRail(
+            address(token2),
+            USER1,          // from
+            USER2,          // to (payee)
+            address(0),     // no arbiter
+            0               // no commission
+        );
+        payments.modifyRailPayment(rail4Id, 4 ether, 0);
+        payments.modifyRailLockup(rail4Id, 10, 0);
+        vm.stopPrank();
+        
+        // Rail 5: With token1 but USER3 as payee
+        rail5Id = helper.setupRailWithParameters(
+            USER1,           // from
+            USER3,           // to (payee)
+            OPERATOR,        // operator
+            1 ether,         // rate
+            10,              // lockupPeriod
+            0,               // No fixed lockup
+            address(0)       // No arbiter
+        );
+        
+        // Terminate Rail 3
+        vm.prank(OPERATOR);
+        payments.terminateRail(rail3Id);
+    }
+    
+    function testGetRailsForPayeeAndToken() public {
+        // Test getting all rails for USER2 and token1 including terminated
+        Payments.PayeeRailInfo[] memory rails = payments.getRailsForPayeeAndToken(USER2, address(token), true);
+        
+        // Should include 3 rails: rail1Id, rail2Id, and rail3Id (terminated)
+        assertEq(rails.length, 3, "Should have 3 rails for USER2 with token1");
+        
+        // Verify the rail IDs are correct (order might vary)
+        bool foundRail1 = false;
+        bool foundRail2 = false;
+        bool foundRail3 = false;
+        
+        for (uint256 i = 0; i < rails.length; i++) {
+            if (rails[i].railId == rail1Id) {
+                foundRail1 = true;
+                assertFalse(rails[i].isTerminated, "Rail 1 should not be terminated");
+                assertEq(rails[i].endEpoch, 0, "Rail 1 should have 0 endEpoch");
+            } else if (rails[i].railId == rail2Id) {
+                foundRail2 = true;
+                assertFalse(rails[i].isTerminated, "Rail 2 should not be terminated");
+                assertEq(rails[i].endEpoch, 0, "Rail 2 should have 0 endEpoch");
+            } else if (rails[i].railId == rail3Id) {
+                foundRail3 = true;
+                assertTrue(rails[i].isTerminated, "Rail 3 should be terminated");
+                assertTrue(rails[i].endEpoch > 0, "Rail 3 should have non-zero endEpoch");
+            }
+        }
+        
+        assertTrue(foundRail1, "Rail 1 not found");
+        assertTrue(foundRail2, "Rail 2 not found");
+        assertTrue(foundRail3, "Rail 3 not found");
+        
+        // Test excluding terminated rails
+        Payments.PayeeRailInfo[] memory activeRails = payments.getRailsForPayeeAndToken(USER2, address(token), false);
+        
+        // Should include only 2 active rails: rail1Id and rail2Id
+        assertEq(activeRails.length, 2, "Should have 2 active rails for USER2 with token1");
+        
+        // Test different token
+        Payments.PayeeRailInfo[] memory token2Rails = payments.getRailsForPayeeAndToken(USER2, address(token2), true);
+        
+        // Should include only 1 rail with token2: rail4Id
+        assertEq(token2Rails.length, 1, "Should have 1 rail for USER2 with token2");
+        assertEq(token2Rails[0].railId, rail4Id, "Rail ID should match rail4Id");
+        
+        // Test different payee
+        Payments.PayeeRailInfo[] memory user3Rails = payments.getRailsForPayeeAndToken(USER3, address(token), true);
+        
+        // Should include only 1 rail for USER3: rail5Id
+        assertEq(user3Rails.length, 1, "Should have 1 rail for USER3 with token1");
+        assertEq(user3Rails[0].railId, rail5Id, "Rail ID should match rail5Id");
+    }
+    
+    function testRailsBeyondEndEpoch() public {
+        // Get the initial rails when Rail 3 is terminated but not beyond its end epoch
+        Payments.PayeeRailInfo[] memory initialRails = payments.getRailsForPayeeAndToken(USER2, address(token), true);
+        
+        // Should include all 3 rails
+        assertEq(initialRails.length, 3, "Should have 3 rails initially");
+        
+        // Get the endEpoch for Rail 3
+        uint256 endEpoch;
+        for (uint256 i = 0; i < initialRails.length; i++) {
+            if (initialRails[i].railId == rail3Id) {
+                endEpoch = initialRails[i].endEpoch;
+                break;
+            }
+        }
+        
+        // Advance blocks beyond the end epoch of Rail 3
+        uint256 blocksToAdvance = endEpoch - block.number + 1;
+        helper.advanceBlocks(blocksToAdvance);
+        
+        // Get rails again
+        Payments.PayeeRailInfo[] memory finalRails = payments.getRailsForPayeeAndToken(USER2, address(token), true);
+        
+        // Should include only 2 rails now, as Rail 3 is beyond its end epoch
+        assertEq(finalRails.length, 2, "Should have 2 rails after advancing beyond end epoch");
+        
+        // Verify Rail 3 is no longer included
+        bool railFound = false;
+        for (uint256 i = 0; i < finalRails.length; i++) {
+            if (finalRails[i].railId == rail3Id) {
+                railFound = true;
+                break;
+            }
+        }
+        
+        assertFalse(railFound, "Rail 3 should not be included after its end epoch");
+    }
+    
+    function testEmptyResult() public {
+        // Test non-existent payee
+        Payments.PayeeRailInfo[] memory nonExistentPayee = payments.getRailsForPayeeAndToken(address(0x123), address(token), true);
+        assertEq(nonExistentPayee.length, 0, "Should return empty array for non-existent payee");
+        
+        // Test non-existent token
+        Payments.PayeeRailInfo[] memory nonExistentToken = payments.getRailsForPayeeAndToken(USER2, address(0x456), true);
+        assertEq(nonExistentToken.length, 0, "Should return empty array for non-existent token");
+    }
+}

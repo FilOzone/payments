@@ -120,6 +120,16 @@ contract Payments is
     
     // Array to track all tokens that have ever accumulated fees
     address[] private feeTokens;
+    
+    // Define a struct for rails by payee information
+    struct PayeeRailInfo {
+        uint256 railId;       // The rail ID
+        bool isTerminated;    // True if rail is terminated
+        uint256 endEpoch;     // End epoch for terminated rails (0 for active rails)
+    }
+    
+    // token => payee => array of railIds
+    mapping(address => mapping(address => uint256[])) private payeeRails;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -497,6 +507,9 @@ contract Payments is
         rail.settledUpTo = block.number;
         rail.endEpoch = 0;
         rail.commissionRateBps = commissionRateBps;
+
+        // Record this rail in the payee's list
+        payeeRails[token][to].push(railId);
 
         return railId;
     }
@@ -1465,6 +1478,56 @@ contract Payments is
         }
         
         return (tokens, amounts, count);
+    }
+    
+    function getRailsForPayeeAndToken(
+        address payee,
+        address token,
+        bool includeTerminated
+    ) external view returns (PayeeRailInfo[] memory) {
+        uint256[] storage allRailIds = payeeRails[token][payee];
+        uint256 railsLength = allRailIds.length;
+        
+        // Single-pass implementation with temporary array
+        PayeeRailInfo[] memory tempResults = new PayeeRailInfo[](railsLength);
+        uint256 resultCount = 0;
+    
+        for (uint256 i = 0; i < railsLength; i++) {
+            uint256 railId = allRailIds[i];
+            Rail storage rail = rails[railId];
+        
+            // Skip non-existent rails
+            if (rail.from == address(0)) continue;
+        
+        // Skip terminated rails based on filter
+        if (rail.endEpoch > 0) {
+        // Skip if we don't want terminated rails
+            if (!includeTerminated) continue;
+            
+            // Skip rails that have reached their end epoch
+            if (block.number > rail.endEpoch) continue;
+        }
+        
+        // Add valid rail to our temporary array
+        tempResults[resultCount] = PayeeRailInfo({
+            railId: railId,
+            isTerminated: rail.endEpoch > 0,
+            endEpoch: rail.endEpoch
+        });
+        resultCount++;
+    }
+    
+    // Create correctly sized final result array
+    PayeeRailInfo[] memory result = new PayeeRailInfo[](resultCount);
+    
+    // Only copy if we have results (avoid unnecessary operations)
+    if (resultCount > 0) {
+        for (uint256 i = 0; i < resultCount; i++) {
+            result[i] = tempResults[i];
+        }
+    }
+    
+    return result;
     }
 }
 

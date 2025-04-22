@@ -156,7 +156,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedAmount = (rate * 5 * 80) / 100; // 5 blocks * 10 ether * 80%
 
         // Calculate expected contract fee (1% of the arbitrated amount)
-        uint256 paymentFee = (expectedAmount * payments.PAYMENT_COMISSION_BPS()) / payments.COMMISSION_MAX_BPS();
+        uint256 paymentFee = (expectedAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
         uint256 netPayeeAmount = expectedAmount - paymentFee;
 
         // Capture fee balance before settlement
@@ -471,7 +471,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // --- Expected Calculations --- 
         uint256 expectedSettledAmount = rate * elapsedBlocks;
-        uint256 expectedPaymentFee = (expectedSettledAmount * payments.PAYMENT_COMISSION_BPS()) / payments.COMMISSION_MAX_BPS();
+        uint256 expectedPaymentFee = (expectedSettledAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
         uint256 amountAfterPaymentFee = expectedSettledAmount - expectedPaymentFee;
         uint256 expectedOperatorCommission = (amountAfterPaymentFee * operatorCommissionBps) / payments.COMMISSION_MAX_BPS();
         uint256 expectedNetPayeeAmount = amountAfterPaymentFee - expectedOperatorCommission;

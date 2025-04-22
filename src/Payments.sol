@@ -43,7 +43,7 @@ contract Payments is
     // Maximum commission rate in basis points (100% = 10000 BPS)
     uint256 public constant COMMISSION_MAX_BPS = 10000;
 
-    uint256 public constant PAYMENT_COMISSION_BPS = 100; //(1 % comission)
+    uint256 public constant PAYMENT_FEE_BPS = 10; //(0.1 % fee)
 
     struct Account {
         uint256 funds;
@@ -1208,8 +1208,8 @@ contract Payments is
 
         // Calculate payment contract fee (if any) based on full settled amount
         paymentFee = 0;
-        if (PAYMENT_COMISSION_BPS > 0) {
-            paymentFee = (settledAmount * PAYMENT_COMISSION_BPS) /
+        if (PAYMENT_FEE_BPS > 0) {
+            paymentFee = (settledAmount * PAYMENT_FEE_BPS) /
                 COMMISSION_MAX_BPS;
         }
 

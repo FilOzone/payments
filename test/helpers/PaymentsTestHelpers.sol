@@ -575,9 +575,23 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             "Client funds not reduced correctly after one-time payment"
         );
 
+        // Calculate expected fees for one-time payment
+        uint256 paymentFee = (oneTimeAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
+        uint256 amountAfterFee = oneTimeAmount - paymentFee;
+        
+        // Get commission rate from rail
+        uint256 commissionRate = railBefore.commissionRateBps;
+        uint256 operatorCommission = 0;
+        
+        if (commissionRate > 0) {
+            operatorCommission = (amountAfterFee * commissionRate) / payments.COMMISSION_MAX_BPS();
+        }
+        
+        uint256 netPayeeAmount = amountAfterFee - operatorCommission;
+        
         assertEq(
             recipientAfter.funds,
-            recipientBefore.funds + oneTimeAmount,
+            recipientBefore.funds + netPayeeAmount,
             "Recipient funds not increased correctly after one-time payment"
         );
 
@@ -619,6 +633,14 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             lockupUsageBefore - oneTimeAmount,
             lockupUsageAfter,
             "Operator lockup usage not reduced correctly after one-time payment"
+        );
+        
+        // Verify platform fee was accumulated
+        uint256 accumulatedFees = payments.accumulatedFees(address(testToken));
+        assertGe(
+            accumulatedFees,
+            paymentFee,
+            "Platform fee not accumulated correctly"
         );
     }
 }

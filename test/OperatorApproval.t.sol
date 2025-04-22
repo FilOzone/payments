@@ -531,13 +531,18 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
             LOCKUP_ALLOWANCE
         );
 
-        // Create rail with fixed lockup
-        uint256 railId = helper.createRail(
+        // Create rail with fixed lockup and non-zero operator commission (5%)
+        uint256 operatorCommissionBps = 500;
+        
+        vm.startPrank(OPERATOR);
+        uint256 railId = payments.createRail(
+            address(helper.testToken()),
             USER1,
             USER2,
-            OPERATOR,
-            address(0)
+            address(0),
+            operatorCommissionBps
         );
+        vm.stopPrank();
 
         uint256 paymentRate = 10 ether;
         uint256 fixedLockup = 100 ether;

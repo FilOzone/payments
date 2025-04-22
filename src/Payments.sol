@@ -42,8 +42,15 @@ contract Payments is
     
     string public constant VERSION = "0.0.0";
     
+    event ContractUpgraded(string version, address implementation);
+    
     function getVersion() public pure returns (string memory) {
         return VERSION;
+    }
+    
+    function postUpgrade() external {
+        require(msg.sender == address(this), "Only callable via delegatecall from proxy");
+        emit ContractUpgraded(VERSION, address(this));
     }
 
     struct Account {

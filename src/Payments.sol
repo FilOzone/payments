@@ -132,6 +132,9 @@ contract Payments is
     // token => payee => array of railIds
     mapping(address => mapping(address => uint256[])) private payeeRails;
 
+    // token => payer => array of railIds
+    mapping(address => mapping(address => uint256[])) private payerRails;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -513,8 +516,9 @@ contract Payments is
         rail.endEpoch = 0;
         rail.commissionRateBps = commissionRateBps;
 
-        // Record this rail in the payee's list
+        // Record this rail in the payee's and payer's lists
         payeeRails[token][to].push(railId);
+        payerRails[token][from].push(railId);
 
         return railId;
     }
@@ -1464,6 +1468,10 @@ contract Payments is
         rail.lockupPeriod = 0;
         rail.settledUpTo = 0;
         rail.endEpoch = 0;
+
+        // Note: We don't actually remove the rail from the payeeRails or payerRails arrays,
+        // as this would require restructuring the arrays. Instead, we rely on the rail.from = address(0)
+        // check in the getter functions to filter out zeroed rails.
     }
 
     function updateOperatorRateUsage(
@@ -1573,12 +1581,56 @@ contract Payments is
         return (tokens, amounts, count);
     }
 
+    /**
+     * @notice Gets all rails where the given address is the payer for a specific token.
+     * @param payer The address of the payer to get rails for.
+     * @param token The token address to filter rails by.
+     * @param includeTerminated Whether to include terminated rails in the results.
+     * @return Array of RailInfo structs containing rail IDs and termination status.
+     */
+    function getRailsForPayerAndToken(
+        address payer,
+        address token,
+        bool includeTerminated
+    ) external view returns (RailInfo[] memory) {
+        return
+            _getRailsForAddressAndToken(payer, token, includeTerminated, true);
+    }
+
+    /**
+     * @notice Gets all rails where the given address is the payee for a specific token.
+     * @param payee The address of the payee to get rails for.
+     * @param token The token address to filter rails by.
+     * @param includeTerminated Whether to include terminated rails in the results.
+     * @return Array of RailInfo structs containing rail IDs and termination status.
+     */
     function getRailsForPayeeAndToken(
         address payee,
         address token,
         bool includeTerminated
     ) external view returns (RailInfo[] memory) {
-        uint256[] storage allRailIds = payeeRails[token][payee];
+        return
+            _getRailsForAddressAndToken(payee, token, includeTerminated, false);
+    }
+
+    /**
+     * @dev Internal function to get rails for either a payer or payee.
+     * @param addr The address to get rails for (either payer or payee).
+     * @param token The token address to filter rails by.
+     * @param includeTerminated Whether to include terminated rails in the results.
+     * @param isPayer If true, search for rails where addr is the payer, otherwise search for rails where addr is the payee.
+     * @return Array of RailInfo structs containing rail IDs and termination status.
+     */
+    function _getRailsForAddressAndToken(
+        address addr,
+        address token,
+        bool includeTerminated,
+        bool isPayer
+    ) internal view returns (RailInfo[] memory) {
+        // Get the appropriate list of rails based on whether we're looking for payer or payee
+        uint256[] storage allRailIds = isPayer
+            ? payerRails[token][addr]
+            : payeeRails[token][addr];
         uint256 railsLength = allRailIds.length;
 
         RailInfo[] memory tempResults = new RailInfo[](railsLength);

@@ -26,7 +26,8 @@ interface IArbiter {
         // the epoch up to and including which the rail has already been settled
         uint256 fromEpoch,
         // the epoch up to and including which arbitration is requested; payment will be arbitrated for (toEpoch - fromEpoch) epochs
-        uint256 toEpoch
+        uint256 toEpoch,
+        uint256 rate
     ) external returns (ArbitrationResult memory result);
 }
 
@@ -117,7 +118,7 @@ contract Payments is
 
     // token => amount of accumulated fees owned by the contract owner
     mapping(address => uint256) public accumulatedFees;
-    
+  
     // Array to track all tokens that have ever accumulated fees
     address[] private feeTokens;
 
@@ -133,6 +134,14 @@ contract Payments is
 
     // token => payer => array of railIds
     mapping(address => mapping(address => uint256[])) private payerRails;
+
+
+
+    // Tracks whether a token has ever had fees collected, to prevent duplicates in feeTokens
+    mapping(address => bool) public hasCollectedFees;
+
+    // Array to track all tokens that have ever accumulated fees
+    address[] private feeTokens;
 
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -1187,7 +1196,8 @@ contract Payments is
                 railId,
                 settledAmount,
                 epochStart,
-                epochEnd
+                epochEnd,
+                rate
             );
 
             // Ensure arbiter doesn't settle beyond our segment's end boundary
@@ -1263,6 +1273,8 @@ contract Payments is
         if (paymentFee > 0) {
             // Check if this is the first fee for this token
             if (accumulatedFees[rail.token] == 0) {
+            if (!hasCollectedFees[rail.token]) {
+                hasCollectedFees[rail.token] = true;
                 feeTokens.push(rail.token);
             }
             accumulatedFees[rail.token] += paymentFee;
@@ -1463,7 +1475,7 @@ contract Payments is
         // Perform the transfer
         IERC20(token).safeTransfer(to, amount);
     }
-    
+
     /// @notice Returns information about all accumulated fees
     /// @return tokens Array of token addresses that have accumulated fees
     /// @return amounts Array of fee amounts corresponding to each token
@@ -1476,12 +1488,12 @@ contract Payments is
         count = feeTokens.length;
         tokens = new address[](count);
         amounts = new uint256[](count);
-        
         for (uint256 i = 0; i < count; i++) {
             address token = feeTokens[i];
             tokens[i] = token;
             amounts[i] = accumulatedFees[token];
         }
+
         
         return (tokens, amounts, count);
     }
@@ -1573,7 +1585,8 @@ contract Payments is
             }
         }
 
-        return result;
+        return (tokens, amounts, count);
+
     }
 }
 

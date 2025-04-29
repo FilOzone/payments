@@ -113,12 +113,13 @@ contract Payments is
     mapping(address => mapping(address => mapping(address => OperatorApproval)))
         public operatorApprovals;
 
-    // token => payee => max commission BPS 
-    mapping(address => mapping(address => PayeeCommissionLimit)) public payeeCommissionLimits;
+    // token => payee => max commission BPS
+    mapping(address => mapping(address => PayeeCommissionLimit))
+        public payeeCommissionLimits;
 
     // token => amount of accumulated fees owned by the contract owner
     mapping(address => uint256) public accumulatedFees;
-  
+
     // Array to track all tokens that have ever accumulated fees
     address[] private feeTokens;
 
@@ -137,7 +138,6 @@ contract Payments is
 
     // Tracks whether a token has ever had fees collected, to prevent duplicates in feeTokens
     mapping(address => bool) public hasCollectedFees;
-
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -334,7 +334,10 @@ contract Payments is
     /// @notice Sets the maximum commission rate (in BPS) the caller (payee) will accept for a given token.
     /// @param token The ERC20 token address.
     /// @param maxBps The maximum commission in basis points (0-10000).
-    function setPayeeMaxCommission(address token, uint256 maxBps) external validateNonZeroAddress(token, "token") {
+    function setPayeeMaxCommission(
+        address token,
+        uint256 maxBps
+    ) external validateNonZeroAddress(token, "token") {
         require(maxBps <= COMMISSION_MAX_BPS, "max commission exceeds maximum");
         payeeCommissionLimits[token][msg.sender] = PayeeCommissionLimit({
             maxBps: maxBps,
@@ -497,7 +500,8 @@ contract Payments is
             "commission rate exceeds maximum"
         );
 
-        PayeeCommissionLimit memory payeeCommissionLimit = payeeCommissionLimits[token][to];
+        PayeeCommissionLimit
+            memory payeeCommissionLimit = payeeCommissionLimits[token][to];
         if (payeeCommissionLimit.isSet) {
             require(
                 commissionRateBps <= payeeCommissionLimit.maxBps,
@@ -788,7 +792,7 @@ contract Payments is
 
         // If there is no arbiter, settle the rail immediately
         if (rail.arbiter == address(0)) {
-            (,,,, uint256 settledUpto, ) = settleRail(railId, block.number);
+            (, , , , uint256 settledUpto, ) = settleRail(railId, block.number);
             require(
                 settledUpto == block.number,
                 "failed to settle rail up to current epoch"
@@ -919,7 +923,14 @@ contract Payments is
 
         if (isRailTerminated(rail) && rail.settledUpTo >= rail.endEpoch) {
             finalizeTerminatedRail(rail, payer);
-            return (0, 0, 0, 0, rail.settledUpTo, "rail fully settled and finalized");
+            return (
+                0,
+                0,
+                0,
+                0,
+                rail.settledUpTo,
+                "rail fully settled and finalized"
+            );
         }
 
         // Calculate the maximum settlement epoch based on account lockup
@@ -968,13 +979,19 @@ contract Payments is
 
         // Process settlement depending on whether rate changes exist
         if (rail.rateChangeQueue.isEmpty()) {
-            (uint256 amount, uint256 netPayeeAmount, uint256 paymentFee, uint256 operatorCommission, string memory segmentNote) = _settleSegment(
-                railId,
-                startEpoch,
-                maxSettlementEpoch,
-                currentRate,
-                skipArbitration
-            );
+            (
+                uint256 amount,
+                uint256 netPayeeAmount,
+                uint256 paymentFee,
+                uint256 operatorCommission,
+                string memory segmentNote
+            ) = _settleSegment(
+                    railId,
+                    startEpoch,
+                    maxSettlementEpoch,
+                    currentRate,
+                    skipArbitration
+                );
 
             require(rail.settledUpTo > startEpoch, "No progress in settlement");
 
@@ -1036,17 +1053,34 @@ contract Payments is
         uint256 finalEpoch,
         string memory regularNote,
         string memory finalizedNote
-    ) internal returns (uint256, uint256, uint256, uint256, uint256, string memory) {
+    )
+        internal
+        returns (uint256, uint256, uint256, uint256, uint256, string memory)
+    {
         // Check if rail is a terminated rail that's now fully settled
         if (
             isRailTerminated(rail) &&
             rail.settledUpTo >= maxSettlementEpochForTerminatedRail(rail)
         ) {
             finalizeTerminatedRail(rail, payer);
-            return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalEpoch, finalizedNote);
+            return (
+                totalSettledAmount,
+                totalNetPayeeAmount,
+                totalPaymentFee,
+                totalOperatorCommission,
+                finalEpoch,
+                finalizedNote
+            );
         }
 
-        return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalEpoch, regularNote);
+        return (
+            totalSettledAmount,
+            totalNetPayeeAmount,
+            totalPaymentFee,
+            totalOperatorCommission,
+            finalEpoch,
+            regularNote
+        );
     }
 
     function finalizeTerminatedRail(
@@ -1077,7 +1111,16 @@ contract Payments is
         uint256 startEpoch,
         uint256 targetEpoch,
         bool skipArbitration
-    ) internal returns (uint256 totalSettledAmount, uint256 totalNetPayeeAmount, uint256 totalPaymentFee, uint256 totalOperatorCommission, string memory note) {
+    )
+        internal
+        returns (
+            uint256 totalSettledAmount,
+            uint256 totalNetPayeeAmount,
+            uint256 totalPaymentFee,
+            uint256 totalOperatorCommission,
+            string memory note
+        )
+    {
         Rail storage rail = rails[railId];
         RateChangeQueue.Queue storage rateQueue = rail.rateChangeQueue;
 
@@ -1118,7 +1161,13 @@ contract Payments is
                 // if current rate is zero, there's nothing left to do and we've finished settlement
                 if (segmentRate == 0) {
                     rail.settledUpTo = targetEpoch;
-                    return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, "Zero rate payment rail");
+                    return (
+                        totalSettledAmount,
+                        totalNetPayeeAmount,
+                        totalPaymentFee,
+                        totalOperatorCommission,
+                        "Zero rate payment rail"
+                    );
                 }
             }
 
@@ -1139,7 +1188,13 @@ contract Payments is
 
             // If arbiter returned no progress, exit early without updating state
             if (rail.settledUpTo <= processedEpoch) {
-                return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, arbitrationNote);
+                return (
+                    totalSettledAmount,
+                    totalNetPayeeAmount,
+                    totalPaymentFee,
+                    totalOperatorCommission,
+                    arbitrationNote
+                );
             }
 
             // Add the settled amounts to our running totals
@@ -1150,7 +1205,13 @@ contract Payments is
 
             // If arbiter partially settled the segment, exit early
             if (rail.settledUpTo < segmentEndBoundary) {
-                return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, arbitrationNote);
+                return (
+                    totalSettledAmount,
+                    totalNetPayeeAmount,
+                    totalPaymentFee,
+                    totalOperatorCommission,
+                    arbitrationNote
+                );
             }
 
             // Successfully settled full segment, update tracking values
@@ -1164,7 +1225,13 @@ contract Payments is
         }
 
         // We've successfully settled up to the target epoch
-        return (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, note);
+        return (
+            totalSettledAmount,
+            totalNetPayeeAmount,
+            totalPaymentFee,
+            totalOperatorCommission,
+            note
+        );
     }
 
     function _settleSegment(
@@ -1173,7 +1240,16 @@ contract Payments is
         uint256 epochEnd,
         uint256 rate,
         bool skipArbitration
-    ) internal returns (uint256 totalSettledAmount,uint256 netPayeeAmount, uint256 paymentFee, uint256 operatorCommission, string memory note) {
+    )
+        internal
+        returns (
+            uint256 totalSettledAmount,
+            uint256 netPayeeAmount,
+            uint256 paymentFee,
+            uint256 operatorCommission,
+            string memory note
+        )
+    {
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
         Account storage payee = accounts[rail.token][rail.to];
@@ -1236,8 +1312,7 @@ contract Payments is
         // Calculate payment contract fee (if any) based on full settled amount
         paymentFee = 0;
         if (PAYMENT_FEE_BPS > 0) {
-            paymentFee = (settledAmount * PAYMENT_FEE_BPS) /
-                COMMISSION_MAX_BPS;
+            paymentFee = (settledAmount * PAYMENT_FEE_BPS) / COMMISSION_MAX_BPS;
         }
 
         // Calculate amount remaining after contract fee
@@ -1246,7 +1321,8 @@ contract Payments is
         // Calculate operator commission (if any) based on remaining amount
         operatorCommission = 0;
         if (rail.commissionRateBps > 0) {
-            operatorCommission = (amountAfterPaymentFee * rail.commissionRateBps) /
+            operatorCommission =
+                (amountAfterPaymentFee * rail.commissionRateBps) /
                 COMMISSION_MAX_BPS;
         }
 
@@ -1267,12 +1343,11 @@ contract Payments is
         // but is tracked for owner withdrawal
         if (paymentFee > 0) {
             // Check if this is the first fee for this token
-            if (accumulatedFees[rail.token] == 0) {
-                if (!hasCollectedFees[rail.token]) {
-                    hasCollectedFees[rail.token] = true;
-                    feeTokens.push(rail.token);
-                }
+            if (!hasCollectedFees[rail.token]) {
+                hasCollectedFees[rail.token] = true;
+                feeTokens.push(rail.token);
             }
+
             accumulatedFees[rail.token] += paymentFee;
         }
 
@@ -1288,7 +1363,13 @@ contract Payments is
             "failed to settle: invariant violation: insufficient funds to cover lockup after settlement"
         );
 
-        return (settledAmount, netPayeeAmount, paymentFee, operatorCommission, note);
+        return (
+            settledAmount,
+            netPayeeAmount,
+            paymentFee,
+            operatorCommission,
+            note
+        );
     }
 
     function isAccountLockupFullySettled(
@@ -1461,7 +1542,13 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    ) external onlyOwner nonReentrant validateNonZeroAddress(token, "token") validateNonZeroAddress(to, "to") {
+    )
+        external
+        onlyOwner
+        nonReentrant
+        validateNonZeroAddress(token, "token")
+        validateNonZeroAddress(to, "to")
+    {
         uint256 currentFees = accumulatedFees[token];
         require(amount <= currentFees, "amount exceeds accumulated fees");
 
@@ -1476,11 +1563,15 @@ contract Payments is
     /// @return tokens Array of token addresses that have accumulated fees
     /// @return amounts Array of fee amounts corresponding to each token
     /// @return count Total number of tokens with accumulated fees
-    function getAllAccumulatedFees() external view returns (
-        address[] memory tokens,
-        uint256[] memory amounts,
-        uint256 count
-    ) {
+    function getAllAccumulatedFees()
+        external
+        view
+        returns (
+            address[] memory tokens,
+            uint256[] memory amounts,
+            uint256 count
+        )
+    {
         count = feeTokens.length;
         tokens = new address[](count);
         amounts = new uint256[](count);
@@ -1490,54 +1581,45 @@ contract Payments is
             amounts[i] = accumulatedFees[token];
         }
 
-        
         return (tokens, amounts, count);
     }
 
-     /**
+    /**
      * @notice Gets all rails where the given address is the payer for a specific token.
      * @param payer The address of the payer to get rails for.
      * @param token The token address to filter rails by.
-     * @param includeTerminated Whether to include terminated rails in the results.
      * @return Array of RailInfo structs containing rail IDs and termination status.
      */
     function getRailsForPayerAndToken(
         address payer,
-        address token,
-        bool includeTerminated
+        address token
     ) external view returns (RailInfo[] memory) {
-        return
-            _getRailsForAddressAndToken(payer, token, includeTerminated, true);
+        return _getRailsForAddressAndToken(payer, token, true);
     }
 
     /**
      * @notice Gets all rails where the given address is the payee for a specific token.
      * @param payee The address of the payee to get rails for.
      * @param token The token address to filter rails by.
-     * @param includeTerminated Whether to include terminated rails in the results.
      * @return Array of RailInfo structs containing rail IDs and termination status.
      */
     function getRailsForPayeeAndToken(
         address payee,
-        address token,
-        bool includeTerminated
+        address token
     ) external view returns (RailInfo[] memory) {
-        return
-            _getRailsForAddressAndToken(payee, token, includeTerminated, false);
+        return _getRailsForAddressAndToken(payee, token, false);
     }
 
     /**
      * @dev Internal function to get rails for either a payer or payee.
      * @param addr The address to get rails for (either payer or payee).
      * @param token The token address to filter rails by.
-     * @param includeTerminated Whether to include terminated rails in the results.
      * @param isPayer If true, search for rails where addr is the payer, otherwise search for rails where addr is the payee.
      * @return Array of RailInfo structs containing rail IDs and termination status.
      */
     function _getRailsForAddressAndToken(
         address addr,
         address token,
-        bool includeTerminated,
         bool isPayer
     ) internal view returns (RailInfo[] memory) {
         // Get the appropriate list of rails based on whether we're looking for payer or payee
@@ -1556,13 +1638,7 @@ contract Payments is
             // Skip non-existent rails
             if (rail.from == address(0)) continue;
 
-            // Skip terminated rails based on filter
-            if (rail.endEpoch > 0) {
-                // Skip if we don't want terminated rails
-                if (!includeTerminated) continue;
-            }
-
-            // Add valid rail to our temporary array
+            // Add rail to our temporary array
             tempResults[resultCount] = RailInfo({
                 railId: railId,
                 isTerminated: rail.endEpoch > 0,

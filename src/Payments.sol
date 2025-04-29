@@ -746,7 +746,7 @@ contract Payments is
         );
 
         // --- Process the One-Time Payment ---
-        processOneTimePayment(payer, payee, oneTimePayment);
+        processOneTimePayment(payer, payee, rail, oneTimePayment);
     }
 
     function modifyPaymentForTerminatedRailBeyondLastEpoch(
@@ -813,9 +813,61 @@ contract Payments is
         }
     }
 
+    function calculateAndPayFees(
+        uint256 amount,
+        address token,
+        address operator,
+        uint256 commissionRateBps
+    )
+        internal
+        returns (
+            uint256 netPayeeAmount,
+            uint256 paymentFee,
+            uint256 operatorCommission
+        )
+    {
+        // Calculate payment contract fee (if any) based on full amount
+        paymentFee = 0;
+        if (PAYMENT_FEE_BPS > 0) {
+            paymentFee = (amount * PAYMENT_FEE_BPS) / COMMISSION_MAX_BPS;
+        }
+
+        // Calculate amount remaining after contract fee
+        uint256 amountAfterPaymentFee = amount - paymentFee;
+
+        // Calculate operator commission (if any) based on remaining amount
+        operatorCommission = 0;
+        if (commissionRateBps > 0) {
+            operatorCommission =
+                (amountAfterPaymentFee * commissionRateBps) /
+                COMMISSION_MAX_BPS;
+        }
+
+        // Calculate net amount for payee
+        netPayeeAmount = amountAfterPaymentFee - operatorCommission;
+
+        // Credit operator (if commission exists)
+        if (operatorCommission > 0) {
+            Account storage operatorAccount = accounts[token][operator];
+            operatorAccount.funds += operatorCommission;
+        }
+
+        // Track platform fee
+        if (paymentFee > 0) {
+            if (!hasCollectedFees[token]) {
+                hasCollectedFees[token] = true;
+                feeTokens.push(token);
+            }
+            accumulatedFees[token] += paymentFee;
+        }
+
+        return (netPayeeAmount, paymentFee, operatorCommission);
+    }
+
     function processOneTimePayment(
         Account storage payer,
         Account storage payee,
+        Rail storage rail,
         uint256 oneTimePayment
     ) internal {
         if (oneTimePayment > 0) {
@@ -823,8 +875,20 @@ contract Payments is
                 payer.funds >= oneTimePayment,
                 "insufficient funds for one-time payment"
             );
+
+            // Transfer funds from payer (full amount)
             payer.funds -= oneTimePayment;
-            payee.funds += oneTimePayment;
+
+            // Calculate fees, pay operator commission and track platform fees
+            (uint256 netPayeeAmount, , ) = calculateAndPayFees(
+                oneTimePayment,
+                rail.token,
+                rail.operator,
+                rail.commissionRateBps
+            );
+
+            // Credit payee (net amount after fees)
+            payee.funds += netPayeeAmount;
         }
     }
 
@@ -1309,47 +1373,16 @@ contract Payments is
         // Transfer funds from payer (always pays full settled amount)
         payer.funds -= settledAmount;
 
-        // Calculate payment contract fee (if any) based on full settled amount
-        paymentFee = 0;
-        if (PAYMENT_FEE_BPS > 0) {
-            paymentFee = (settledAmount * PAYMENT_FEE_BPS) / COMMISSION_MAX_BPS;
-        }
-
-        // Calculate amount remaining after contract fee
-        uint256 amountAfterPaymentFee = settledAmount - paymentFee;
-
-        // Calculate operator commission (if any) based on remaining amount
-        operatorCommission = 0;
-        if (rail.commissionRateBps > 0) {
-            operatorCommission =
-                (amountAfterPaymentFee * rail.commissionRateBps) /
-                COMMISSION_MAX_BPS;
-        }
-
-        // Calculate net amount for payee
-        netPayeeAmount = amountAfterPaymentFee - operatorCommission;
+        // Calculate fees, pay operator commission and track platform fees
+        (netPayeeAmount, paymentFee, operatorCommission) = calculateAndPayFees(
+            settledAmount,
+            rail.token,
+            rail.operator,
+            rail.commissionRateBps
+        );
 
         // Credit payee
         payee.funds += netPayeeAmount;
-
-        // Credit operator (if commission exists)
-        if (operatorCommission > 0) {
-            Account storage operatorAccount = accounts[rail.token][
-                rail.operator
-            ];
-            operatorAccount.funds += operatorCommission;
-        }
-        // Note: The paymentFee remains in the contract implicitly
-        // but is tracked for owner withdrawal
-        if (paymentFee > 0) {
-            // Check if this is the first fee for this token
-            if (!hasCollectedFees[rail.token]) {
-                hasCollectedFees[rail.token] = true;
-                feeTokens.push(rail.token);
-            }
-
-            accumulatedFees[rail.token] += paymentFee;
-        }
 
         // Reduce the lockup by the total settled amount
         payer.lockupCurrent -= settledAmount;

@@ -542,6 +542,9 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         // Get initial balances
         Payments.Account memory clientBefore = getAccountData(railClient);
         Payments.Account memory recipientBefore = getAccountData(railRecipient);
+        Payments.Account memory operatorBefore = getAccountData(
+            operatorAddress
+        );
 
         // Get operator allowance and usage before payment
         (
@@ -568,6 +571,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         // Verify balance changes
         Payments.Account memory clientAfter = getAccountData(railClient);
         Payments.Account memory recipientAfter = getAccountData(railRecipient);
+        Payments.Account memory operatorAfter = getAccountData(operatorAddress);
 
         assertEq(
             clientAfter.funds,
@@ -575,9 +579,32 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             "Client funds not reduced correctly after one-time payment"
         );
 
+        // Calculate expected fees for one-time payment
+        uint256 paymentFee = (oneTimeAmount * payments.PAYMENT_FEE_BPS()) /
+            payments.COMMISSION_MAX_BPS();
+        uint256 amountAfterFee = oneTimeAmount - paymentFee;
+
+        // Get commission rate from rail
+        uint256 commissionRate = railBefore.commissionRateBps;
+        uint256 operatorCommission = 0;
+
+        if (commissionRate > 0) {
+            operatorCommission =
+                (amountAfterFee * commissionRate) /
+                payments.COMMISSION_MAX_BPS();
+            // Verify operator commission is non-zero when commission rate is non-zero
+            assertGt(
+                operatorCommission,
+                0,
+                "Operator commission should be non-zero when commission rate is non-zero"
+            );
+        }
+
+        uint256 netPayeeAmount = amountAfterFee - operatorCommission;
+
         assertEq(
             recipientAfter.funds,
-            recipientBefore.funds + oneTimeAmount,
+            recipientBefore.funds + netPayeeAmount,
             "Recipient funds not increased correctly after one-time payment"
         );
 
@@ -588,6 +615,15 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             railBefore.lockupFixed - oneTimeAmount,
             "Fixed lockup not reduced by one-time payment amount"
         );
+
+        // Verify operator account is credited with commission
+        if (operatorCommission > 0) {
+            assertEq(
+                operatorAfter.funds,
+                operatorBefore.funds + operatorCommission,
+                "Operator funds not increased correctly with commission amount"
+            );
+        }
 
         // Verify account lockup is also reduced
         assertEq(
@@ -619,6 +655,14 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             lockupUsageBefore - oneTimeAmount,
             lockupUsageAfter,
             "Operator lockup usage not reduced correctly after one-time payment"
+        );
+
+        // Verify platform fee was accumulated
+        uint256 accumulatedFees = payments.accumulatedFees(address(testToken));
+        assertGe(
+            accumulatedFees,
+            paymentFee,
+            "Platform fee not accumulated correctly"
         );
     }
 }

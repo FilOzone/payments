@@ -16,9 +16,9 @@ install:
 # Build target
 .PHONY: build
 build:
-	forge build --via-ir
+	forge build
 
 # Test target
 .PHONY: test
 test:
-	forge test -vv --via-ir
+	forge test -vv

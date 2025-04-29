@@ -44,7 +44,7 @@ contract Payments is
     // Maximum commission rate in basis points (100% = 10000 BPS)
     uint256 public constant COMMISSION_MAX_BPS = 10000;
 
-    uint256 public constant PAYMENT_COMISSION_BPS = 100; //(1 % comission)
+    uint256 public constant PAYMENT_FEE_BPS = 10; //(0.1 % fee)
 
     struct Account {
         uint256 funds;
@@ -118,6 +118,12 @@ contract Payments is
 
     // token => amount of accumulated fees owned by the contract owner
     mapping(address => uint256) public accumulatedFees;
+
+    // Tracks whether a token has ever had fees collected, to prevent duplicates in feeTokens
+    mapping(address => bool) public hasCollectedFees;
+
+    // Array to track all tokens that have ever accumulated fees
+    address[] private feeTokens;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -1210,8 +1216,8 @@ contract Payments is
 
         // Calculate payment contract fee (if any) based on full settled amount
         paymentFee = 0;
-        if (PAYMENT_COMISSION_BPS > 0) {
-            paymentFee = (settledAmount * PAYMENT_COMISSION_BPS) /
+        if (PAYMENT_FEE_BPS > 0) {
+            paymentFee = (settledAmount * PAYMENT_FEE_BPS) /
                 COMMISSION_MAX_BPS;
         }
 
@@ -1241,6 +1247,11 @@ contract Payments is
         // Note: The paymentFee remains in the contract implicitly
         // but is tracked for owner withdrawal
         if (paymentFee > 0) {
+            // Check if this is the first fee for this token
+            if (!hasCollectedFees[rail.token]) {
+                hasCollectedFees[rail.token] = true;
+                feeTokens.push(rail.token);
+            }
             accumulatedFees[rail.token] += paymentFee;
         }
 
@@ -1430,7 +1441,6 @@ contract Payments is
         address to,
         uint256 amount
     ) external onlyOwner nonReentrant validateNonZeroAddress(token, "token") validateNonZeroAddress(to, "to") {
-        require(amount > 0, "amount must be greater than zero");
         uint256 currentFees = accumulatedFees[token];
         require(amount <= currentFees, "amount exceeds accumulated fees");
 
@@ -1439,6 +1449,28 @@ contract Payments is
 
         // Perform the transfer
         IERC20(token).safeTransfer(to, amount);
+    }
+
+    /// @notice Returns information about all accumulated fees
+    /// @return tokens Array of token addresses that have accumulated fees
+    /// @return amounts Array of fee amounts corresponding to each token
+    /// @return count Total number of tokens with accumulated fees
+    function getAllAccumulatedFees() external view returns (
+        address[] memory tokens,
+        uint256[] memory amounts,
+        uint256 count
+    ) {
+        count = feeTokens.length;
+        tokens = new address[](count);
+        amounts = new uint256[](count);
+
+        for (uint256 i = 0; i < count; i++) {
+            address token = feeTokens[i];
+            tokens[i] = token;
+            amounts[i] = accumulatedFees[token];
+        }
+
+        return (tokens, amounts, count);
     }
 }
 

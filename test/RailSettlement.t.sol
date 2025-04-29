@@ -156,7 +156,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedAmount = (rate * 5 * 80) / 100; // 5 blocks * 10 ether * 80%
 
         // Calculate expected contract fee (1% of the arbitrated amount)
-        uint256 paymentFee = (expectedAmount * payments.PAYMENT_COMISSION_BPS()) / payments.COMMISSION_MAX_BPS();
+        uint256 paymentFee = (expectedAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
         uint256 netPayeeAmount = expectedAmount - paymentFee;
 
         // Capture fee balance before settlement
@@ -471,7 +471,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // --- Expected Calculations --- 
         uint256 expectedSettledAmount = rate * elapsedBlocks;
-        uint256 expectedPaymentFee = (expectedSettledAmount * payments.PAYMENT_COMISSION_BPS()) / payments.COMMISSION_MAX_BPS();
+        uint256 expectedPaymentFee = (expectedSettledAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
         uint256 amountAfterPaymentFee = expectedSettledAmount - expectedPaymentFee;
         uint256 expectedOperatorCommission = (amountAfterPaymentFee * operatorCommissionBps) / payments.COMMISSION_MAX_BPS();
         uint256 expectedNetPayeeAmount = amountAfterPaymentFee - expectedOperatorCommission;
@@ -495,5 +495,48 @@ contract RailSettlementTest is Test, BaseTestHelper {
         assertEq(payeeAfter.funds, payeeBefore.funds + expectedNetPayeeAmount, "Payee funds mismatch");
         assertEq(operatorAfter.funds, operatorBefore.funds + expectedOperatorCommission, "Operator funds mismatch");
         assertEq(feesAfter, feesBefore + expectedPaymentFee, "Accumulated fees mismatch");
+
+        // --- Test Fees Withdrawal and Subsequent Fee Accumulation ---
+
+        // 3. Check the fee tokens array before withdrawal
+        (address[] memory tokensBeforeWithdrawal, uint256[] memory amountsBeforeWithdrawal, uint256 countBeforeWithdrawal) =
+            payments.getAllAccumulatedFees();
+            
+        // Should only have one token with accumulated fees
+        assertEq(countBeforeWithdrawal, 1, "Should have 1 fee token before withdrawal");
+        assertEq(tokensBeforeWithdrawal[0], address(token), "Fee token address mismatch");
+        assertEq(amountsBeforeWithdrawal[0], feesAfter, "Fee amount mismatch");
+        
+        // 4. Withdraw all accumulated fees
+        vm.prank(OWNER);
+        payments.withdrawFees(address(token), OWNER, feesAfter);
+        
+        // Verify fees are now zero but token is still in the array
+        (address[] memory tokensAfterWithdrawal, uint256[] memory amountsAfterWithdrawal, uint256 countAfterWithdrawal) = 
+            payments.getAllAccumulatedFees();
+            
+        assertEq(countAfterWithdrawal, 1, "Fee token count should not change after withdrawal");
+        assertEq(tokensAfterWithdrawal[0], address(token), "Fee token should remain in array after withdrawal");
+        assertEq(amountsAfterWithdrawal[0], 0, "Fee amount should be zero after withdrawal");
+        assertEq(payments.accumulatedFees(address(token)), 0, "Accumulated fees should be zero after withdrawal");
+        
+        // 5. Accumulate more fees by settling again
+        // Advance more blocks
+        helper.advanceBlocks(5);
+        
+        vm.prank(USER1);
+        (uint256 newSettledAmount, , uint256 newPaymentFee, , ,) = payments.settleRail(railId, block.number);
+        
+        uint256 expectedNewFee = (newSettledAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
+        assertEq(newPaymentFee, expectedNewFee, "New payment fee incorrect");
+        
+        // 6. Verify no duplicate tokens were added after resettlement
+        (address[] memory tokensAfterResettlement, uint256[] memory amountsAfterResettlement, uint256 countAfterResettlement) = 
+            payments.getAllAccumulatedFees();
+            
+        assertEq(countAfterResettlement, 1, "Should still have only 1 fee token after resettlement");
+        assertEq(tokensAfterResettlement[0], address(token), "Fee token address should not change");
+        assertEq(amountsAfterResettlement[0], expectedNewFee, "New fee amount incorrect");
+        assertEq(payments.accumulatedFees(address(token)), expectedNewFee, "Accumulated fees incorrect after resettlement");
     }
 }

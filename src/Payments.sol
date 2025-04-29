@@ -135,13 +135,8 @@ contract Payments is
     // token => payer => array of railIds
     mapping(address => mapping(address => uint256[])) private payerRails;
 
-
-
     // Tracks whether a token has ever had fees collected, to prevent duplicates in feeTokens
     mapping(address => bool) public hasCollectedFees;
-
-    // Array to track all tokens that have ever accumulated fees
-    address[] private feeTokens;
 
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -1273,9 +1268,10 @@ contract Payments is
         if (paymentFee > 0) {
             // Check if this is the first fee for this token
             if (accumulatedFees[rail.token] == 0) {
-            if (!hasCollectedFees[rail.token]) {
-                hasCollectedFees[rail.token] = true;
-                feeTokens.push(rail.token);
+                if (!hasCollectedFees[rail.token]) {
+                    hasCollectedFees[rail.token] = true;
+                    feeTokens.push(rail.token);
+                }
             }
             accumulatedFees[rail.token] += paymentFee;
         }
@@ -1585,8 +1581,7 @@ contract Payments is
             }
         }
 
-        return (tokens, amounts, count);
-
+        return result;
     }
 }
 

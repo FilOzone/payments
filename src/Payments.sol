@@ -118,6 +118,9 @@ contract Payments is
     // token => amount of accumulated fees owned by the contract owner
     mapping(address => uint256) public accumulatedFees;
     
+    // Tracks whether a token has ever had fees collected, to prevent duplicates in feeTokens
+    mapping(address => bool) public hasCollectedFees;
+
     // Array to track all tokens that have ever accumulated fees
     address[] private feeTokens;
 
@@ -1243,7 +1246,8 @@ contract Payments is
         // but is tracked for owner withdrawal
         if (paymentFee > 0) {
             // Check if this is the first fee for this token
-            if (accumulatedFees[rail.token] == 0) {
+            if (!hasCollectedFees[rail.token]) {
+                hasCollectedFees[rail.token] = true;
                 feeTokens.push(rail.token);
             }
             accumulatedFees[rail.token] += paymentFee;

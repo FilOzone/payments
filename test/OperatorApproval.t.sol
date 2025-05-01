@@ -28,10 +28,8 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
     }
 
-    function testInvalidAddresses() public {
-        // Test zero token address
+    function testNativeFIL() public {
         vm.startPrank(USER1);
-        vm.expectRevert("token address cannot be zero");
         payments.setOperatorApproval(
             address(0),
             OPERATOR,
@@ -41,6 +39,9 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
         vm.stopPrank();
 
+    }
+
+    function testInvalidAddresses() public {
         // Test zero operator address
         vm.startPrank(USER1);
         vm.expectRevert("operator address cannot be zero");
@@ -95,7 +96,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
             USER1,
             OPERATOR
         );
-        
+
 
         // Reapprove operator
         helper.setupOperatorApproval(
@@ -547,7 +548,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         payments.modifyRailLockup(railId, 0, fixedLockup);
         vm.stopPrank();
 
-       
+
         uint256 oneTimeAmount = 30 ether;
         helper.executeOneTimePayment(
             railId,
@@ -555,7 +556,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
             oneTimeAmount
         );
 
-    
+
 
         // 2. Test complete fixed lockup consumption using one time payment
         uint256 remainingFixedLockup = fixedLockup - oneTimeAmount;
@@ -657,7 +658,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         helper.setupOperatorApproval(
             USER1,
             OPERATOR,
-            90 ether,   
+            90 ether,
             30 ether
         );
 

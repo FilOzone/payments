@@ -298,9 +298,12 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Final settlement after termination 
         vm.prank(USER1);
 
-        (uint256 settledAmount, uint256 netPayeeAmount, uint256 paymentFee, , uint256 settledUpto,) = 
+        (uint256 settledAmount, uint256 netPayeeAmount, uint256 paymentFee, uint256 totalOperatorCommission, uint256 settledUpto,) = 
 
             payments.settleRail(railId, block.number);
+        
+        // Verify that total settled amount is equal to the sum of net payee amount, payment fee, and operator commission
+        assertEq(settledAmount, netPayeeAmount + paymentFee + totalOperatorCommission, "Mismatch in settled amount breakdown");
         
         // Should settle up to endEpoch, which is lockupPeriod blocks after the last settlement
         uint256 expectedAmount2 = rate * lockupPeriod; // lockupPeriod = 5 blocks

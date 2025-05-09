@@ -132,6 +132,48 @@ contract RailSettlementTest is Test, BaseTestHelper {
         assertEq(result.note, "Standard approved payment", "Arbiter note should match");
     }
 
+    function testArbitrationWithMultipleRateChanges() public {
+        // Deploy a standard arbiter that approves everything
+        MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.STANDARD);
+
+        // Setup operator approval first
+        helper.setupOperatorApproval(
+            USER1, // from
+            OPERATOR,
+            10,
+            100 ether
+        );
+
+        // Create a rail with the arbiter
+        uint256 rate = 1;
+        uint256 expectedAmount = 0;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            rate,
+            10, // lockupPeriod
+            0, // No fixed lockup
+            address(arbiter) // Standard arbiter
+        );
+
+        vm.startPrank(OPERATOR);
+        while (rate++ < 10) {
+            // Advance several blocks
+            payments.modifyRailPayment(railId, rate, 0);
+            expectedAmount += rate * 5;
+            helper.advanceBlocks(5);
+        }
+        vm.stopPrank();
+
+        // Settle with arbitration
+        RailSettlementHelpers.SettlementResult memory result =
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
+
+         // Verify arbiter note
+         assertEq(result.note, "Standard approved payment", "Arbiter note should match");
+    }
+
     function testArbitrationWithReducedAmount() public {
         // Deploy an arbiter that reduces payment amounts
         MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.REDUCE_AMOUNT);

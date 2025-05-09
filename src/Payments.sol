@@ -318,7 +318,6 @@ contract Payments is
         uint256 lockupAllowance
     )
         external
-        validateNonZeroAddress(token, "token")
         validateNonZeroAddress(operator, "operator")
     {
         OperatorApproval storage approval = operatorApprovals[token][
@@ -337,7 +336,7 @@ contract Payments is
     function setPayeeMaxCommission(
         address token,
         uint256 maxBps
-    ) external validateNonZeroAddress(token, "token") {
+    ) external {
         require(maxBps <= COMMISSION_MAX_BPS, "max commission exceeds maximum");
         payeeCommissionLimits[token][msg.sender] = PayeeCommissionLimit({
             maxBps: maxBps,
@@ -400,9 +399,8 @@ contract Payments is
         address to,
         uint256 amount
     )
-        external
+        external payable
         nonReentrant
-        validateNonZeroAddress(token, "token")
         validateNonZeroAddress(to, "to")
         settleAccountLockupBeforeAndAfter(token, to, false)
     {
@@ -410,7 +408,13 @@ contract Payments is
         Account storage account = accounts[token][to];
 
         // Transfer tokens from sender to contract
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        if (token == address(0)) {
+            require(msg.value == amount, "must send an equal amount of native tokens");
+        } else {
+            require(msg.value == 0, "must not send native tokens");
+
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        }
 
         // Update account balance
         account.funds += amount;
@@ -425,7 +429,6 @@ contract Payments is
     )
         external
         nonReentrant
-        validateNonZeroAddress(token, "token")
         settleAccountLockupBeforeAndAfter(token, msg.sender, true)
     {
         return withdrawToInternal(token, msg.sender, amount);
@@ -442,7 +445,6 @@ contract Payments is
     )
         external
         nonReentrant
-        validateNonZeroAddress(token, "token")
         validateNonZeroAddress(to, "to")
         settleAccountLockupBeforeAndAfter(token, msg.sender, true)
     {
@@ -461,7 +463,12 @@ contract Payments is
             "insufficient unlocked funds for withdrawal"
         );
         account.funds -= amount;
-        IERC20(token).safeTransfer(to, amount);
+        if (token == address(0)) {
+            (bool success, bytes memory data) = payable(to).call{value: amount}("");
+            require(success, "receiving contract rejected funds");
+        } else {
+            IERC20(token).safeTransfer(to, amount);
+        }
     }
 
     /// @notice Create a new rail from `from` to `to`, operated by the caller.
@@ -481,7 +488,6 @@ contract Payments is
     )
         external
         nonReentrant
-        validateNonZeroAddress(token, "token")
         validateNonZeroAddress(from, "from")
         validateNonZeroAddress(to, "to")
         returns (uint256)
@@ -1579,7 +1585,6 @@ contract Payments is
         external
         onlyOwner
         nonReentrant
-        validateNonZeroAddress(token, "token")
         validateNonZeroAddress(to, "to")
     {
         uint256 currentFees = accumulatedFees[token];

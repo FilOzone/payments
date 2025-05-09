@@ -1496,9 +1496,6 @@ contract Payments is
             "rate change queue must be empty post full settlement"
         );
 
-        // Clear the rate change queue
-        rail.rateChangeQueue.clear();
-
         rail.token = address(0);
         rail.from = address(0); // This now marks the rail as inactive
         rail.to = address(0);

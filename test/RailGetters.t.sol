@@ -311,7 +311,7 @@ contract PayeeRailsTest is Test, BaseTestHelper {
         );
 
         // Get the endEpoch for Rail 3
-        uint256 endEpoch;
+        uint64 endEpoch;
         for (uint256 i = 0; i < initialPayeeRails.length; i++) {
             if (initialPayeeRails[i].railId == rail3Id) {
                 endEpoch = initialPayeeRails[i].endEpoch;

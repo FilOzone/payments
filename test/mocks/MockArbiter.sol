@@ -15,7 +15,7 @@ contract MockArbiter is IArbiter {
     ArbiterMode public mode = ArbiterMode.STANDARD; // Default to STANDARD mode
     uint256 public modificationFactor; // Percentage (0-100) for reductions
     uint256 public customAmount;
-    uint256 public customUpto;
+    uint64 public customUpto;
     string public customNote;
 
     constructor(ArbiterMode _mode) {
@@ -31,7 +31,7 @@ contract MockArbiter is IArbiter {
     // Set custom return values for CUSTOM_RETURN mode
     function setCustomValues(
         uint256 _amount,
-        uint256 _upto,
+        uint64 _upto,
         string calldata _note
     ) external {
         customAmount = _amount;
@@ -47,8 +47,8 @@ contract MockArbiter is IArbiter {
     function arbitratePayment(
         uint256 /* railId */,
         uint256 proposedAmount,
-        uint256 fromEpoch,
-        uint256 toEpoch,
+        uint64 fromEpoch,
+        uint64 toEpoch,
         uint256 /* rate */
     ) external view override returns (ArbitrationResult memory result) {
         if (mode == ArbiterMode.STANDARD) {
@@ -69,7 +69,7 @@ contract MockArbiter is IArbiter {
         } else if (mode == ArbiterMode.REDUCE_DURATION) {
             uint256 totalEpochs = toEpoch - fromEpoch;
             uint256 reducedEpochs = (totalEpochs * modificationFactor) / 100;
-            uint256 reducedEndEpoch = fromEpoch + reducedEpochs;
+            uint64 reducedEndEpoch = uint64(fromEpoch + reducedEpochs);
 
             // Calculate reduced amount proportionally
             uint256 reducedAmount = (proposedAmount * reducedEpochs) /

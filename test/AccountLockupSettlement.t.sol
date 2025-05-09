@@ -48,7 +48,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             DEPOSIT_AMOUNT * 2,
             0,
             0,
-            block.number
+            uint64(block.number)
         );
     }
 
@@ -66,7 +66,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             USER2,
             OPERATOR,
             lockupRate, // payment rate
-            lockupPeriod, // lockup period
+            uint64(lockupPeriod), // lockup period
             0, // no fixed lockup
             address(0) // no fixed lockup
         );
@@ -91,7 +91,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             DEPOSIT_AMOUNT * 2,
             expectedLockup,
             lockupRate,
-            block.number
+            uint64(block.number)
         );
     }
 
@@ -136,7 +136,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             DEPOSIT_AMOUNT, // expected funds
             expectedLockup, // expected lockup
             lockupRate, // expected lockup rate
-            expectedSettlementBlock // expected settlement block
+            uint64(expectedSettlementBlock) // expected settlement block
         );
     }
 
@@ -157,7 +157,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             USER2,
             OPERATOR,
             lockupRate, // 1 token per block
-            lockupPeriod, // Lockup period of 30 blocks
+            uint64(lockupPeriod), // Lockup period of 30 blocks
             initialLockup, // initial fixed lockup of 10 ether
             address(0) // no fixed lockup
         );
@@ -179,7 +179,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             DEPOSIT_AMOUNT * 3, // expected funds
             expectedLockup, // expected lockup
             lockupRate, // expected lockup rate
-            block.number // expected settlement block
+            uint64(block.number) // expected settlement block
         );
     }
 
@@ -208,7 +208,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             DEPOSIT_AMOUNT,
             DEPOSIT_AMOUNT,
             0, // no payment rate
-            block.number
+            uint64(block.number)
         );
 
         helper.makeDeposit(USER1, USER1, 1); // Adding more funds
@@ -259,7 +259,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             USER2,
             OPERATOR,
             lockupRate, // 1 ether per block
-            lockupPeriod, // Lockup period of 10 blocks
+            uint64(lockupPeriod), // Lockup period of 10 blocks
             initialLockup, // 50 ether fixed lockup
             address(0) // no fixed lockup
         );
@@ -285,7 +285,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             60 ether, // expected funds
             60 ether, // expected lockup
             lockupRate, // expected lockup rate
-            block.number // expected settlement block
+            uint64(block.number) // expected settlement block
         );
     }
 }

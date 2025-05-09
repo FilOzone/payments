@@ -15,7 +15,7 @@ interface IArbiter {
         // The actual payment amount determined by the arbiter after arbitration of a rail during settlement
         uint256 modifiedAmount;
         // The epoch up to and including which settlement should occur.
-        uint256 settleUpto;
+        uint64 settleUpto;
         // A placeholder note for any additional information the arbiter wants to send to the caller of `settleRail`
         string note;
     }
@@ -24,9 +24,9 @@ interface IArbiter {
         uint256 railId,
         uint256 proposedAmount,
         // the epoch up to and including which the rail has already been settled
-        uint256 fromEpoch,
+        uint64 fromEpoch,
         // the epoch up to and including which arbitration is requested; payment will be arbitrated for (toEpoch - fromEpoch) epochs
-        uint256 toEpoch,
+        uint64 toEpoch,
         uint256 rate
     ) external returns (ArbitrationResult memory result);
 }
@@ -42,33 +42,48 @@ contract Payments is
     using RateChangeQueue for RateChangeQueue.Queue;
 
     // Maximum commission rate in basis points (100% = 10000 BPS)
-    uint256 public constant COMMISSION_MAX_BPS = 10000;
+    uint16 public constant COMMISSION_MAX_BPS = 10000;
 
-    uint256 public constant PAYMENT_FEE_BPS = 10; //(0.1 % fee)
+    uint16 public constant PAYMENT_FEE_BPS = 10; //(0.1 % fee)
 
     struct Account {
         uint256 funds;
         uint256 lockupCurrent;
         uint256 lockupRate;
         // epoch up to and including which lockup has been settled for the account
-        uint256 lockupLastSettledAt;
+        uint64 lockupLastSettledAt;
     }
 
     struct Rail {
+        // slot 0: 20 B + 8 B = 28 B used (4 B free)
         address token;
+        uint64 lockupPeriod;
+
+        // slot 1: 20 B + 8 B = 28 B used
         address from;
-        address to;
-        address operator;
-        address arbiter;
-        uint256 paymentRate;
-        uint256 lockupPeriod;
-        uint256 lockupFixed;
         // epoch up to and including which this rail has been settled
-        uint256 settledUpTo;
-        RateChangeQueue.Queue rateChangeQueue;
-        uint256 endEpoch; // Final epoch up to which the rail can be settled (0 if not terminated)
+        uint64 settledUpTo;
+
+        // slot 2: 20 B + 8 B = 28 B used
+        address to;
+        uint64 endEpoch; // Final epoch up to which the rail can be settled (0 if not terminated)
+
+        // slot 3: 20 B + 2 B = 22 B used
+        address operator;
         // Operator commission rate in basis points (e.g., 100 BPS = 1%)
-        uint256 commissionRateBps;
+        uint16 commissionRateBps;
+
+        // slot 4: 20 B used
+        address arbiter;
+
+        // slot 5: 32 B used
+        uint256 paymentRate;
+
+        // slot 6: 32 B used
+        uint256 lockupFixed;
+
+        // RateChangeQueue.Queue is 3×32 B (mapping + head + tail) slots 7, 8, 9
+        RateChangeQueue.Queue rateChangeQueue;
     }
 
     struct OperatorApproval {
@@ -80,7 +95,7 @@ contract Payments is
     }
 
     struct PayeeCommissionLimit {
-        uint256 maxBps;
+        uint16 maxBps;
         bool isSet;
     }
 
@@ -101,12 +116,12 @@ contract Payments is
         address operator;
         address arbiter;
         uint256 paymentRate;
-        uint256 lockupPeriod;
+        uint64 lockupPeriod;
         uint256 lockupFixed;
-        uint256 settledUpTo;
-        uint256 endEpoch;
+        uint64 settledUpTo;
+        uint64 endEpoch;
         // Operator commission rate in basis points (e.g., 100 BPS = 1%)
-        uint256 commissionRateBps;
+        uint16 commissionRateBps;
     }
 
     // token => client => operator => Approval
@@ -127,7 +142,7 @@ contract Payments is
     struct RailInfo {
         uint256 railId; // The rail ID
         bool isTerminated; // True if rail is terminated
-        uint256 endEpoch; // End epoch for terminated rails (0 for active rails)
+        uint64 endEpoch; // End epoch for terminated rails (0 for active rails)
     }
 
     // token => payee => array of railIds
@@ -336,7 +351,7 @@ contract Payments is
     /// @param maxBps The maximum commission in basis points (0-10000).
     function setPayeeMaxCommission(
         address token,
-        uint256 maxBps
+        uint16 maxBps
     ) external validateNonZeroAddress(token, "token") {
         require(maxBps <= COMMISSION_MAX_BPS, "max commission exceeds maximum");
         payeeCommissionLimits[token][msg.sender] = PayeeCommissionLimit({
@@ -477,7 +492,7 @@ contract Payments is
         address from,
         address to,
         address arbiter,
-        uint256 commissionRateBps
+        uint16 commissionRateBps
     )
         external
         nonReentrant
@@ -517,7 +532,7 @@ contract Payments is
         rail.to = to;
         rail.operator = operator;
         rail.arbiter = arbiter;
-        rail.settledUpTo = block.number;
+        rail.settledUpTo = uint64(block.number);
         rail.endEpoch = 0;
         rail.commissionRateBps = commissionRateBps;
 
@@ -538,7 +553,7 @@ contract Payments is
     /// @custom:constraint Operator must have sufficient lockup allowance to cover any increases the lockup period or the fixed lockup.
     function modifyRailLockup(
         uint256 railId,
-        uint256 period,
+        uint64 period,
         uint256 lockupFixed
     )
         external
@@ -559,7 +574,7 @@ contract Payments is
 
     function modifyTerminatedRailLockup(
         Rail storage rail,
-        uint256 period,
+        uint64 period,
         uint256 lockupFixed
     ) internal {
         require(
@@ -594,7 +609,7 @@ contract Payments is
 
     function modifyNonTerminatedRailLockup(
         Rail storage rail,
-        uint256 period,
+        uint64 period,
         uint256 lockupFixed
     ) internal {
         Account storage payer = accounts[rail.token][rail.from];
@@ -754,7 +769,7 @@ contract Payments is
         uint256 newRate,
         uint256 oneTimePayment
     ) internal {
-        uint256 endEpoch = maxSettlementEpochForTerminatedRail(rail);
+        uint64 endEpoch = maxSettlementEpochForTerminatedRail(rail);
         require(
             newRate == 0 && oneTimePayment == 0,
             "for terminated rails beyond last settlement epoch, both new rate and one-time payment must be 0"
@@ -792,7 +807,7 @@ contract Payments is
 
         // If there is no arbiter, settle the rail immediately
         if (rail.arbiter == address(0)) {
-            (, , , , uint256 settledUpto, ) = settleRail(railId, block.number);
+            (, , , , uint256 settledUpto, ) = settleRail(railId, uint64(block.number));
             require(
                 settledUpto == block.number,
                 "failed to settle rail up to current epoch"
@@ -809,7 +824,7 @@ contract Payments is
             // For arbitrated rails, we need to enqueue the old rate.
             // This ensures that the old rate is applied up to and including the current block.
             // The new rate will be applicable starting from the next block.
-            rail.rateChangeQueue.enqueue(oldRate, block.number);
+            rail.rateChangeQueue.enqueue(oldRate, uint64(block.number));
         }
     }
 
@@ -914,12 +929,12 @@ contract Payments is
             uint256 totalNetPayeeAmount,
             uint256 totalPaymentFee,
             uint256 totalOperatorCommission,
-            uint256 finalSettledEpoch,
+            uint64 finalSettledEpoch,
             string memory note
         )
     {
         // Verify the current epoch is greater than the max settlement epoch
-        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(
+        uint64 maxSettleEpoch = maxSettlementEpochForTerminatedRail(
             rails[railId]
         );
         require(
@@ -941,7 +956,7 @@ contract Payments is
     /// @return note Additional information about the settlement (especially from arbitration).
     function settleRail(
         uint256 railId,
-        uint256 untilEpoch
+        uint64 untilEpoch
     )
         public
         nonReentrant
@@ -953,7 +968,7 @@ contract Payments is
             uint256 totalNetPayeeAmount,
             uint256 totalPaymentFee,
             uint256 totalOperatorCommission,
-            uint256 finalSettledEpoch,
+            uint64 finalSettledEpoch,
             string memory note
         )
     {
@@ -962,7 +977,7 @@ contract Payments is
 
     function settleRailInternal(
         uint256 railId,
-        uint256 untilEpoch,
+        uint64 untilEpoch,
         bool skipArbitration
     )
         internal
@@ -971,7 +986,7 @@ contract Payments is
             uint256 totalNetPayeeAmount,
             uint256 totalPaymentFee,
             uint256 totalOperatorCommission,
-            uint256 finalSettledEpoch,
+            uint64 finalSettledEpoch,
             string memory note
         )
     {
@@ -998,14 +1013,14 @@ contract Payments is
         }
 
         // Calculate the maximum settlement epoch based on account lockup
-        uint256 maxSettlementEpoch;
+        uint64 maxSettlementEpoch;
         if (!isRailTerminated(rail)) {
-            maxSettlementEpoch = min(untilEpoch, payer.lockupLastSettledAt);
+            maxSettlementEpoch = min64(untilEpoch, payer.lockupLastSettledAt);
         } else {
-            maxSettlementEpoch = min(untilEpoch, rail.endEpoch);
+            maxSettlementEpoch = min64(untilEpoch, rail.endEpoch);
         }
 
-        uint256 startEpoch = rail.settledUpTo;
+        uint64 startEpoch = rail.settledUpTo;
         // Nothing to settle (already settled or zero-duration)
         if (startEpoch >= maxSettlementEpoch) {
             return (
@@ -1114,12 +1129,12 @@ contract Payments is
         uint256 totalNetPayeeAmount,
         uint256 totalPaymentFee,
         uint256 totalOperatorCommission,
-        uint256 finalEpoch,
+        uint64 finalEpoch,
         string memory regularNote,
         string memory finalizedNote
     )
         internal
-        returns (uint256, uint256, uint256, uint256, uint256, string memory)
+        returns (uint256, uint256, uint256, uint256, uint64, string memory)
     {
         // Check if rail is a terminated rail that's now fully settled
         if (
@@ -1172,8 +1187,8 @@ contract Payments is
     function _settleWithRateChanges(
         uint256 railId,
         uint256 currentRate,
-        uint256 startEpoch,
-        uint256 targetEpoch,
+        uint64 startEpoch,
+        uint64 targetEpoch,
         bool skipArbitration
     )
         internal
@@ -1192,13 +1207,13 @@ contract Payments is
         totalNetPayeeAmount = 0;
         totalPaymentFee = 0;
         totalOperatorCommission = 0;
-        uint256 processedEpoch = startEpoch;
+        uint64 processedEpoch = startEpoch;
         note = "";
 
         // Process each segment until we reach the target epoch or hit an early exit condition
         while (processedEpoch < targetEpoch) {
             // Default boundary is the target we want to reach
-            uint256 segmentEndBoundary = targetEpoch;
+            uint64 segmentEndBoundary = targetEpoch;
             uint256 segmentRate;
 
             // If we have rate changes in the queue, use the rate from the next change
@@ -1213,7 +1228,7 @@ contract Payments is
                 );
 
                 // Boundary is the minimum of our target or the next rate change epoch
-                segmentEndBoundary = min(
+                segmentEndBoundary = min64(
                     targetEpoch,
                     nextRateChange.untilEpoch
                 );
@@ -1300,8 +1315,8 @@ contract Payments is
 
     function _settleSegment(
         uint256 railId,
-        uint256 epochStart,
-        uint256 epochEnd,
+        uint64 epochStart,
+        uint64 epochEnd,
         uint256 rate,
         bool skipArbitration
     )
@@ -1321,7 +1336,7 @@ contract Payments is
         // Calculate the default settlement values (without arbitration)
         uint256 duration = epochEnd - epochStart;
         uint256 settledAmount = rate * duration;
-        uint256 settledUntilEpoch = epochEnd;
+        uint64 settledUntilEpoch = epochEnd;
         note = "";
 
         // If this rail has an arbiter and we're not skipping arbitration, let it decide on the final settlement amount
@@ -1415,9 +1430,9 @@ contract Payments is
     // returns the actual epoch upto and including which the lockup was settled
     function settleAccountLockup(
         Account storage account
-    ) internal returns (uint256) {
-        uint256 currentEpoch = block.number;
-        uint256 elapsedTime = currentEpoch - account.lockupLastSettledAt;
+    ) internal returns (uint64) {
+        uint64 currentEpoch = uint64(block.number);
+        uint64 elapsedTime = currentEpoch - account.lockupLastSettledAt;
 
         if (elapsedTime <= 0) {
             return account.lockupLastSettledAt;
@@ -1449,7 +1464,7 @@ contract Payments is
         }
 
         // Round down to the nearest whole epoch
-        uint256 fractionalEpochs = availableFunds / account.lockupRate;
+        uint64 fractionalEpochs = uint64(availableFunds / account.lockupRate);
 
         // Apply lockup up to this point
         account.lockupCurrent += account.lockupRate * fractionalEpochs;
@@ -1461,7 +1476,7 @@ contract Payments is
 
     function remainingEpochsForTerminatedRail(
         Rail storage rail
-    ) internal view returns (uint256) {
+    ) internal view returns (uint64) {
         require(isRailTerminated(rail), "rail is not terminated");
 
         // If current block beyond end epoch, return 0
@@ -1470,7 +1485,7 @@ contract Payments is
         }
 
         // Return the number of epochs (blocks) remaining until end epoch
-        return rail.endEpoch - block.number;
+        return rail.endEpoch - uint64(block.number);
     }
 
     function isRailTerminated(Rail storage rail) internal view returns (bool) {
@@ -1484,7 +1499,7 @@ contract Payments is
     // Get the final settlement epoch for a terminated rail
     function maxSettlementEpochForTerminatedRail(
         Rail storage rail
-    ) internal view returns (uint256) {
+    ) internal view returns (uint64) {
         require(isRailTerminated(rail), "rail is not terminated");
         return rail.endEpoch;
     }
@@ -1695,5 +1710,9 @@ contract Payments is
 }
 
 function min(uint256 a, uint256 b) pure returns (uint256) {
+    return a < b ? a : b;
+}
+
+function min64(uint64 a, uint64 b) pure returns (uint64) {
     return a < b ? a : b;
 }

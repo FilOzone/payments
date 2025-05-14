@@ -17,7 +17,6 @@ contract RailSettlementTest is Test, BaseTestHelper {
     Payments payments;
     MockERC20 token;
 
-    uint256 constant INITIAL_BALANCE = 5000 ether;
     uint256 constant DEPOSIT_AMOUNT = 200 ether;
 
     function setUp() public {

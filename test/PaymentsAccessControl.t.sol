@@ -11,9 +11,6 @@ contract AccessControlTest is Test, BaseTestHelper {
     Payments payments;
     PaymentsTestHelpers helper;
 
-    
-
-    uint256 constant INITIAL_BALANCE = 1000 ether;
     uint256 constant DEPOSIT_AMOUNT = 100 ether;
     uint256 railId;
 

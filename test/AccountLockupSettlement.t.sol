@@ -14,7 +14,6 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
 
 
     // Define constants
-    uint256 internal constant INITIAL_BALANCE = 1000 ether;
     uint256 internal constant DEPOSIT_AMOUNT = 100 ether;
 
     function setUp() public {

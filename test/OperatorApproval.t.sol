@@ -14,7 +14,6 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
     MockERC20 secondToken;
     PaymentsTestHelpers helper;
     Payments payments;
-    uint256 constant INITIAL_BALANCE = 10000 ether;
     uint256 constant DEPOSIT_AMOUNT = 1000 ether;
     uint256 constant RATE_ALLOWANCE = 100 ether;
     uint256 constant LOCKUP_ALLOWANCE = 1000 ether;

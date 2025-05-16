@@ -139,6 +139,15 @@ contract Payments is
     // Tracks whether a token has ever had fees collected, to prevent duplicates in feeTokens
     mapping(address => bool) public hasCollectedFees;
 
+    struct SettlementState {
+        uint256 totalSettledAmount;
+        uint256 totalNetPayeeAmount;
+        uint256 totalPaymentFee;
+        uint256 totalOperatorCommission;
+        uint256 processedEpoch;
+        string note;
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -1188,51 +1197,34 @@ contract Payments is
         Rail storage rail = rails[railId];
         RateChangeQueue.Queue storage rateQueue = rail.rateChangeQueue;
 
-        totalSettledAmount = 0;
-        totalNetPayeeAmount = 0;
-        totalPaymentFee = 0;
-        totalOperatorCommission = 0;
-        uint256 processedEpoch = startEpoch;
-        note = "";
+        SettlementState memory state = SettlementState({
+            totalSettledAmount: 0,
+            totalNetPayeeAmount: 0,
+            totalPaymentFee: 0,
+            totalOperatorCommission: 0,
+            processedEpoch: startEpoch,
+            note: ""
+        });
 
         // Process each segment until we reach the target epoch or hit an early exit condition
-        while (processedEpoch < targetEpoch) {
-            // Default boundary is the target we want to reach
-            uint256 segmentEndBoundary = targetEpoch;
-            uint256 segmentRate;
+        while (state.processedEpoch < targetEpoch) {
+            (uint256 segmentEndBoundary, uint256 segmentRate) = _getNextSegmentBoundary(
+                rateQueue,
+                currentRate,
+                state.processedEpoch,
+                targetEpoch
+            );
 
-            // If we have rate changes in the queue, use the rate from the next change
-            if (!rateQueue.isEmpty()) {
-                RateChangeQueue.RateChange memory nextRateChange = rateQueue
-                    .peek();
-
-                // Validate rate change queue consistency
-                require(
-                    nextRateChange.untilEpoch >= processedEpoch,
-                    "rate queue is in an invalid state"
+            // if current rate is zero, there's nothing left to do and we've finished settlement
+            if (segmentRate == 0) {
+                rail.settledUpTo = targetEpoch;
+                return (
+                    state.totalSettledAmount,
+                    state.totalNetPayeeAmount,
+                    state.totalPaymentFee,
+                    state.totalOperatorCommission,
+                    "Zero rate payment rail"
                 );
-
-                // Boundary is the minimum of our target or the next rate change epoch
-                segmentEndBoundary = min(
-                    targetEpoch,
-                    nextRateChange.untilEpoch
-                );
-                segmentRate = nextRateChange.rate;
-            } else {
-                // If queue is empty, use the current rail rate
-                segmentRate = currentRate;
-
-                // if current rate is zero, there's nothing left to do and we've finished settlement
-                if (segmentRate == 0) {
-                    rail.settledUpTo = targetEpoch;
-                    return (
-                        totalSettledAmount,
-                        totalNetPayeeAmount,
-                        totalPaymentFee,
-                        totalOperatorCommission,
-                        "Zero rate payment rail"
-                    );
-                }
             }
 
             // Settle the current segment with potentially arbitrated outcomes
@@ -1244,43 +1236,43 @@ contract Payments is
                 string memory arbitrationNote
             ) = _settleSegment(
                     railId,
-                    processedEpoch,
+                    state.processedEpoch,
                     segmentEndBoundary,
                     segmentRate,
                     skipArbitration
-                );
+            );
 
             // If arbiter returned no progress, exit early without updating state
-            if (rail.settledUpTo <= processedEpoch) {
+            if (rail.settledUpTo <= state.processedEpoch) {
                 return (
-                    totalSettledAmount,
-                    totalNetPayeeAmount,
-                    totalPaymentFee,
-                    totalOperatorCommission,
+                    state.totalSettledAmount,
+                    state.totalNetPayeeAmount,
+                    state.totalPaymentFee,
+                    state.totalOperatorCommission,
                     arbitrationNote
                 );
             }
 
             // Add the settled amounts to our running totals
-            totalSettledAmount += segmentSettledAmount;
-            totalNetPayeeAmount += segmentNetPayeeAmount;
-            totalPaymentFee += segmentPaymentFee;
-            totalOperatorCommission += segmentOperatorCommission;
+            state.totalSettledAmount += segmentSettledAmount;
+            state.totalNetPayeeAmount += segmentNetPayeeAmount;
+            state.totalPaymentFee += segmentPaymentFee;
+            state.totalOperatorCommission += segmentOperatorCommission;
 
             // If arbiter partially settled the segment, exit early
             if (rail.settledUpTo < segmentEndBoundary) {
                 return (
-                    totalSettledAmount,
-                    totalNetPayeeAmount,
-                    totalPaymentFee,
-                    totalOperatorCommission,
+                    state.totalSettledAmount,
+                    state.totalNetPayeeAmount,
+                    state.totalPaymentFee,
+                    state.totalOperatorCommission,
                     arbitrationNote
                 );
             }
 
             // Successfully settled full segment, update tracking values
-            processedEpoch = rail.settledUpTo;
-            note = arbitrationNote;
+            state.processedEpoch = rail.settledUpTo;
+            state.note = arbitrationNote;
 
             // Remove the processed rate change from the queue
             if (!rateQueue.isEmpty()) {
@@ -1290,12 +1282,38 @@ contract Payments is
 
         // We've successfully settled up to the target epoch
         return (
-            totalSettledAmount,
-            totalNetPayeeAmount,
-            totalPaymentFee,
-            totalOperatorCommission,
-            note
+            state.totalSettledAmount,
+            state.totalNetPayeeAmount,
+            state.totalPaymentFee,
+            state.totalOperatorCommission,
+            state.note
         );
+    }
+
+    function _getNextSegmentBoundary(
+        RateChangeQueue.Queue storage rateQueue,
+        uint256 currentRate,
+        uint256 processedEpoch,
+        uint256 targetEpoch
+    ) internal view returns (uint256 segmentEndBoundary, uint256 segmentRate) {
+        // Default boundary is the target we want to reach
+        segmentEndBoundary = targetEpoch;
+        segmentRate = currentRate;
+
+        // If we have rate changes in the queue, use the rate from the next change
+        if (!rateQueue.isEmpty()) {
+            RateChangeQueue.RateChange memory nextRateChange = rateQueue.peek();
+
+            // Validate rate change queue consistency
+            require(
+                nextRateChange.untilEpoch >= processedEpoch,
+                "rate queue is in an invalid state"
+            );
+
+            // Boundary is the minimum of our target or the next rate change epoch
+            segmentEndBoundary = min(targetEpoch, nextRateChange.untilEpoch);
+            segmentRate = nextRateChange.rate;
+        }
     }
 
     function _settleSegment(

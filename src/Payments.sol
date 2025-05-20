@@ -79,11 +79,6 @@ contract Payments is
         uint256 lockupUsage; // Track actual usage for lockup
     }
 
-    struct PayeeCommissionLimit {
-        uint256 maxBps;
-        bool isSet;
-    }
-
     // Counter for generating unique rail IDs
     uint256 private _nextRailId = 1;
 
@@ -112,10 +107,6 @@ contract Payments is
     // token => client => operator => Approval
     mapping(address => mapping(address => mapping(address => OperatorApproval)))
         public operatorApprovals;
-
-    // token => payee => max commission BPS
-    mapping(address => mapping(address => PayeeCommissionLimit))
-        public payeeCommissionLimits;
 
     // token => amount of accumulated fees owned by the contract owner
     mapping(address => uint256) public accumulatedFees;
@@ -336,17 +327,6 @@ contract Payments is
         approval.lockupAllowance = lockupAllowance;
     }
 
-    /// @notice Sets the maximum commission rate (in BPS) the caller (payee) will accept for a given token.
-    /// @param token The ERC20 token address.
-    /// @param maxBps The maximum commission in basis points (0-10000).
-    function setPayeeMaxCommission(address token, uint256 maxBps) external {
-        require(maxBps <= COMMISSION_MAX_BPS, "max commission exceeds maximum");
-        payeeCommissionLimits[token][msg.sender] = PayeeCommissionLimit({
-            maxBps: maxBps,
-            isSet: true
-        });
-    }
-
     /// @notice Terminates a payment rail, preventing further payments after the rail's lockup period. After calling this method, the lockup period cannot be changed, and the rail's rate and fixed lockup may only be reduced.
     /// @param railId The ID of the rail to terminate.
     /// @custom:constraint Caller must be a rail client or operator.
@@ -514,15 +494,6 @@ contract Payments is
             commissionRateBps <= COMMISSION_MAX_BPS,
             "commission rate exceeds maximum"
         );
-
-        PayeeCommissionLimit
-            memory payeeCommissionLimit = payeeCommissionLimits[token][to];
-        if (payeeCommissionLimit.isSet) {
-            require(
-                commissionRateBps <= payeeCommissionLimit.maxBps,
-                "commission exceeds payee limit"
-            );
-        }
 
         uint256 railId = _nextRailId++;
 

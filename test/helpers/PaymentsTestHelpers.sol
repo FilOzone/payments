@@ -120,15 +120,30 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         _performDeposit(from, to, amount, false);
     }
 
-    function makeNativeDeposit(address from, address to, uint256 amount) public {
+    function makeNativeDeposit(
+        address from,
+        address to,
+        uint256 amount
+    ) public {
         _performDeposit(from, to, amount, true);
     }
 
-    function _performDeposit(address from, address to, uint256 amount, bool useNativeToken) public {
+    function _performDeposit(
+        address from,
+        address to,
+        uint256 amount,
+        bool useNativeToken
+    ) public {
         // Capture pre-deposit balances
         uint256 fromBalanceBefore = _balanceOf(from, useNativeToken);
-        uint256 paymentsBalanceBefore = _balanceOf(address(payments), useNativeToken);
-        Payments.Account memory toAccountBefore = _getAccountData(to, useNativeToken);
+        uint256 paymentsBalanceBefore = _balanceOf(
+            address(payments),
+            useNativeToken
+        );
+        Payments.Account memory toAccountBefore = _getAccountData(
+            to,
+            useNativeToken
+        );
 
         // Make the deposit
         vm.startPrank(from);
@@ -145,8 +160,14 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
 
         // Verify token balances
         uint256 fromBalanceAfter = _balanceOf(from, useNativeToken);
-        uint256 paymentsBalanceAfter = _balanceOf(address(payments), useNativeToken);
-        Payments.Account memory toAccountAfter = _getAccountData(to, useNativeToken);
+        uint256 paymentsBalanceAfter = _balanceOf(
+            address(payments),
+            useNativeToken
+        );
+        Payments.Account memory toAccountAfter = _getAccountData(
+            to,
+            useNativeToken
+        );
 
         // Verify balances
         assertEq(
@@ -173,7 +194,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             from, // recipient is the same as sender
             amount,
             true, // use the standard withdraw function
-            false  // use ERC20 token
+            false // use ERC20 token
         );
     }
 
@@ -183,7 +204,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             from, // recipient is the same as sender
             amount,
             true, // use the standard withdraw function
-            true  // use native token
+            true // use native token
         );
     }
 
@@ -208,7 +229,11 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         );
     }
 
-    function makeNativeWithdrawalTo(address from, address to, uint256 amount) public {
+    function makeNativeWithdrawalTo(
+        address from,
+        address to,
+        uint256 amount
+    ) public {
         _performWithdrawal(
             from,
             to,
@@ -218,7 +243,10 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         );
     }
 
-    function _balanceOf(address addr, bool useNativeToken) private returns (uint256) {
+    function _balanceOf(
+        address addr,
+        bool useNativeToken
+    ) private returns (uint256) {
         if (useNativeToken) {
             return addr.balance;
         } else {
@@ -236,10 +264,13 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         address token = useNativeToken ? address(0) : address(testToken);
 
         // Capture pre-withdrawal balances
-        uint256 fromAccountBalanceBefore = _getAccountData(from, useNativeToken).funds;
+        uint256 fromAccountBalanceBefore = _getAccountData(from, useNativeToken)
+            .funds;
         uint256 recipientBalanceBefore = _balanceOf(to, useNativeToken);
-        uint256 paymentsBalanceBefore = _balanceOf(address(payments), useNativeToken);
-
+        uint256 paymentsBalanceBefore = _balanceOf(
+            address(payments),
+            useNativeToken
+        );
 
         // Make the withdrawal
         vm.startPrank(from);
@@ -251,9 +282,13 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         vm.stopPrank();
 
         // Verify balances
-        uint256 fromAccountBalanceAfter = _getAccountData(from, useNativeToken).funds;
+        uint256 fromAccountBalanceAfter = _getAccountData(from, useNativeToken)
+            .funds;
         uint256 recipientBalanceAfter = _balanceOf(to, useNativeToken);
-        uint256 paymentsBalanceAfter = _balanceOf(address(payments), useNativeToken);
+        uint256 paymentsBalanceAfter = _balanceOf(
+            address(payments),
+            useNativeToken
+        );
 
         // Assert balances changed correctly
         assertEq(
@@ -601,7 +636,9 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         // Get initial balances
         Payments.Account memory clientBefore = getAccountData(railClient);
         Payments.Account memory recipientBefore = getAccountData(railRecipient);
-        Payments.Account memory operatorBefore = getAccountData(operatorAddress);
+        Payments.Account memory operatorBefore = getAccountData(
+            operatorAddress
+        );
 
         // Get operator allowance and usage before payment
         (

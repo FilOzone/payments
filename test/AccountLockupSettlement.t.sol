@@ -10,8 +10,7 @@ import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
 import {console} from "forge-std/console.sol";
 contract AccountLockupSettlementTest is Test, BaseTestHelper {
     PaymentsTestHelpers helper;
-            Payments payments;
-
+    Payments payments;
 
     // Define constants
     uint256 internal constant DEPOSIT_AMOUNT = 100 ether;
@@ -234,9 +233,10 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             0
         );
 
-      
         // This should fail because lockupFixed > available funds
-        vm.expectRevert("invariant failure: insufficient funds to cover lockup after function execution");
+        vm.expectRevert(
+            "invariant failure: insufficient funds to cover lockup after function execution"
+        );
         payments.modifyRailLockup(railId, 10, DEPOSIT_AMOUNT * 2);
         vm.stopPrank();
     }

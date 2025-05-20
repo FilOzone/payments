@@ -44,7 +44,11 @@ contract AccountManagementTest is Test, BaseTestHelper {
 
         // Test zero token address
         vm.expectRevert("must send an equal amount of native tokens");
-        payments.deposit{value:DEPOSIT_AMOUNT-1}(address(0), USER1, DEPOSIT_AMOUNT);
+        payments.deposit{value: DEPOSIT_AMOUNT - 1}(
+            address(0),
+            USER1,
+            DEPOSIT_AMOUNT
+        );
 
         vm.stopPrank();
     }

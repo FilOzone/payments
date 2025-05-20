@@ -325,10 +325,7 @@ contract Payments is
         bool approved,
         uint256 rateAllowance,
         uint256 lockupAllowance
-    )
-        external
-        validateNonZeroAddress(operator, "operator")
-    {
+    ) external validateNonZeroAddress(operator, "operator") {
         OperatorApproval storage approval = operatorApprovals[token][
             msg.sender
         ][operator];
@@ -342,10 +339,7 @@ contract Payments is
     /// @notice Sets the maximum commission rate (in BPS) the caller (payee) will accept for a given token.
     /// @param token The ERC20 token address.
     /// @param maxBps The maximum commission in basis points (0-10000).
-    function setPayeeMaxCommission(
-        address token,
-        uint256 maxBps
-    ) external {
+    function setPayeeMaxCommission(address token, uint256 maxBps) external {
         require(maxBps <= COMMISSION_MAX_BPS, "max commission exceeds maximum");
         payeeCommissionLimits[token][msg.sender] = PayeeCommissionLimit({
             maxBps: maxBps,
@@ -408,7 +402,8 @@ contract Payments is
         address to,
         uint256 amount
     )
-        external payable
+        external
+        payable
         nonReentrant
         validateNonZeroAddress(to, "to")
         settleAccountLockupBeforeAndAfter(token, to, false)
@@ -418,7 +413,10 @@ contract Payments is
 
         // Transfer tokens from sender to contract
         if (token == address(0)) {
-            require(msg.value == amount, "must send an equal amount of native tokens");
+            require(
+                msg.value == amount,
+                "must send an equal amount of native tokens"
+            );
         } else {
             require(msg.value == 0, "must not send native tokens");
 
@@ -473,7 +471,9 @@ contract Payments is
         );
         account.funds -= amount;
         if (token == address(0)) {
-            (bool success, bytes memory data) = payable(to).call{value: amount}("");
+            (bool success, bytes memory data) = payable(to).call{value: amount}(
+                ""
+            );
             require(success, "receiving contract rejected funds");
         } else {
             IERC20(token).safeTransfer(to, amount);
@@ -970,7 +970,7 @@ contract Payments is
             uint256 totalOperatorCommission,
             uint256 finalSettledEpoch,
             string memory note
-        )   
+        )
     {
         return settleRailInternal(railId, untilEpoch, false);
     }
@@ -1214,23 +1214,26 @@ contract Payments is
 
         // Process each segment until we reach the target epoch or hit an early exit condition
         while (state.processedEpoch < targetEpoch) {
-            (uint256 segmentEndBoundary, uint256 segmentRate) = _getNextSegmentBoundary(
-                rateQueue,
-                currentRate,
-                state.processedEpoch,
-                targetEpoch
-            );
+            (
+                uint256 segmentEndBoundary,
+                uint256 segmentRate
+            ) = _getNextSegmentBoundary(
+                    rateQueue,
+                    currentRate,
+                    state.processedEpoch,
+                    targetEpoch
+                );
 
-                // if current rate is zero, there's nothing left to do and we've finished settlement
-                if (segmentRate == 0) {
-                    rail.settledUpTo = targetEpoch;
-                    return (
+            // if current rate is zero, there's nothing left to do and we've finished settlement
+            if (segmentRate == 0) {
+                rail.settledUpTo = targetEpoch;
+                return (
                     state.totalSettledAmount,
                     state.totalNetPayeeAmount,
                     state.totalPaymentFee,
                     state.totalOperatorCommission,
-                        "Zero rate payment rail"
-                    );
+                    "Zero rate payment rail"
+                );
             }
 
             // Settle the current segment with potentially arbitrated outcomes
@@ -1596,12 +1599,7 @@ contract Payments is
         address token,
         address to,
         uint256 amount
-    )
-        external
-        onlyOwner
-        nonReentrant
-        validateNonZeroAddress(to, "to")
-    {
+    ) external onlyOwner nonReentrant validateNonZeroAddress(to, "to") {
         uint256 currentFees = accumulatedFees[token];
         require(amount <= currentFees, "amount exceeds accumulated fees");
 

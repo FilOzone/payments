@@ -31,7 +31,9 @@ library RateChangeQueue {
         if (isEmpty(queue)) {
             queue.head = 0;
             // The array is already empty, waste no time zeroing it.
-            assembly { sstore(c.slot, 0) }
+            assembly {
+                sstore(c.slot, 0)
+            }
         } else {
             queue.head++;
         }

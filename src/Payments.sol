@@ -984,7 +984,6 @@ contract Payments is
         Account storage payer = accounts[rail.token][rail.from];
 
         // Handle terminated and fully settled rails that are still not finalised
-
         if (isRailTerminated(rail) && rail.settledUpTo >= rail.endEpoch) {
             finalizeTerminatedRail(rail, payer);
             return (
@@ -1021,26 +1020,6 @@ contract Payments is
             );
         }
 
-        // For zero rate rails with empty queue, just advance the settlement epoch
-        // without transferring funds
-        uint256 currentRate = rail.paymentRate;
-        if (currentRate == 0 && rail.rateChangeQueue.isEmpty()) {
-            rail.settledUpTo = maxSettlementEpoch;
-
-            return
-                checkAndFinalizeTerminatedRail(
-                    rail,
-                    payer,
-                    0,
-                    0,
-                    0,
-                    0,
-                    maxSettlementEpoch,
-                    "zero rate payment rail",
-                    "zero rate terminated rail fully settled and finalized"
-                );
-        }
-
         // Process settlement depending on whether rate changes exist
         if (rail.rateChangeQueue.isEmpty()) {
             (
@@ -1053,7 +1032,7 @@ contract Payments is
                     railId,
                     startEpoch,
                     maxSettlementEpoch,
-                    currentRate,
+                    rail.paymentRate,
                     skipArbitration
                 );
 
@@ -1083,7 +1062,7 @@ contract Payments is
                 string memory settledNote
             ) = _settleWithRateChanges(
                     railId,
-                    currentRate,
+                    rail.paymentRate,
                     startEpoch,
                     maxSettlementEpoch,
                     skipArbitration
@@ -1317,6 +1296,11 @@ contract Payments is
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
         Account storage payee = accounts[rail.token][rail.to];
+
+        if (rate == 0) {
+            rail.settledUpTo = epochEnd;
+            return (0, 0, 0, 0, "Zero rate payment rail");
+        }
 
         // Calculate the default settlement values (without arbitration)
         uint256 duration = epochEnd - epochStart;

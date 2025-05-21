@@ -10,10 +10,8 @@ library RateChangeQueue {
     }
 
     struct Queue {
-        // Map from index to RateChange
-        mapping(uint256 => RateChange) changes;
         uint256 head;
-        uint256 tail;
+        RateChange[] changes;
     }
 
     function enqueue(
@@ -21,45 +19,47 @@ library RateChangeQueue {
         uint256 rate,
         uint256 untilEpoch
     ) internal {
-        queue.changes[queue.tail] = RateChange(rate, untilEpoch);
-        queue.tail++;
+        queue.changes.push(RateChange(rate, untilEpoch));
     }
 
     function dequeue(Queue storage queue) internal returns (RateChange memory) {
-        require(queue.head < queue.tail, "Queue is empty");
-        RateChange memory change = queue.changes[queue.head];
-        delete queue.changes[queue.head];
-        queue.head++;
+        RateChange[] storage c = queue.changes;
+        require(queue.head < c.length, "Queue is empty");
+        RateChange memory change = c[queue.head];
+        delete c[queue.head];
+
+        if (isEmpty(queue)) {
+            queue.head = 0;
+            // The array is already empty, waste no time zeroing it.
+            assembly {
+                sstore(c.slot, 0)
+            }
+        } else {
+            queue.head++;
+        }
+
         return change;
     }
 
     function peek(
         Queue storage queue
     ) internal view returns (RateChange memory) {
-        require(queue.head < queue.tail, "Queue is empty");
+        require(queue.head < queue.changes.length, "Queue is empty");
         return queue.changes[queue.head];
     }
-    
+
     function peekTail(
         Queue storage queue
     ) internal view returns (RateChange memory) {
-        require(queue.head < queue.tail, "Queue is empty");
-        return queue.changes[queue.tail - 1];
+        require(queue.head < queue.changes.length, "Queue is empty");
+        return queue.changes[queue.changes.length - 1];
     }
 
     function isEmpty(Queue storage queue) internal view returns (bool) {
-        return queue.head >= queue.tail;
-    }
-
-    function clear(Queue storage queue) internal {
-        while (!isEmpty(queue)) {
-            dequeue(queue);
-        }
-        queue.head = 0;
-        queue.tail = 0;
+        return queue.head == queue.changes.length;
     }
 
     function size(Queue storage queue) internal view returns (uint256) {
-        return queue.tail - queue.head;
+        return queue.changes.length - queue.head;
     }
 }

@@ -10,12 +10,15 @@ import {console} from "forge-std/console.sol";
 contract RailSettlementHelpers is Test {
     PaymentsTestHelpers public baseHelper;
     Payments public payments;
-    
+
     constructor() {
         baseHelper = new PaymentsTestHelpers();
     }
-    
-    function initialize(Payments _payments, PaymentsTestHelpers _baseHelper) public {
+
+    function initialize(
+        Payments _payments,
+        PaymentsTestHelpers _baseHelper
+    ) public {
         payments = _payments;
         baseHelper = _baseHelper;
     }
@@ -84,8 +87,6 @@ contract RailSettlementHelpers is Test {
         }
         vm.stopPrank();
 
-       
-
         return railId;
     }
 
@@ -136,8 +137,12 @@ contract RailSettlementHelpers is Test {
         address payee = rail.to;
 
         // Get balances before settlement
-        Payments.Account memory payerAccountBefore = baseHelper.getAccountData(payer);
-        Payments.Account memory payeeAccountBefore = baseHelper.getAccountData(payee);
+        Payments.Account memory payerAccountBefore = baseHelper.getAccountData(
+            payer
+        );
+        Payments.Account memory payeeAccountBefore = baseHelper.getAccountData(
+            payee
+        );
 
         console.log("payerFundsBefore", payerAccountBefore.funds);
         console.log("payerLockupBefore", payerAccountBefore.lockupCurrent);
@@ -152,8 +157,14 @@ contract RailSettlementHelpers is Test {
         string memory note;
 
         vm.startPrank(payer);
-        (settlementAmount, netPayeeAmount, paymentFee, operatorCommission, settledUpto, note) = payments
-            .settleRail(railId, untilEpoch);
+        (
+            settlementAmount,
+            netPayeeAmount,
+            paymentFee,
+            operatorCommission,
+            settledUpto,
+            note
+        ) = payments.settleRail(railId, untilEpoch);
         vm.stopPrank();
 
         console.log("settlementAmount", settlementAmount);
@@ -176,8 +187,12 @@ contract RailSettlementHelpers is Test {
         );
 
         // Verify payer and payee balance changes
-        Payments.Account memory payerAccountAfter = baseHelper.getAccountData(payer);
-        Payments.Account memory payeeAccountAfter = baseHelper.getAccountData(payee);
+        Payments.Account memory payerAccountAfter = baseHelper.getAccountData(
+            payer
+        );
+        Payments.Account memory payeeAccountAfter = baseHelper.getAccountData(
+            payee
+        );
         console.log("payerFundsAfter", payerAccountAfter.funds);
         console.log("payeeFundsAfter", payeeAccountAfter.funds);
 
@@ -195,7 +210,15 @@ contract RailSettlementHelpers is Test {
         rail = payments.getRail(railId);
         assertEq(rail.settledUpTo, expectedUpto, "Rail settled upto incorrect");
 
-        return SettlementResult(settlementAmount, netPayeeAmount, paymentFee, operatorCommission, settledUpto, note);
+        return
+            SettlementResult(
+                settlementAmount,
+                netPayeeAmount,
+                paymentFee,
+                operatorCommission,
+                settledUpto,
+                note
+            );
     }
 
     function terminateAndSettleRail(
@@ -214,7 +237,10 @@ contract RailSettlementHelpers is Test {
 
         // Verify rail was properly terminated
         rail = payments.getRail(railId);
-        (,,, uint256 lockupLastSettledAt) = payments.accounts(address(baseHelper.testToken()), client);
+        (, , , uint256 lockupLastSettledAt) = payments.accounts(
+            address(baseHelper.testToken()),
+            client
+        );
         assertTrue(rail.endEpoch > 0, "Rail should be terminated");
         assertEq(
             rail.endEpoch,
@@ -243,8 +269,13 @@ contract RailSettlementHelpers is Test {
         address client = railBefore.from;
 
         // Get operator allowance usage before modifications
-        (, , , uint256 rateUsageBefore, uint256 lockupUsageBefore) = paymentsContract
-            .operatorApprovals(
+        (
+            ,
+            ,
+            ,
+            uint256 rateUsageBefore,
+            uint256 lockupUsageBefore
+        ) = paymentsContract.operatorApprovals(
                 address(baseHelper.testToken()),
                 client,
                 operator
@@ -270,7 +301,11 @@ contract RailSettlementHelpers is Test {
             newLockupPeriod != railBefore.lockupPeriod ||
             newFixedLockup != railBefore.lockupFixed
         ) {
-            paymentsContract.modifyRailLockup(railId, newLockupPeriod, newFixedLockup);
+            paymentsContract.modifyRailLockup(
+                railId,
+                newLockupPeriod,
+                newFixedLockup
+            );
         }
 
         vm.stopPrank();
@@ -297,8 +332,13 @@ contract RailSettlementHelpers is Test {
         );
 
         // Get operator allowance usage after modifications
-        (, , , uint256 rateUsageAfter, uint256 lockupUsageAfter) = paymentsContract
-            .operatorApprovals(
+        (
+            ,
+            ,
+            ,
+            uint256 rateUsageAfter,
+            uint256 lockupUsageAfter
+        ) = paymentsContract.operatorApprovals(
                 address(baseHelper.testToken()),
                 client,
                 operator

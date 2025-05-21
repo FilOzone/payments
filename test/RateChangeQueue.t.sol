@@ -5,6 +5,8 @@ import {Test} from "forge-std/Test.sol";
 import {RateChangeQueue} from "../src/RateChangeQueue.sol";
 
 contract RateChangeQueueTest is Test {
+    using RateChangeQueue for RateChangeQueue.Queue;
+
     struct TestQueueContainer {
         RateChangeQueue.Queue queue;
     }
@@ -16,12 +18,10 @@ contract RateChangeQueueTest is Test {
 
     function createEmptyQueue() internal {
         // Clear any existing data
-        if (!RateChangeQueue.isEmpty(queue())) {
-            RateChangeQueue.clear(queue());
+        RateChangeQueue.Queue storage q = queue();
+        while (!q.isEmpty()) {
+            q.dequeue();
         }
-        // Verify it's empty
-        assertTrue(RateChangeQueue.isEmpty(queue()));
-        assertEq(RateChangeQueue.size(queue()), 0);
     }
 
     function createSingleItemQueue(
@@ -156,33 +156,6 @@ contract RateChangeQueueTest is Test {
         // Queue should now be empty
         assertTrue(RateChangeQueue.isEmpty(queue()));
         assertEq(RateChangeQueue.size(queue()), 0);
-    }
-
-    /// forge-config: default.allow_internal_expect_revert = true
-    function testClear() public {
-        // Setup a multi-item queue
-        uint256[] memory rates = new uint256[](3);
-        rates[0] = 100;
-        rates[1] = 200;
-        rates[2] = 300;
-
-        uint256[] memory epochs = new uint256[](3);
-        epochs[0] = 5;
-        epochs[1] = 10;
-        epochs[2] = 15;
-
-        createMultiItemQueue(rates, epochs);
-
-        // Clear the queue
-        RateChangeQueue.clear(queue());
-
-        // Verify it's empty
-        assertTrue(RateChangeQueue.isEmpty(queue()));
-        assertEq(RateChangeQueue.size(queue()), 0);
-
-        // Verify peek reverts since queue is empty
-        vm.expectRevert("Queue is empty");
-        RateChangeQueue.peek(queue());
     }
 
     /// forge-config: default.allow_internal_expect_revert = true

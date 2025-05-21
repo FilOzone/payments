@@ -9,12 +9,11 @@ import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
 import {console} from "forge-std/console.sol";
 
-
 contract OperatorApprovalTest is Test, BaseTestHelper {
     MockERC20 secondToken;
     PaymentsTestHelpers helper;
     Payments payments;
-    uint256 constant INITIAL_BALANCE = 10000 ether;
+
     uint256 constant DEPOSIT_AMOUNT = 1000 ether;
     uint256 constant RATE_ALLOWANCE = 100 ether;
     uint256 constant LOCKUP_ALLOWANCE = 1000 ether;
@@ -28,10 +27,8 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
     }
 
-    function testInvalidAddresses() public {
-        // Test zero token address
+    function testNativeFIL() public {
         vm.startPrank(USER1);
-        vm.expectRevert("token address cannot be zero");
         payments.setOperatorApproval(
             address(0),
             OPERATOR,
@@ -40,7 +37,9 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
             LOCKUP_ALLOWANCE
         );
         vm.stopPrank();
+    }
 
+    function testInvalidAddresses() public {
         // Test zero operator address
         vm.startPrank(USER1);
         vm.expectRevert("operator address cannot be zero");
@@ -71,7 +70,6 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
             LOCKUP_ALLOWANCE * 2
         );
 
-
         // Decrease allowances
         helper.setupOperatorApproval(
             USER1,
@@ -91,11 +89,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Revoke approval
-        helper.revokeOperatorApprovalAndVerify(
-            USER1,
-            OPERATOR
-        );
-        
+        helper.revokeOperatorApprovalAndVerify(USER1, OPERATOR);
 
         // Reapprove operator
         helper.setupOperatorApproval(
@@ -116,12 +110,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create a rail
-        uint256 railId = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         // Verify no allowance consumed yet
         helper.verifyOperatorAllowances(
@@ -186,12 +175,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // 4. Create second rail and set rate
-        uint256 railId2 = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         uint256 rate2 = 15 ether;
         vm.startPrank(OPERATOR);
@@ -221,12 +205,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail
-        uint256 railId = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         // Set rate to exactly the limit
         vm.startPrank(OPERATOR);
@@ -252,12 +231,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail
-        uint256 railId = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         // Set payment rate
         uint256 paymentRate = 10 ether;
@@ -342,12 +316,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail
-        uint256 railId = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         // Set payment rate
         uint256 paymentRate = 10 ether;
@@ -375,12 +344,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail
-        uint256 railId = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         // Use exactly the available rate allowance
         vm.startPrank(OPERATOR);
@@ -404,20 +368,10 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // 2. Test zero allowance behavior
-        helper.setupOperatorApproval(
-            USER1,
-            OPERATOR,
-            0,
-            0
-        );
+        helper.setupOperatorApproval(USER1, OPERATOR, 0, 0);
 
         // Create rail with zero allowances
-        uint256 railId2 = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         // Attempt to set non-zero rate (should fail)
         vm.startPrank(OPERATOR);
@@ -436,15 +390,29 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         // 1. Test unapproved operator
         vm.startPrank(OPERATOR);
         // Try to create a rail and expect it to fail
-        try payments.createRail(address(helper.testToken()), USER1, USER2, address(0), 0) returns (uint256) {
+        try
+            payments.createRail(
+                address(helper.testToken()),
+                USER1,
+                USER2,
+                address(0),
+                0
+            )
+        returns (uint256) {
             // If we get here, the function did not revert
-            assertTrue(false, "createRail should have reverted with 'operator not approved'");
+            assertTrue(
+                false,
+                "createRail should have reverted with 'operator not approved'"
+            );
         } catch Error(string memory reason) {
             // If we get here, the function reverted with a reason string
             assertEq(reason, "operator not approved", "Wrong revert reason");
         } catch {
             // If we get here, the function reverted but without a reason string
-            assertTrue(false, "createRail reverted but without the expected reason string");
+            assertTrue(
+                false,
+                "createRail reverted but without the expected reason string"
+            );
         }
         vm.stopPrank();
 
@@ -456,12 +424,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
             LOCKUP_ALLOWANCE
         );
 
-        uint256 railId = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         // 3. Test non-operator rail modification
         vm.startPrank(USER1);
@@ -482,15 +445,29 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         vm.startPrank(OPERATOR);
         // Try to create a rail and expect it to fail
-        try payments.createRail(address(helper.testToken()), USER1, USER2, address(0), 0) returns (uint256) {
+        try
+            payments.createRail(
+                address(helper.testToken()),
+                USER1,
+                USER2,
+                address(0),
+                0
+            )
+        returns (uint256) {
             // If we get here, the function did not revert
-            assertTrue(false, "createRail should have reverted with 'operator not approved'");
+            assertTrue(
+                false,
+                "createRail should have reverted with 'operator not approved'"
+            );
         } catch Error(string memory reason) {
             // If we get here, the function reverted with a reason string
             assertEq(reason, "operator not approved", "Wrong revert reason");
         } catch {
             // If we get here, the function reverted but without a reason string
-            assertTrue(false, "createRail reverted but without the expected reason string");
+            assertTrue(
+                false,
+                "createRail reverted but without the expected reason string"
+            );
         }
         vm.stopPrank();
 
@@ -532,12 +509,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail with fixed lockup
-        uint256 railId = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         uint256 paymentRate = 10 ether;
         uint256 fixedLockup = 100 ether;
@@ -547,15 +519,8 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         payments.modifyRailLockup(railId, 0, fixedLockup);
         vm.stopPrank();
 
-       
         uint256 oneTimeAmount = 30 ether;
-        helper.executeOneTimePayment(
-            railId,
-            OPERATOR,
-            oneTimeAmount
-        );
-
-    
+        helper.executeOneTimePayment(railId, OPERATOR, oneTimeAmount);
 
         // 2. Test complete fixed lockup consumption using one time payment
         uint256 remainingFixedLockup = fixedLockup - oneTimeAmount;
@@ -586,12 +551,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail
-        uint256 railId = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         uint256 paymentRate = 10 ether;
         uint256 fixedLockup = 800 ether;
@@ -654,20 +614,10 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         public
     {
         // Client allows operator to use up to 90 rate/30 lockup
-        helper.setupOperatorApproval(
-            USER1,
-            OPERATOR,
-            90 ether,   
-            30 ether
-        );
+        helper.setupOperatorApproval(USER1, OPERATOR, 90 ether, 30 ether);
 
         // Operator creates a rail using 50 rate/20 lockup
-        uint256 railId = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         vm.startPrank(OPERATOR);
         payments.modifyRailPayment(railId, 50 ether, 0);
@@ -698,7 +648,11 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
             uint256 lockupAllowance,
             uint256 rateUsage,
             uint256 lockupUsage
-        ) = helper.payments().operatorApprovals(address(helper.testToken()), USER1, OPERATOR);
+        ) = helper.payments().operatorApprovals(
+                address(helper.testToken()),
+                USER1,
+                OPERATOR
+            );
         assertEq(rateAllowance - rateUsage, 10 ether);
         assertEq(lockupAllowance - lockupUsage, 5 ether);
 
@@ -706,12 +660,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         // they should not be able to create new rail configurations with non-zero rate/lockup
 
         // Create a new rail, which should succeed
-        uint256 railId2 = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         // But attempting to set non-zero rate on the new rail should fail due to insufficient allowance
         vm.startPrank(OPERATOR);
@@ -737,12 +686,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail and set rate
-        uint256 railId = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         vm.startPrank(OPERATOR);
         payments.modifyRailPayment(railId, 50 ether, 0);
@@ -794,20 +738,10 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // 3. Test reducing lockup allowance below current usage
         // Create a new rail for lockup testing
-        uint256 railId2 = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         // Reset approval with high lockup
-        helper.setupOperatorApproval(
-            USER1,
-            OPERATOR,
-            50 ether,
-            1000 ether
-        );
+        helper.setupOperatorApproval(USER1, OPERATOR, 50 ether, 1000 ether);
 
         // Set fixed lockup
         vm.startPrank(OPERATOR);
@@ -850,19 +784,9 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create two rails with different parameters
-        uint256 railId1 = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId1 = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
-        uint256 railId2 = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         // Set parameters for first rail
         uint256 rate1 = 10 ether;
@@ -932,15 +856,29 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         // Testing that operator shouldn't be able to create a new rail using try/catch
         vm.startPrank(OPERATOR);
         // Try to create a rail and expect it to fail
-        try payments.createRail(address(helper.testToken()), USER1, USER2, address(0), 0) returns (uint256) {
+        try
+            payments.createRail(
+                address(helper.testToken()),
+                USER1,
+                USER2,
+                address(0),
+                0
+            )
+        returns (uint256) {
             // If we get here, the function did not revert
-            assertTrue(false, "createRail should have reverted with 'operator not approved'");
+            assertTrue(
+                false,
+                "createRail should have reverted with 'operator not approved'"
+            );
         } catch Error(string memory reason) {
             // If we get here, the function reverted with a reason string
             assertEq(reason, "operator not approved", "Wrong revert reason");
         } catch {
             // If we get here, the function reverted but without a reason string
-            assertTrue(false, "createRail reverted but without the expected reason string");
+            assertTrue(
+                false,
+                "createRail reverted but without the expected reason string"
+            );
         }
         vm.stopPrank();
 
@@ -956,12 +894,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         vm.stopPrank();
 
         // Operator should be able to create a new rail
-        uint256 railId3 = helper.createRail(
-            USER1,
-            USER2,
-            OPERATOR,
-            address(0)
-        );
+        uint256 railId3 = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
         // But should not be able to exceed the new allowance
         vm.startPrank(OPERATOR);

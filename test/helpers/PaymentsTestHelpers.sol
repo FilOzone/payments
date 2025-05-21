@@ -36,6 +36,9 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         users[4] = OPERATOR2;
         users[5] = ARBITER;
 
+        vm.deal(USER1, INITIAL_BALANCE);
+        vm.deal(USER2, INITIAL_BALANCE);
+
         testToken = setupTestToken(
             "Test Token",
             "TEST",
@@ -83,12 +86,26 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
     function getAccountData(
         address user
     ) public view returns (Payments.Account memory) {
+        return _getAccountData(user, false);
+    }
+
+    function getNativeAccountData(
+        address user
+    ) public view returns (Payments.Account memory) {
+        return _getAccountData(user, true);
+    }
+
+    function _getAccountData(
+        address user,
+        bool useNativeToken
+    ) private view returns (Payments.Account memory) {
+        address token = useNativeToken ? address(0) : address(testToken);
         (
             uint256 funds,
             uint256 lockupCurrent,
             uint256 lockupRate,
             uint256 lockupLastSettledAt
-        ) = payments.accounts(address(testToken), user);
+        ) = payments.accounts(token, user);
 
         return
             Payments.Account({
@@ -100,35 +117,68 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
     }
 
     function makeDeposit(address from, address to, uint256 amount) public {
+        _performDeposit(from, to, amount, false);
+    }
+
+    function makeNativeDeposit(
+        address from,
+        address to,
+        uint256 amount
+    ) public {
+        _performDeposit(from, to, amount, true);
+    }
+
+    function _performDeposit(
+        address from,
+        address to,
+        uint256 amount,
+        bool useNativeToken
+    ) public {
         // Capture pre-deposit balances
-        uint256 fromERC20BalanceBefore = testToken.balanceOf(from);
-        uint256 paymentsERC20BalanceBefore = testToken.balanceOf(
-            address(payments)
+        uint256 fromBalanceBefore = _balanceOf(from, useNativeToken);
+        uint256 paymentsBalanceBefore = _balanceOf(
+            address(payments),
+            useNativeToken
         );
-        Payments.Account memory toAccountBefore = getAccountData(to);
+        Payments.Account memory toAccountBefore = _getAccountData(
+            to,
+            useNativeToken
+        );
 
         // Make the deposit
         vm.startPrank(from);
-        payments.deposit(address(testToken), to, amount);
+
+        uint256 value = 0;
+        address token = address(testToken);
+        if (useNativeToken) {
+            value = amount;
+            token = address(0);
+        }
+
+        payments.deposit{value: value}(token, to, amount);
         vm.stopPrank();
 
-        // Verify ERC-20 token balances
-        uint256 fromERC20BalanceAfter = testToken.balanceOf(from);
-        uint256 paymentsERC20BalanceAfter = testToken.balanceOf(
-            address(payments)
+        // Verify token balances
+        uint256 fromBalanceAfter = _balanceOf(from, useNativeToken);
+        uint256 paymentsBalanceAfter = _balanceOf(
+            address(payments),
+            useNativeToken
         );
-        Payments.Account memory toAccountAfter = getAccountData(to);
+        Payments.Account memory toAccountAfter = _getAccountData(
+            to,
+            useNativeToken
+        );
 
         // Verify balances
         assertEq(
-            fromERC20BalanceAfter,
-            fromERC20BalanceBefore - amount,
-            "Sender's ERC20 balance not reduced correctly"
+            fromBalanceAfter,
+            fromBalanceBefore - amount,
+            "Sender's balance not reduced correctly"
         );
         assertEq(
-            paymentsERC20BalanceAfter,
-            paymentsERC20BalanceBefore + amount,
-            "Payments contract ERC20 balance not increased correctly"
+            paymentsBalanceAfter,
+            paymentsBalanceBefore + amount,
+            "Payments contract balance not increased correctly"
         );
         assertEq(
             toAccountAfter.funds,
@@ -143,7 +193,18 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             from,
             from, // recipient is the same as sender
             amount,
-            true // use the standard withdraw function
+            true, // use the standard withdraw function
+            false // use ERC20 token
+        );
+    }
+
+    function makeNativeWithdrawal(address from, uint256 amount) public {
+        _performWithdrawal(
+            from,
+            from, // recipient is the same as sender
+            amount,
+            true, // use the standard withdraw function
+            true // use native token
         );
     }
 
@@ -163,37 +224,70 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             from,
             to,
             amount,
-            false // use the withdrawTo function
+            false, // use the withdrawTo function
+            false // use erc20 token
         );
+    }
+
+    function makeNativeWithdrawalTo(
+        address from,
+        address to,
+        uint256 amount
+    ) public {
+        _performWithdrawal(
+            from,
+            to,
+            amount,
+            false, // use the withdrawTo function
+            true // use native token
+        );
+    }
+
+    function _balanceOf(
+        address addr,
+        bool useNativeToken
+    ) private returns (uint256) {
+        if (useNativeToken) {
+            return addr.balance;
+        } else {
+            return testToken.balanceOf(addr);
+        }
     }
 
     function _performWithdrawal(
         address from,
         address to,
         uint256 amount,
-        bool isStandardWithdrawal
+        bool isStandardWithdrawal,
+        bool useNativeToken
     ) private {
+        address token = useNativeToken ? address(0) : address(testToken);
+
         // Capture pre-withdrawal balances
-        uint256 fromAccountBalanceBefore = getAccountData(from).funds;
-        uint256 recipientERC20BalanceBefore = testToken.balanceOf(to);
-        uint256 paymentsERC20BalanceBefore = testToken.balanceOf(
-            address(payments)
+        uint256 fromAccountBalanceBefore = _getAccountData(from, useNativeToken)
+            .funds;
+        uint256 recipientBalanceBefore = _balanceOf(to, useNativeToken);
+        uint256 paymentsBalanceBefore = _balanceOf(
+            address(payments),
+            useNativeToken
         );
 
         // Make the withdrawal
         vm.startPrank(from);
         if (isStandardWithdrawal) {
-            payments.withdraw(address(testToken), amount);
+            payments.withdraw(token, amount);
         } else {
-            payments.withdrawTo(address(testToken), to, amount);
+            payments.withdrawTo(token, to, amount);
         }
         vm.stopPrank();
 
         // Verify balances
-        uint256 fromAccountBalanceAfter = getAccountData(from).funds;
-        uint256 recipientERC20BalanceAfter = testToken.balanceOf(to);
-        uint256 paymentsERC20BalanceAfter = testToken.balanceOf(
-            address(payments)
+        uint256 fromAccountBalanceAfter = _getAccountData(from, useNativeToken)
+            .funds;
+        uint256 recipientBalanceAfter = _balanceOf(to, useNativeToken);
+        uint256 paymentsBalanceAfter = _balanceOf(
+            address(payments),
+            useNativeToken
         );
 
         // Assert balances changed correctly
@@ -203,14 +297,14 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             "Sender's account balance not decreased correctly"
         );
         assertEq(
-            recipientERC20BalanceAfter,
-            recipientERC20BalanceBefore + amount,
-            "Recipient's ERC20 balance not increased correctly"
+            recipientBalanceAfter,
+            recipientBalanceBefore + amount,
+            "Recipient's balance not increased correctly"
         );
         assertEq(
-            paymentsERC20BalanceAfter,
-            paymentsERC20BalanceBefore - amount,
-            "Payments contract ERC20 balance not decreased correctly"
+            paymentsBalanceAfter,
+            paymentsBalanceBefore - amount,
+            "Payments contract balance not decreased correctly"
         );
     }
 

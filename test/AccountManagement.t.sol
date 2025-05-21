@@ -26,6 +26,10 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
     }
 
+    function testNativeDeposit() public {
+        helper.makeNativeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
+    }
+
     function testMultipleDeposits() public {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT + 1);
@@ -35,12 +39,16 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER2, DEPOSIT_AMOUNT);
     }
 
-    function testDepositWithZeroAddress() public {
+    function testNativeDepositWithInsufficientNativeTokens() public {
         vm.startPrank(USER1);
 
         // Test zero token address
-        vm.expectRevert("token address cannot be zero");
-        payments.deposit(address(0), USER1, DEPOSIT_AMOUNT);
+        vm.expectRevert("must send an equal amount of native tokens");
+        payments.deposit{value: DEPOSIT_AMOUNT - 1}(
+            address(0),
+            USER1,
+            DEPOSIT_AMOUNT
+        );
 
         vm.stopPrank();
     }
@@ -84,6 +92,11 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeWithdrawal(USER1, DEPOSIT_AMOUNT / 2);
     }
 
+    function testNativeWithdrawal() public {
+        helper.makeNativeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
+        helper.makeNativeWithdrawal(USER1, DEPOSIT_AMOUNT / 2);
+    }
+
     function testMultipleWithdrawals() public {
         // Setup: deposit first
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
@@ -119,16 +132,6 @@ contract AccountManagementTest is Test, BaseTestHelper {
             DEPOSIT_AMOUNT + 1,
             bytes("insufficient unlocked funds for withdrawal")
         );
-    }
-
-    function testWithdrawWithZeroAddress() public {
-        vm.startPrank(USER1);
-
-        // Test zero token address
-        vm.expectRevert(bytes("token address cannot be zero"));
-        payments.withdraw(address(0), DEPOSIT_AMOUNT);
-
-        vm.stopPrank();
     }
 
     function testWithdrawToWithZeroRecipient() public {

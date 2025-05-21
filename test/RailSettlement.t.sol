@@ -501,6 +501,122 @@ contract RailSettlementTest is Test, BaseTestHelper {
         );
     }
 
+    function testSettleRailWithRateChangeQueueForReducedAmountArbitration() public {
+        // Deploy an arbiter that reduces the amount
+        uint256 factor = 80; // 80% of the original amount
+        MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.REDUCE_AMOUNT);
+        arbiter.configure(factor);
+
+        // Create a rail with the arbiter
+        uint256 rate = 5 ether;
+        uint256 lockupPeriod = 10;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            rate,
+            lockupPeriod, 
+            0, // No fixed lockup
+            address(arbiter)
+        );
+
+        // Advance several blocks
+        helper.advanceBlocks(5);
+
+        // update operator allowances
+        (
+            ,
+            uint256 rateAllowance,
+            uint256 lockupAllowance,
+            ,
+        ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
+        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate);
+
+        // Modify the rate ( twice the rate)
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, rate * 2, 0);
+        vm.stopPrank();
+
+        // Advance several blocks
+        helper.advanceBlocks(5);
+
+        // expected amount and duration
+        uint256 expectedDurationOldRate = 5;
+        uint256 expectedDurationNewRate = 5;
+        uint256 expectedAmountOldRate = (rate * expectedDurationOldRate * factor ) / 100;
+        uint256 expectedAmountNewRate = ((rate * 2 )* expectedDurationNewRate * factor ) / 100;
+        uint256 expectedAmount = expectedAmountOldRate + expectedAmountNewRate;
+
+        // settle and verify rail
+        RailSettlementHelpers.SettlementResult memory result = 
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
+
+        console.log("result.note", result.note);
+    }
+
+    function testSettleRailWithRateChangeQueueForReducedDurationArbitration() public {
+        // Deploy an arbiter that reduces the duration
+        uint256 factor = 60; // 60% of the original duration
+        MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.REDUCE_DURATION);
+        arbiter.configure(factor);
+
+        // Create a rail with the arbiter
+        uint256 rate = 5 ether;
+        uint256 lastSettledUpto = block.number;
+        uint256 lockupPeriod = 10;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            rate,
+            lockupPeriod,
+            0, // No fixed lockup
+            address(arbiter)
+        );
+
+        // Advance several blocks
+        helper.advanceBlocks(5);
+
+        // settle rail once before modifying rate
+        vm.prank(USER1);
+        payments.settleRail(railId, block.number);
+        lastSettledUpto = lastSettledUpto + ((block.number - lastSettledUpto) * factor) / 100;
+        vm.stopPrank();
+
+
+        // update operator allowances
+        (
+            ,
+            uint256 rateAllowance,
+            uint256 lockupAllowance,
+            ,
+        ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
+        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate);
+
+        // Modify the rate
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, rate * 2, 0);
+        vm.stopPrank();
+
+        // Advance several blocks
+        helper.advanceBlocks(5);
+
+        // expected amount and duration ( reduced duration cannot move to second segment )
+        // calculated for first segment
+        uint256 firstSegmentEndBoundary = 6;
+        uint256 expectedDuration = ( (firstSegmentEndBoundary - lastSettledUpto) * factor )/ 100;
+        uint256 expectedSettledUpto = lastSettledUpto + expectedDuration;
+        uint256 expectedAmount = rate * expectedDuration;
+
+        // settle and verify rail
+        RailSettlementHelpers.SettlementResult memory result = 
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, expectedSettledUpto);
+
+        console.log("result.note", result.note);
+    }
+
+
+
     //--------------------------------
     // Helper Functions
     //--------------------------------

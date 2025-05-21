@@ -1664,6 +1664,69 @@ contract Payments is
 
         return result;
     }
+
+    /**
+     * @notice Gets information about an account - when it would go into debt, total balance, available balance, and lockup rate.
+     * @param token The token address to get account info for.
+     * @param owner The address of the account owner.
+     * @return fundedUntil The epoch at which the account would go into debt given current lockup rate and balance.
+     * @return totalBalance The total balance of the account.
+     * @return availableBalance The available balance (total balance minus current lockup).
+     * @return lockupRate The current lockup rate per epoch.
+     */
+    function getAccountInfo(
+        address token,
+        address owner
+    ) external view returns (
+        uint256 fundedUntil,
+        uint256 totalBalance,
+        uint256 availableBalance,
+        uint256 lockupRate
+    ) {
+        Account storage account = accounts[token][owner];
+        
+        totalBalance = account.funds;
+        lockupRate = account.lockupRate;
+
+        uint256 currentEpoch = block.number;
+        uint256 elapsedTime = currentEpoch - account.lockupLastSettledAt;
+        uint256 simulatedLockupCurrent = account.lockupCurrent;
+
+        if (elapsedTime > 0 && account.lockupRate > 0) {
+            uint256 additionalLockup = account.lockupRate * elapsedTime;
+            
+            // If we have sufficient funds to cover the additional lockup
+            if (account.funds >= account.lockupCurrent + additionalLockup) {
+                simulatedLockupCurrent = account.lockupCurrent + additionalLockup;
+            } else {
+                // Calculate partial settlement
+                uint256 availableFunds = account.funds - account.lockupCurrent;
+                if (availableFunds > 0) {
+                    uint256 fractionalEpochs = availableFunds / account.lockupRate;
+                    simulatedLockupCurrent = account.lockupCurrent + (account.lockupRate * fractionalEpochs);
+                }
+            }
+        }
+
+        availableBalance = account.funds > simulatedLockupCurrent ? 
+            account.funds - simulatedLockupCurrent : 0;
+
+        if (account.lockupRate == 0) {
+            // If no lockup rate, account is funded indefinitely
+            fundedUntil = type(uint256).max;
+        } else {
+            // Calculate how many epochs the available funds can cover
+            uint256 availableFunds = account.funds - simulatedLockupCurrent;
+            if (availableFunds == 0) {
+                // If no available funds, account is already in debt
+                fundedUntil = block.number;
+            } else {
+                // Calculate epochs until debt
+                uint256 epochsUntilDebt = availableFunds / account.lockupRate;
+                fundedUntil = block.number + epochsUntilDebt;
+            }
+        }
+    }
 }
 
 function min(uint256 a, uint256 b) pure returns (uint256) {

@@ -1488,6 +1488,7 @@ contract Payments is
         rail.lockupPeriod = 0;
         rail.settledUpTo = 0;
         rail.endEpoch = 0;
+        rail.commissionRateBps = 0;
     }
 
     function updateOperatorRateUsage(

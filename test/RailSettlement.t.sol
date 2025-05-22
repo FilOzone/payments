@@ -502,7 +502,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
     }
 
     function testSettleRailWithRateChangeQueueForReducedAmountArbitration() public {
-        // Deploy an arbiter that reduces the amount
+        // Deploy an arbiter that reduces the payment amount by a percentage
         uint256 factor = 80; // 80% of the original amount
         MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.REDUCE_AMOUNT);
         arbiter.configure(factor);
@@ -520,10 +520,11 @@ contract RailSettlementTest is Test, BaseTestHelper {
             address(arbiter)
         );
 
-        // Advance several blocks
+        // Simulate 5 blocks passing (blocks 1-5)
         helper.advanceBlocks(5);
 
-        // update operator allowances
+        // Increase operator allowances to allow rate modification
+        // We double the rate allowance and add buffer for lockup
         (
             ,
             uint256 rateAllowance,
@@ -532,20 +533,24 @@ contract RailSettlementTest is Test, BaseTestHelper {
         ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
         helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate);
 
-        // Modify the rate ( twice the rate)
+        // Operator doubles the payment rate from 5 ETH to 10 ETH per block
+        // This creates a rate change in the queue
         vm.prank(OPERATOR);
         payments.modifyRailPayment(railId, rate * 2, 0);
         vm.stopPrank();
 
-        // Advance several blocks
+        // Simulate 5 blocks passing (blocks 6-10)
         helper.advanceBlocks(5);
 
-        // expected amount and duration
-        uint256 expectedDurationOldRate = 5;
-        uint256 expectedDurationNewRate = 5;
-        uint256 expectedAmountOldRate = (rate * expectedDurationOldRate * factor ) / 100;
-        uint256 expectedAmountNewRate = ((rate * 2 )* expectedDurationNewRate * factor ) / 100;
-        uint256 expectedAmount = expectedAmountOldRate + expectedAmountNewRate;
+        // Calculate expected settlement:
+        // Phase 1 (blocks 1-5): 5 blocks at 5 ETH/block → 25 ETH total -> after arbitration (80%) -> 20 ETH total
+        // Phase 2 (blocks 6-10): 5 blocks at 10 ETH/block → 50 ETH total -> after arbitration (80%) -> 40 ETH total
+        // Total after arbitration (80%) -> 60 ETH total
+        uint256 expectedDurationOldRate = 5; // Epochs 1-5 ( rate = 5 )
+        uint256 expectedDurationNewRate = 5; // Epochs 6-10 ( rate = 10 )
+        uint256 expectedAmountOldRate = (rate * expectedDurationOldRate * factor ) / 100; // 20 ETH (25 * 0.8)
+        uint256 expectedAmountNewRate = ((rate * 2 )* expectedDurationNewRate * factor ) / 100; // 40 ETH (50 * 0.8)
+        uint256 expectedAmount = expectedAmountOldRate + expectedAmountNewRate; // 60 ETH total
 
         // settle and verify rail
         RailSettlementHelpers.SettlementResult memory result = 
@@ -555,7 +560,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
     }
 
     function testSettleRailWithRateChangeQueueForReducedDurationArbitration() public {
-        // Deploy an arbiter that reduces the duration
+        // Deploy an arbiter that reduces the duration by a percentage
         uint256 factor = 60; // 60% of the original duration
         MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.REDUCE_DURATION);
         arbiter.configure(factor);
@@ -574,17 +579,20 @@ contract RailSettlementTest is Test, BaseTestHelper {
             address(arbiter)
         );
 
-        // Advance several blocks
+        // Simulate 5 blocks passing (blocks 1-5)
         helper.advanceBlocks(5);
 
-        // settle rail once before modifying rate
+        // Initial settlement for the first 5 blocks ( epochs 1-5 )
+        // Duration reduction: 5 blocks * 60% = 3 blocks settled
+        // Amount: 3 blocks * 5 ETH = 15 ETH
+        // LastSettledUpto: 1 + (6 - 1) * 60% = 4
         vm.prank(USER1);
         payments.settleRail(railId, block.number);
-        lastSettledUpto = lastSettledUpto + ((block.number - lastSettledUpto) * factor) / 100;
+        lastSettledUpto = lastSettledUpto + ((block.number - lastSettledUpto) * factor) / 100; // arbiter only settles for 60% of the duration (block.number - lastSettledUpto)
         vm.stopPrank();
 
 
-        // update operator allowances
+        // update operator allowances for rate modification
         (
             ,
             uint256 rateAllowance,
@@ -593,20 +601,27 @@ contract RailSettlementTest is Test, BaseTestHelper {
         ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
         helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate);
 
-        // Modify the rate
+        // Operator doubles the payment rate from 5 ETH to 10 ETH per block
+        // This creates a rate change in the queue
         vm.prank(OPERATOR);
         payments.modifyRailPayment(railId, rate * 2, 0);
         vm.stopPrank();
 
-        // Advance several blocks
+        // Simulate 5 blocks passing (blocks 6-10)
         helper.advanceBlocks(5);
 
-        // expected amount and duration ( reduced duration cannot move to second segment )
-        // calculated for first segment
-        uint256 firstSegmentEndBoundary = 6;
-        uint256 expectedDuration = ( (firstSegmentEndBoundary - lastSettledUpto) * factor )/ 100;
-        uint256 expectedSettledUpto = lastSettledUpto + expectedDuration;
-        uint256 expectedAmount = rate * expectedDuration;
+        // Expected settlement calculation:
+        // - Rate change was at block 5, creating a boundary
+        // - Duration reduction applies only to the first rate segment (epochs 1-5)
+        // - We already settled 3 blocks (1-3) in the first settlement
+        // - Remaining in first segment: 2 blocks (4-5) at original rate
+        // - Duration reduction: 2 blocks * 60% = 1.2 blocks (truncated to 1 block)
+        // - Amount: 1 epoch * 5 ETH/epoch = 5 ETH
+        // - rail.settledUpto = 4 + 1 = 5 < segmentBoundary ( 6 ) => doesn't go to next settlement segment (epochs 6-10)
+        uint256 firstSegmentEndBoundary = 6; // Block where rate change occurred
+        uint256 expectedDuration = ( (firstSegmentEndBoundary - lastSettledUpto) * factor ) / 100; // (6-3)*0.6 = 1.8 → 1 block
+        uint256 expectedSettledUpto = lastSettledUpto + expectedDuration; // 4 + 1 = 5
+        uint256 expectedAmount = rate * expectedDuration; // 5 ETH/epoch * 1 epoch = 5 ETH
 
         // settle and verify rail
         RailSettlementHelpers.SettlementResult memory result = 
@@ -614,8 +629,6 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         console.log("result.note", result.note);
     }
-
-
 
     //--------------------------------
     // Helper Functions

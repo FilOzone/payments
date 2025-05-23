@@ -6,7 +6,7 @@ library RateChangeQueue {
         // The payment rate to apply
         uint256 rate;
         // The epoch up to and including which this rate will be used to settle a rail
-        uint256 untilEpoch;
+        uint64 untilEpoch;
     }
 
     struct Queue {
@@ -17,7 +17,7 @@ library RateChangeQueue {
     function enqueue(
         Queue storage queue,
         uint256 rate,
-        uint256 untilEpoch
+        uint64 untilEpoch
     ) internal {
         queue.changes.push(RateChange(rate, untilEpoch));
     }

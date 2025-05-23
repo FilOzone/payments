@@ -26,7 +26,7 @@ contract RateChangeQueueTest is Test {
 
     function createSingleItemQueue(
         uint256 rate,
-        uint256 untilEpoch
+        uint64 untilEpoch
     ) internal returns (RateChangeQueue.RateChange memory) {
         createEmptyQueue();
         RateChangeQueue.enqueue(queue(), rate, untilEpoch);
@@ -36,7 +36,7 @@ contract RateChangeQueueTest is Test {
 
     function createMultiItemQueue(
         uint256[] memory rates,
-        uint256[] memory untilEpochs
+        uint64[] memory untilEpochs
     ) internal returns (RateChangeQueue.RateChange[] memory) {
         require(
             rates.length == untilEpochs.length,
@@ -61,7 +61,7 @@ contract RateChangeQueueTest is Test {
         createEmptyQueue();
 
         // Create cycles of filling and emptying
-        for (uint256 i = 0; i < cycles; i++) {
+        for (uint64 i = 0; i < cycles; i++) {
             // Fill with 3 items
             RateChangeQueue.enqueue(queue(), 100 + i, 5 + i);
             RateChangeQueue.enqueue(queue(), 200 + i, 6 + i);
@@ -203,9 +203,10 @@ contract RateChangeQueueTest is Test {
 
         // Test with max uint values
         uint256 maxUint = type(uint256).max;
+        uint64 maxUint64 = type(uint64).max;
         RateChangeQueue.RateChange memory maxItem = createSingleItemQueue(
             maxUint,
-            maxUint
+            maxUint64
         );
         RateChangeQueue.RateChange memory peekedMax = RateChangeQueue.peek(
             queue()

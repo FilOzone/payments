@@ -175,24 +175,24 @@ contract FeesTest is Test, BaseTestHelper {
         // Settle rail1 (token1)
         settlementHelper.settleRailAndVerify(
             rail1Id,
-            block.number,
+            uint64(block.number),
             rail1FirstExpectedAmount,
-            block.number
-        );
+            uint64(block.number
+        ));
 
         // Settle rail2 (token2)
         vm.prank(USER1);
         (uint256 settledAmount2, , , , , ) = payments.settleRail(
             rail2Id,
-            block.number
-        );
+            uint64(block.number
+        ));
 
         // Settle rail3 (token3)
         vm.prank(USER1);
         (uint256 settledAmount3, , , , , ) = payments.settleRail(
             rail3Id,
-            block.number
-        );
+            uint64(block.number
+        ));
 
         // Calculate expected fees based on actual settled amounts (0.1% of settled amounts)
         uint256 rail1FirstFee = (rail1FirstExpectedAmount *
@@ -256,24 +256,24 @@ contract FeesTest is Test, BaseTestHelper {
         // Settle rail1 (token1) again
         settlementHelper.settleRailAndVerify(
             rail1Id,
-            block.number,
+            uint64(block.number),
             rail1SecondExpectedAmount,
-            block.number
-        );
+            uint64(block.number
+        ));
 
         // Settle rail2 (token2) again
         vm.prank(USER1);
         (uint256 secondSettledAmount2, , , , , ) = payments.settleRail(
             rail2Id,
-            block.number
-        );
+            uint64(block.number
+        ));
 
         // Settle rail3 (token3) again
         vm.prank(USER1);
         (uint256 secondSettledAmount3, , , , , ) = payments.settleRail(
             rail3Id,
-            block.number
-        );
+            uint64(block.number
+        ));
 
         // Calculate expected fees for second round - use actual settled amounts
         uint256 rail1SecondFee = (rail1SecondExpectedAmount *

@@ -104,7 +104,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             uint256 funds,
             uint256 lockupCurrent,
             uint256 lockupRate,
-            uint256 lockupLastSettledAt
+            uint64 lockupLastSettledAt
         ) = payments.accounts(token, user);
 
         return
@@ -340,7 +340,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         address to,
         address railOperator,
         uint256 paymentRate,
-        uint256 lockupPeriod,
+        uint64 lockupPeriod,
         uint256 lockupFixed,
         address arbiter
     ) public returns (uint256 railId) {
@@ -549,7 +549,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         uint256 expectedFunds,
         uint256 expectedLockup,
         uint256 expectedRate,
-        uint256 expectedLastSettled
+        uint64 expectedLastSettled
     ) public view {
         Payments.Account memory account = getAccountData(user);
         assertEq(account.funds, expectedFunds, "Account funds incorrect");

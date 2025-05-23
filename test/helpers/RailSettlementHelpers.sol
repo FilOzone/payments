@@ -28,7 +28,7 @@ contract RailSettlementHelpers is Test {
         uint256 netPayeeAmount;
         uint256 paymentFee;
         uint256 operatorCommission;
-        uint256 settledUpto;
+        uint64 settledUpto;
         string note;
     }
 
@@ -38,7 +38,7 @@ contract RailSettlementHelpers is Test {
         address operator,
         address arbiter,
         uint256[] memory rates,
-        uint256 lockupPeriod,
+        uint64 lockupPeriod,
         uint256 lockupFixed
     ) public returns (uint256) {
         require(
@@ -95,7 +95,7 @@ contract RailSettlementHelpers is Test {
         address to,
         address operator,
         uint256 paymentRate,
-        uint256 lockupPeriod,
+        uint64 lockupPeriod,
         uint256 fundAmount,
         uint256 fixedLockup
     ) public returns (uint256) {
@@ -126,9 +126,9 @@ contract RailSettlementHelpers is Test {
 
     function settleRailAndVerify(
         uint256 railId,
-        uint256 untilEpoch,
+        uint64 untilEpoch,
         uint256 expectedAmount,
-        uint256 expectedUpto
+        uint64 expectedUpto
     ) public returns (SettlementResult memory result) {
         console.log("settleRailAndVerify");
         // Get the rail details to identify payer and payee
@@ -149,39 +149,25 @@ contract RailSettlementHelpers is Test {
         console.log("payeeFundsBefore", payeeAccountBefore.funds);
         console.log("payeeLockupBefore", payeeAccountBefore.lockupCurrent);
 
-        uint256 settlementAmount;
-        uint256 netPayeeAmount;
-        uint256 paymentFee;
-        uint256 operatorCommission;
-        uint256 settledUpto;
-        string memory note;
-
         vm.startPrank(payer);
-        (
-            settlementAmount,
-            netPayeeAmount,
-            paymentFee,
-            operatorCommission,
-            settledUpto,
-            note
-        ) = payments.settleRail(railId, untilEpoch);
+         (result.totalAmount, result.netPayeeAmount, result.paymentFee, result.operatorCommission, result.settledUpto, result.note) = payments.settleRail(railId, untilEpoch);
         vm.stopPrank();
 
-        console.log("settlementAmount", settlementAmount);
-        console.log("netPayeeAmount", netPayeeAmount);
-        console.log("paymentFee", paymentFee);
-        console.log("operatorCommission", operatorCommission);
-        console.log("settledUpto", settledUpto);
-        console.log("note", note);
+        console.log("settlementAmount", result.totalAmount);
+        console.log("netPayeeAmount", result.netPayeeAmount);
+        console.log("paymentFee", result.paymentFee);
+        console.log("operatorCommission", result.operatorCommission);
+        console.log("settledUpto", result.settledUpto);
+        console.log("note", result.note);
 
         // Verify results
         assertEq(
-            settlementAmount,
+            result.totalAmount,
             expectedAmount,
             "Settlement amount doesn't match expected"
         );
         assertEq(
-            settledUpto,
+            result.settledUpto,
             expectedUpto,
             "Settled upto doesn't match expected"
         );
@@ -198,33 +184,23 @@ contract RailSettlementHelpers is Test {
 
         assertEq(
             payerAccountBefore.funds - payerAccountAfter.funds,
-            settlementAmount,
+            result.totalAmount,
             "Payer's balance reduction doesn't match settlement amount"
         );
         assertEq(
             payeeAccountAfter.funds - payeeAccountBefore.funds,
-            netPayeeAmount,
+            result.netPayeeAmount,
             "Payee's balance increase doesn't match net payee amount"
         );
 
         rail = payments.getRail(railId);
         assertEq(rail.settledUpTo, expectedUpto, "Rail settled upto incorrect");
-
-        return
-            SettlementResult(
-                settlementAmount,
-                netPayeeAmount,
-                paymentFee,
-                operatorCommission,
-                settledUpto,
-                note
-            );
     }
 
     function terminateAndSettleRail(
         uint256 railId,
         uint256 expectedAmount,
-        uint256 expectedUpto
+        uint64 expectedUpto
     ) public returns (SettlementResult memory result) {
         // Get rail details to extract client and operator addresses
         Payments.RailView memory rail = payments.getRail(railId);
@@ -251,7 +227,7 @@ contract RailSettlementHelpers is Test {
         return
             settleRailAndVerify(
                 railId,
-                block.number,
+                uint64(block.number),
                 expectedAmount,
                 expectedUpto
             );
@@ -262,7 +238,7 @@ contract RailSettlementHelpers is Test {
         uint256 railId,
         address operator,
         uint256 newRate,
-        uint256 newLockupPeriod,
+        uint64 newLockupPeriod,
         uint256 newFixedLockup
     ) public {
         Payments.RailView memory railBefore = paymentsContract.getRail(railId);

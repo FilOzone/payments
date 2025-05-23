@@ -181,7 +181,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
             DEPOSIT_AMOUNT, // expected funds
             lockedAmount, // expected lockup
             0, // expected rate (not set in this test)
-            block.number // expected last settled
+            uint64(block.number) // expected last settled
         );
 
         // Try to withdraw more than unlocked funds
@@ -244,7 +244,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
             DEPOSIT_AMOUNT * 2, // expected funds
             20 ether, // expected lockup (2 rails × 0.5 ether per block × 10 blocks + future lockup of 10 ether)
             lockupRate * 2, // expected rate (2 * 0.5 ether)
-            block.number // expected last settled
+            uint64(block.number) // expected last settled
         );
     }
 }

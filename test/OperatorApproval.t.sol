@@ -240,7 +240,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         vm.stopPrank();
 
         // 1. Set initial lockup
-        uint256 lockupPeriod = 5; // 5 blocks
+        uint64 lockupPeriod = 5; // 5 blocks
         uint256 initialFixedLockup = 100 ether;
 
         vm.startPrank(OPERATOR);
@@ -790,7 +790,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // Set parameters for first rail
         uint256 rate1 = 10 ether;
-        uint256 lockupPeriod1 = 5;
+        uint64 lockupPeriod1 = 5;
         uint256 fixedLockup1 = 50 ether;
 
         vm.startPrank(OPERATOR);
@@ -800,7 +800,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // Set parameters for second rail
         uint256 rate2 = 15 ether;
-        uint256 lockupPeriod2 = 3;
+        uint64 lockupPeriod2 = 3;
         uint256 fixedLockup2 = 30 ether;
 
         vm.startPrank(OPERATOR);

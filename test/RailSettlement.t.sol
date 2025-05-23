@@ -60,10 +60,10 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         settlementHelper.settleRailAndVerify(
             railId,
-            block.number,
+            uint64(block.number),
             expectedAmount,
-            block.number
-        );
+            uint64(block.number
+        ));
     }
 
     function testSettleRailInDebt() public {
@@ -88,18 +88,18 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // First settlement
         settlementHelper.settleRailAndVerify(
             railId,
-            block.number,
+            uint64(block.number),
             expectedAmount,
-            expectedEpoch
-        );
+            uint64(expectedEpoch
+        ));
 
         // Settle again - should be a no-op since we're already settled to the expected epoch
         settlementHelper.settleRailAndVerify(
             railId,
-            block.number,
+            uint64(block.number),
             0,
-            expectedEpoch
-        );
+            uint64(expectedEpoch
+        ));
 
         // Add more funds and settle again
         uint256 additionalDeposit = 300 ether;
@@ -111,10 +111,10 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Third settlement
         settlementHelper.settleRailAndVerify(
             railId,
-            block.number,
+            uint64(block.number),
             expectedAmount2,
-            block.number
-        );
+            uint64(block.number
+        ));
     }
 
     //--------------------------------
@@ -147,10 +147,10 @@ contract RailSettlementTest is Test, BaseTestHelper {
         RailSettlementHelpers.SettlementResult memory result = settlementHelper
             .settleRailAndVerify(
                 railId,
-                block.number,
+                uint64(block.number),
                 expectedAmount,
-                block.number
-            );
+                uint64(block.number
+            ));
 
         // Verify arbiter note
         assertEq(
@@ -198,9 +198,9 @@ contract RailSettlementTest is Test, BaseTestHelper {
         RailSettlementHelpers.SettlementResult memory result = settlementHelper
             .settleRailAndVerify(
                 railId,
-                block.number,
+                uint64(block.number),
                 expectedAmount,
-                block.number
+                uint64(block.number)
             );
 
         // Verify arbiter note
@@ -248,10 +248,10 @@ contract RailSettlementTest is Test, BaseTestHelper {
         RailSettlementHelpers.SettlementResult memory result = settlementHelper
             .settleRailAndVerify(
                 railId,
-                block.number,
+                uint64(block.number),
                 expectedAmount,
-                block.number
-            );
+                uint64(block.number
+            ));
 
         // Verify accumulated fees increased correctly
         uint256 feesAfter = payments.accumulatedFees(address(token));
@@ -310,10 +310,10 @@ contract RailSettlementTest is Test, BaseTestHelper {
         RailSettlementHelpers.SettlementResult memory result = settlementHelper
             .settleRailAndVerify(
                 railId,
-                block.number,
+                uint64(block.number),
                 expectedAmount,
-                expectedSettledUpto
-            );
+                uint64(expectedSettledUpto
+            ));
 
         // Verify arbiter note
         assertEq(
@@ -347,7 +347,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Attempt settlement with malicious arbiter - should revert
         vm.prank(USER1);
         vm.expectRevert("arbiter settled beyond segment end");
-        payments.settleRail(railId, block.number);
+        payments.settleRail(railId, uint64(block.number));
 
         // Set the arbiter to return invalid amount but valid settlement duration
         arbiter.setMode(MockArbiter.ArbiterMode.CUSTOM_RETURN);
@@ -355,7 +355,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 invalidAmount = proposedAmount * 2; // Double the correct amount
         arbiter.setCustomValues(
             invalidAmount,
-            block.number,
+            uint64(block.number),
             "Attempting excessive payment"
         );
 
@@ -364,7 +364,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         vm.expectRevert(
             "arbiter modified amount exceeds maximum for settled duration"
         );
-        payments.settleRail(railId, block.number);
+        payments.settleRail(railId, uint64(block.number));
     }
 
     //--------------------------------
@@ -373,7 +373,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
     function testRailTerminationAndSettlement() public {
         uint256 rate = 10 ether;
-        uint256 lockupPeriod = 5;
+        uint64 lockupPeriod = 5;
         uint256 railId = helper.setupRailWithParameters(
             USER1,
             USER2,
@@ -391,10 +391,10 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedAmount1 = rate * 3; // 3 blocks * 10 ether
         settlementHelper.settleRailAndVerify(
             railId,
-            block.number,
+            uint64(block.number),
             expectedAmount1,
-            block.number
-        );
+            uint64(block.number
+        ));
 
         // Terminate the rail
         vm.prank(OPERATOR);
@@ -422,10 +422,9 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Final settlement after termination
         vm.prank(USER1);
 
-
         (uint256 settledAmount, uint256 netPayeeAmount, uint256 paymentFee, uint256 totalOperatorCommission, uint256 settledUpto,) = 
 
-            payments.settleRail(railId, block.number);
+            payments.settleRail(railId, uint64(block.number));
         
         // Verify that total settled amount is equal to the sum of net payee amount, payment fee, and operator commission
         assertEq(settledAmount, netPayeeAmount + paymentFee + totalOperatorCommission, "Mismatch in settled amount breakdown");
@@ -483,7 +482,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Settle immediately without advancing blocks - should be a no-op
         RailSettlementHelpers.SettlementResult memory result = settlementHelper
-            .settleRailAndVerify(railId, block.number, 0, block.number);
+            .settleRailAndVerify(railId, uint64(block.number), 0, uint64(block.number));
 
         console.log("result.note", result.note);
 
@@ -523,7 +522,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         );
 
         // Create rail with 2% operator commission (200 BPS)
-        uint256 operatorCommissionBps = 200;
+        uint16 operatorCommissionBps = 200;
         uint256 railId;
         vm.startPrank(OPERATOR);
         railId = payments.createRail(
@@ -537,7 +536,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Set rail parameters using modify functions
         uint256 rate = 10 ether;
-        uint256 lockupPeriod = 5;
+        uint64 lockupPeriod = 5;
         vm.startPrank(OPERATOR);
         payments.modifyRailPayment(railId, rate, 0);
         payments.modifyRailLockup(railId, lockupPeriod, 0); // no fixed lockup
@@ -564,7 +563,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             uint256 operatorCommission,
             uint256 settledUpto,
 
-        ) = payments.settleRail(railId, block.number);
+        ) = payments.settleRail(railId, uint64(block.number));
         vm.stopPrank();
 
         // --- Expected Calculations ---
@@ -690,7 +689,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         vm.prank(USER1);
         (uint256 newSettledAmount, , uint256 newPaymentFee, , , ) = payments
-            .settleRail(railId, block.number);
+            .settleRail(railId, uint64(block.number));
 
         uint256 expectedNewFee = (newSettledAmount *
             payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();

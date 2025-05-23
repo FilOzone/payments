@@ -567,7 +567,6 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Create a rail with the arbiter
         uint256 rate = 5 ether;
-        uint256 lastSettledUpto = block.number;
         uint256 lockupPeriod = 10;
         uint256 railId = helper.setupRailWithParameters(
             USER1,
@@ -588,7 +587,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // LastSettledUpto: 1 + (6 - 1) * 60% = 4
         vm.prank(USER1);
         payments.settleRail(railId, block.number);
-        lastSettledUpto = lastSettledUpto + ((block.number - lastSettledUpto) * factor) / 100; // arbiter only settles for 60% of the duration (block.number - lastSettledUpto)
+        uint256 lastSettledUpto = 1 + ((block.number - 1) * factor) / 100; // arbiter only settles for 60% of the duration (block.number - lastSettledUpto = epoch 1)
         vm.stopPrank();
 
 

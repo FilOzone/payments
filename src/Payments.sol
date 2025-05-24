@@ -673,8 +673,8 @@ contract Payments is
             );
         }
 
-        // --- Settlement Prior to Rate Change ---
-        handleRateChangeSettlement(railId, rail, oldRate, newRate);
+        // enqueuing rate change
+        enqueueRateChange(rail, oldRate, newRate);
 
         // Calculate the effective lockup period
         uint256 effectiveLockupPeriod;
@@ -759,34 +759,16 @@ contract Payments is
         rail.paymentRate = 0;
     }
 
-    function handleRateChangeSettlement(
-        uint256 railId,
+    function enqueueRateChange(
         Rail storage rail,
         uint256 oldRate,
         uint256 newRate
     ) internal {
-        // If rate hasn't changed, nothing to do
-        if (newRate == oldRate) {
+        // If rate hasn't changed or rail is already settled up to current block, nothing to do
+        if (newRate == oldRate || rail.settledUpTo == block.number) {
             return;
         }
 
-        // No need to settle the rail or enqueue the rate change if the rail has already been settled upto
-        // the current epoch
-        if (rail.settledUpTo == block.number) {
-            return;
-        }
-
-        // If there is no arbiter, settle the rail immediately
-        if (rail.arbiter == address(0)) {
-            (, , , , uint256 settledUpto, ) = settleRail(railId, block.number);
-            require(
-                settledUpto == block.number,
-                "failed to settle rail up to current epoch"
-            );
-            return;
-        }
-
-        // For arbitrated rails with rate change, handle queue
         // Only queue the previous rate once per epoch
         if (
             rail.rateChangeQueue.isEmpty() ||

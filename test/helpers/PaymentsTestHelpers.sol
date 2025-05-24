@@ -12,6 +12,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
     // Common constants
     uint256 public constant INITIAL_BALANCE = 1000 ether;
     uint256 public constant DEPOSIT_AMOUNT = 100 ether;
+    uint256 internal constant MAX_LOCKUP_PERIOD = 100;
 
     Payments public payments;
     IERC20 public testToken;
@@ -355,7 +356,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             uint256 rateAllowance,
             uint256 lockupAllowance,
             ,
-
+            ,
         ) = payments.operatorApprovals(address(testToken), from, railOperator);
 
         // Ensure operator has sufficient allowances before creating the rail
@@ -374,7 +375,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
                     : rateAllowance,
                 requiredLockupAllowance > lockupAllowance
                     ? requiredLockupAllowance
-                    : lockupAllowance
+                    : lockupAllowance,
+                MAX_LOCKUP_PERIOD
             );
             vm.stopPrank();
         }
@@ -382,7 +384,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         railId = createRail(from, to, railOperator, arbiter);
 
         // Get operator usage before modifications
-        (, , , uint256 rateUsageBefore, uint256 lockupUsageBefore) = payments
+        (, , , uint256 rateUsageBefore, uint256 lockupUsageBefore,) = payments
             .operatorApprovals(address(testToken), from, railOperator);
 
         // Get rail parameters before modifications to accurately calculate expected usage changes
@@ -416,7 +418,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         assertEq(rail.arbiter, arbiter, "Rail arbiter address mismatch");
 
         // Get operator usage after modifications
-        (, , , uint256 rateUsageAfter, uint256 lockupUsageAfter) = payments
+        (, , , uint256 rateUsageAfter, uint256 lockupUsageAfter, ) = payments
             .operatorApprovals(address(testToken), from, railOperator);
 
         // Calculate expected change in rate usage
@@ -475,10 +477,11 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         address from,
         address operator,
         uint256 rateAllowance,
-        uint256 lockupAllowance
+        uint256 lockupAllowance,
+        uint256 maxLockupPeriod
     ) public {
         // Get initial usage values for verification
-        (, , , uint256 initialRateUsage, uint256 initialLockupUsage) = payments
+        (, , , uint256 initialRateUsage, uint256 initialLockupUsage,) = payments
             .operatorApprovals(address(testToken), from, operator);
 
         // Set approval
@@ -488,7 +491,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             operator,
             true,
             rateAllowance,
-            lockupAllowance
+            lockupAllowance,
+            maxLockupPeriod
         );
         vm.stopPrank();
 
@@ -500,7 +504,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             rateAllowance, // rateAllowance
             lockupAllowance, // lockupAllowance
             initialRateUsage, // rateUsage shouldn't change
-            initialLockupUsage // lockupUsage shouldn't change
+            initialLockupUsage, // lockupUsage shouldn't change
+            maxLockupPeriod // maxLockupPeriod
         );
     }
 
@@ -514,7 +519,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             uint256 rateAllowance,
             uint256 lockupAllowance,
             uint256 rateUsage,
-            uint256 lockupUsage
+            uint256 lockupUsage,
+            uint256 maxLockupPeriod
         ) = payments.operatorApprovals(address(testToken), from, operator);
 
         // Revoke approval
@@ -524,7 +530,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             operator,
             false,
             rateAllowance,
-            lockupAllowance
+            lockupAllowance,
+            maxLockupPeriod
         );
         vm.stopPrank();
 
@@ -536,7 +543,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             rateAllowance, // rateAllowance should remain the same
             lockupAllowance, // lockupAllowance should remain the same
             rateUsage, // rateUsage shouldn't change
-            lockupUsage // lockupUsage shouldn't change
+            lockupUsage, // lockupUsage shouldn't change,
+            maxLockupPeriod // maxLockupPeriod should remain the same
         );
     }
 
@@ -577,14 +585,16 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         uint256 expectedRateAllowance,
         uint256 expectedLockupAllowance,
         uint256 expectedRateUsage,
-        uint256 expectedLockupUsage
+        uint256 expectedLockupUsage,
+        uint256 expectedMaxLockupPeriod
     ) public view {
         (
             bool isApproved,
             uint256 rateAllowance,
             uint256 lockupAllowance,
             uint256 rateUsage,
-            uint256 lockupUsage
+            uint256 lockupUsage,
+            uint256 maxLockupPeriod
         ) = payments.operatorApprovals(address(testToken), client, operator);
 
         assertEq(
@@ -604,6 +614,11 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         );
         assertEq(rateUsage, expectedRateUsage, "Rate usage mismatch");
         assertEq(lockupUsage, expectedLockupUsage, "Lockup usage mismatch");
+        assertEq(
+            maxLockupPeriod,
+            expectedMaxLockupPeriod,
+            "Max lockup period mismatch"
+        );
     }
 
     // Get current operator allowance and usage
@@ -618,7 +633,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             uint256 rateAllowance,
             uint256 lockupAllowance,
             uint256 rateUsage,
-            uint256 lockupUsage
+            uint256 lockupUsage,
+            uint256 maxLockupPeriod
         )
     {
         return payments.operatorApprovals(address(testToken), client, operator);
@@ -647,6 +663,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             uint256 lockupAllowanceBefore,
             ,
             uint256 lockupUsageBefore
+            ,
         ) = payments.operatorApprovals(
                 address(testToken),
                 railClient,
@@ -733,6 +750,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             uint256 lockupAllowanceAfter,
             ,
             uint256 lockupUsageAfter
+            ,
         ) = payments.operatorApprovals(
                 address(testToken),
                 railClient,

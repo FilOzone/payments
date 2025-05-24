@@ -22,6 +22,7 @@ contract FeesTest is Test, BaseTestHelper {
 
     uint256 constant INITIAL_BALANCE = 5000 ether;
     uint256 constant DEPOSIT_AMOUNT = 200 ether;
+    uint256 constant MAX_LOCKUP_PERIOD = 100;
 
     // Payment rates for each rail
     uint256 constant RAIL1_RATE = 5 ether;
@@ -83,7 +84,8 @@ contract FeesTest is Test, BaseTestHelper {
             USER1, // from
             OPERATOR, // operator
             RAIL1_RATE, // rate allowance for token1
-            RAIL1_RATE * 10 // lockup allowance (enough for the period)
+            RAIL1_RATE * 10, // lockup allowance (enough for the period)
+            MAX_LOCKUP_PERIOD // max lockup period
         );
 
         // Operator approvals for token2 and token3
@@ -93,7 +95,8 @@ contract FeesTest is Test, BaseTestHelper {
             OPERATOR,
             true, // approved
             RAIL2_RATE, // rate allowance for token2
-            RAIL2_RATE * 10 // lockup allowance (enough for the period)
+            RAIL2_RATE * 10, // lockup allowance (enough for the period)
+            MAX_LOCKUP_PERIOD // max lockup period
         );
 
         payments.setOperatorApproval(
@@ -101,7 +104,8 @@ contract FeesTest is Test, BaseTestHelper {
             OPERATOR,
             true, // approved
             RAIL3_RATE, // rate allowance for token3
-            RAIL3_RATE * 10 // lockup allowance (enough for the period)
+            RAIL3_RATE * 10, // lockup allowance (enough for the period)
+            MAX_LOCKUP_PERIOD // max lockup period
         );
         vm.stopPrank();
 

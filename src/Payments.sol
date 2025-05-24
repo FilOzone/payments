@@ -77,6 +77,7 @@ contract Payments is
         uint256 lockupAllowance;
         uint256 rateUsage; // Track actual usage for rate
         uint256 lockupUsage; // Track actual usage for lockup
+        uint256 maxLockupPeriod; // Maximum lockup period the operator can set for rails created on behalf of the client
     }
 
     // Counter for generating unique rail IDs
@@ -310,12 +311,14 @@ contract Payments is
     /// @param approved Whether the operator is approved (true) or not (false) to create new rails>
     /// @param rateAllowance The maximum payment rate the operator can set across all rails created by the operator on behalf of the message sender. If this is less than the current payment rate, the operator will only be able to reduce rates until they fall below the target.
     /// @param lockupAllowance The maximum amount of funds the operator can lock up on behalf of the message sender towards future payments. If this exceeds the current total amount of funds locked towards future payments, the operator will only be able to reduce future lockup.
+    /// @param maxLockupPeriod The maximum number of epochs (blocks) the operator can lock funds for. If this is less than the current lockup period for a rail, the operator will only be able to reduce the lockup period.
     function setOperatorApproval(
         address token,
         address operator,
         bool approved,
         uint256 rateAllowance,
-        uint256 lockupAllowance
+        uint256 lockupAllowance,
+        uint256 maxLockupPeriod
     ) external validateNonZeroAddress(operator, "operator") {
         OperatorApproval storage approval = operatorApprovals[token][
             msg.sender
@@ -325,6 +328,7 @@ contract Payments is
         approval.isApproved = approved;
         approval.rateAllowance = rateAllowance;
         approval.lockupAllowance = lockupAllowance;
+        approval.maxLockupPeriod = maxLockupPeriod;
     }
 
     /// @notice Terminates a payment rail, preventing further payments after the rail's lockup period. After calling this method, the lockup period cannot be changed, and the rail's rate and fixed lockup may only be reduced.
@@ -598,6 +602,20 @@ contract Payments is
             );
         }
 
+        // Get operator approval
+        OperatorApproval storage operatorApproval = operatorApprovals[
+            rail.token
+        ][rail.from][rail.operator];
+
+        // Check if period exceeds the max lockup period allowed for this operator
+        // Only enforce this constraint when increasing the period, not when decreasing
+        if (period > rail.lockupPeriod) {
+            require(
+                period <= operatorApproval.maxLockupPeriod,
+                "requested lockup period exceeds operator's maximum allowed lockup period"
+            );
+        }
+
         // Calculate current (old) lockup.
         uint256 oldLockup = rail.lockupFixed +
             (rail.paymentRate * rail.lockupPeriod);
@@ -614,9 +632,7 @@ contract Payments is
         // amount, we'll revert in the post-condition.
         payer.lockupCurrent = payer.lockupCurrent - oldLockup + newLockup;
 
-        OperatorApproval storage operatorApproval = operatorApprovals[
-            rail.token
-        ][rail.from][rail.operator];
+       
         updateOperatorLockupUsage(operatorApproval, oldLockup, newLockup);
 
         // Update rail lockup parameters

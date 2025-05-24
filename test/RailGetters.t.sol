@@ -24,6 +24,7 @@ contract PayeeRailsTest is Test, BaseTestHelper {
 
     uint256 constant INITIAL_BALANCE = 5000 ether;
     uint256 constant DEPOSIT_AMOUNT = 200 ether;
+    uint256 constant MAX_LOCKUP_PERIOD = 100;
 
     // Rail IDs for tests
     uint256 rail1Id;
@@ -60,7 +61,8 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             USER1, // from
             OPERATOR, // operator
             15 ether, // rate allowance (sum of all rates: 5+3+2+1 = 11 ether)
-            200 ether // lockup allowance
+            200 ether, // lockup allowance,
+            MAX_LOCKUP_PERIOD  // maximum lockup period
         );
 
         // Setup approval for token2
@@ -70,7 +72,8 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             OPERATOR,
             true, // approved
             10 ether, // rate allowance
-            100 ether // lockup allowance
+            100 ether, // lockup allowance
+            MAX_LOCKUP_PERIOD // maximum lockup period
         );
         vm.stopPrank();
 

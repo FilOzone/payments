@@ -155,7 +155,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Advance 6 blocks
         helper.advanceBlocks(6);
 
-        // Operator decreases the payment rate from 6 ETH to 7 ETH per block for epochs (15-21)
+        // Operator increases the payment rate from 6 ETH to 7 ETH per block for epochs (15-21)
         // This creates a rate change queue
         vm.prank(OPERATOR);
         payments.modifyRailPayment(railId, newRate2, 0);
@@ -168,15 +168,12 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedAmount = rate * 7 + newRate1 * 6 + newRate2 * 7;
 
         // settle and verify
-        RailSettlementHelpers.SettlementResult memory result = settlementHelper
-            .settleRailAndVerify(
-                railId,
-                block.number,
-                expectedAmount,
-                block.number
-            );
-
-        console.log("Settlement result:", result.note);
+        settlementHelper.settleRailAndVerify(
+            railId,
+            block.number,
+            expectedAmount,
+            block.number
+        );
     }
 
     //--------------------------------

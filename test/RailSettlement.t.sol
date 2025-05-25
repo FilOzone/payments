@@ -117,6 +117,68 @@ contract RailSettlementTest is Test, BaseTestHelper {
         );
     }
 
+    function testSettleRailWithRateChange() public {
+        // Set up a rail
+        uint256 rate = 5 ether;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            rate,
+            10, // lockupPeriod
+            0, // No fixed lockup
+            address(0) // Standard arbiter
+        );
+        uint256 newRate1 = 6 ether;
+        uint256 newRate2 = 7 ether;
+
+        // Set the rate to 6 ether after 7 blocks
+        helper.advanceBlocks(7);
+
+        // Increase operator allowances to allow rate modification
+        // We increase rate allowance = 5 + 6 + 7 ether and add buffer for lockup
+        uint256 rateAllowancen = rate + newRate1 + newRate2;
+        uint256 lockupAllowancen = (rate + newRate1 + newRate2) * 10;
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            rateAllowancen,
+            lockupAllowancen
+        );
+
+        // Operator increases the payment rate from 5 ETH to 6 ETH per block for epochs (9-14)
+        // This creates a rate change queue
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, newRate1, 0);
+        vm.stopPrank();
+
+        // Advance 6 blocks
+        helper.advanceBlocks(6);
+
+        // Operator decreases the payment rate from 6 ETH to 7 ETH per block for epochs (15-21)
+        // This creates a rate change queue
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, newRate2, 0);
+        vm.stopPrank();
+
+        // Advance 6 blocks
+        helper.advanceBlocks(7);
+
+        // expectedAmount = 5 * 7 + 6 * 6 + 7 * 7 = 120 ether
+        uint256 expectedAmount = rate * 7 + newRate1 * 6 + newRate2 * 7;
+
+        // settle and verify
+        RailSettlementHelpers.SettlementResult memory result = settlementHelper
+            .settleRailAndVerify(
+                railId,
+                block.number,
+                expectedAmount,
+                block.number
+            );
+
+        console.log("Settlement result:", result.note);
+    }
+
     //--------------------------------
     // 2. Arbitration Scenarios
     //--------------------------------

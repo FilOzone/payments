@@ -137,13 +137,13 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Increase operator allowances to allow rate modification
         // We increase rate allowance = 5 + 6 + 7 ether and add buffer for lockup
-        uint256 rateAllowancen = rate + newRate1 + newRate2;
-        uint256 lockupAllowancen = (rate + newRate1 + newRate2) * 10;
+        uint256 rateAllowance = rate + newRate1 + newRate2;
+        uint256 lockupAllowance = (rate + newRate1 + newRate2) * 10;
         helper.setupOperatorApproval(
             USER1,
             OPERATOR,
-            rateAllowancen,
-            lockupAllowancen
+            rateAllowance,
+            lockupAllowance
         );
 
         // Operator increases the payment rate from 5 ETH to 6 ETH per block for epochs (9-14)

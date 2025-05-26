@@ -1719,7 +1719,8 @@ contract Payments is
             uint256 availableFunds = account.funds - simulatedLockupCurrent;
             if (availableFunds == 0) {
                 // If no available funds, account is already in debt
-                fundedUntil = block.number;
+                uint256 fractionalEpochs = ( simulatedLockupCurrent - account.lockupCurrent ) / account.lockupRate;
+                fundedUntil = account.lockupLastSettledAt + fractionalEpochs;
             } else {
                 // Calculate epochs until debt
                 uint256 epochsUntilDebt = availableFunds / account.lockupRate;

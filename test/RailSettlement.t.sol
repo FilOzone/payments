@@ -144,7 +144,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             USER1,
             OPERATOR,
             rateAllowance,
-            lockupAllowance
+            lockupAllowance,
+            MAX_LOCKUP_PERIOD
         );
 
         // Operator increases the payment rate from 5 ETH to 6 ETH per block for epochs (9-14)

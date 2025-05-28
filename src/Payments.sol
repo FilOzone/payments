@@ -1042,7 +1042,12 @@ contract Payments is
                 )
             );
         }
-
+        // This avoids redundant zero-rate entries and saves gas.
+        if (rail.rateChangeQueue.isEmpty() && rail.paymentRate == 0) {
+            if (maxSettlementEpoch > rail.settledUpTo) {
+                rail.settledUpTo = maxSettlementEpoch;
+                }         
+        }
         // Process settlement depending on whether rate changes exist
         if (rail.rateChangeQueue.isEmpty()) {
             (

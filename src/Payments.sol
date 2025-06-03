@@ -9,6 +9,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./RateChangeQueue.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
 interface IArbiter {
     struct ArbitrationResult {
@@ -374,6 +375,39 @@ contract Payments is
             rail.token
         ][rail.from][rail.operator];
         updateOperatorRateUsage(operatorApproval, rail.paymentRate, 0);
+    }
+
+    /// @notice Deposits tokens from the message sender's account into `to`'s account using EIP-2612 permit.
+    /// @param token The ERC20 token address to deposit.
+    /// @param to The address whose account will be credited.
+    /// @param amount The amount of tokens to deposit.
+    /// @param deadline The deadline for the permit signature.
+    /// @param v The v component of the permit signature.
+    /// @param r The r component of the permit signature.
+    /// @param s The s component of the permit signature.
+    /// @custom:constraint The token must implement EIP-2612 permit.
+    function depositWithPermit(
+        address token,
+        address to,
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    )
+        external
+        nonReentrant
+        validateNonZeroAddress(token, "token")
+        validateNonZeroAddress(to, "to")
+        settleAccountLockupBeforeAndAfter(token, to, false)
+    {
+        Account storage account = accounts[token][to];
+
+        IERC20Permit(token).permit(msg.sender, address(this), amount, deadline, v, r, s);
+
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+
+        account.funds += amount;
     }
 
     /// @notice Deposits tokens from the message sender's account into `to`'s account.

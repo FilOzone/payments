@@ -84,6 +84,35 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         return newToken;
     }
 
+    function getPermitSignature (
+        uint256 privateKey,
+        address spender,
+        uint256 value,
+        uint256 deadline
+    ) public returns (uint8 v, bytes32 r, bytes32 s) {
+        address owner = vm.addr(privateKey);
+        uint256 nonce = MockERC20(address(testToken)).nonces(owner);
+        uint256 chainId = block.chainid;
+        bytes32 DOMAIN_SEPARATOR = MockERC20(address(testToken)).DOMAIN_SEPARATOR();
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                owner,
+                spender,
+                value,
+                nonce,
+                deadline
+            )
+        );
+
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash)
+        );
+
+        (v, r, s) = vm.sign(privateKey, digest);
+    }
+
     function getAccountData(
         address user
     ) public view returns (Payments.Account memory) {

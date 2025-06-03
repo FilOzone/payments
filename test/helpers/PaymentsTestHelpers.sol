@@ -94,7 +94,6 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
     ) public returns (uint8 v, bytes32 r, bytes32 s) {
         address owner = vm.addr(privateKey);
         uint256 nonce = MockERC20(address(testToken)).nonces(owner);
-        uint256 chainId = block.chainid;
         bytes32 DOMAIN_SEPARATOR = MockERC20(address(testToken)).DOMAIN_SEPARATOR();
 
         bytes32 structHash = keccak256(

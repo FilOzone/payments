@@ -144,7 +144,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             USER1,
             OPERATOR,
             rateAllowance,
-            lockupAllowance
+            lockupAllowance,
+            MAX_LOCKUP_PERIOD
         );
 
         // Operator increases the payment rate from 5 ETH to 6 ETH per block for epochs (9-14)
@@ -561,6 +562,67 @@ contract RailSettlementTest is Test, BaseTestHelper {
             "Note should indicate already settled"
         );
     }
+
+    function testZeroRateRail_OptimizedSettlement() public {
+    // Create a rail with zero payment rate and empty queue
+    uint256 zeroRate = 0;
+    uint256 lockupPeriod = 10; // Any value, since rate is 0
+    uint256 railId = helper.setupRailWithParameters(
+        USER1,
+        USER2,
+        OPERATOR,
+        zeroRate,
+        lockupPeriod,
+        0, // No fixed lockup
+        address(0) // No arbiter
+    );
+
+    // Sanity: Queue should be empty at the start
+    assertTrue(
+        payments.getRateChangeQueueSize(railId) == 0,
+        "Queue should be empty at rail creation"
+    );
+    // Also sanity: rate should be zero
+    assertTrue(
+        payments.getRail(railId).paymentRate == 0,
+        "Rail rate not zero"
+    );
+
+    uint256 beforeSettledUpTo = payments.getRail(railId).settledUpTo;
+    uint256 targetEpoch = beforeSettledUpTo + 5;
+
+    // Advance blocks
+    helper.advanceBlocks(5);
+
+    // Settle the rail (should trigger the optimized path)
+    RailSettlementHelpers.SettlementResult memory result = settlementHelper.settleRailAndVerify(
+        railId,
+        targetEpoch,
+        0, // No amount should be moved
+        targetEpoch
+    );
+
+    // Assert queue is still empty after optimized settlement
+    assertTrue(
+        payments.getRateChangeQueueSize(railId) == 0,
+        "Queue should remain empty after zero-rate settlement"
+    );
+
+    // Assert settledUpTo advanced
+    assertEq(
+        payments.getRail(railId).settledUpTo,
+        targetEpoch,
+        "settledUpTo should advance to target epoch"
+    );
+
+    // Assert result note is the expected optimization message
+    assertTrue(
+        bytes(result.note).length > 0 &&
+        (stringsEqual(result.note, "Optimized: zero-rate settlement, queue empty") ||
+         stringsEqual(result.note, "Zero rate payment rail")), // Accept both just in case
+        "Note should indicate optimized zero-rate path"
+    );
+}
 
     //--------------------------------
     // Helper Functions

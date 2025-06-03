@@ -113,6 +113,36 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         (v, r, s) = vm.sign(privateKey, digest);
     }
 
+    function makeDepositWithPermit(
+        uint256 fromPrivateKey,
+        address to,
+        uint256 amount
+    ) public {
+        address from = vm.addr(fromPrivateKey);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        (uint8 v, bytes32 r, bytes32 s) = getPermitSignature(
+            fromPrivateKey, 
+            address(payments), 
+            amount, 
+            deadline
+        );
+
+        vm.startPrank(from);
+
+        payments.depositWithPermit(
+            address(testToken),
+            to, 
+            amount, 
+            deadline, 
+            v, 
+            r, 
+            s
+        );
+
+        vm.stopPrank();
+    }
+
     function getAccountData(
         address user
     ) public view returns (Payments.Account memory) {

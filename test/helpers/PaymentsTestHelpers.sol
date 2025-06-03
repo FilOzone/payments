@@ -914,4 +914,34 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         );
         vm.stopPrank();
     }
+
+    function expectInvalidPermitToRevert(
+        uint256 senderSk,
+        address to,
+        uint256 amount
+    ) public {
+        uint256 deadline = block.timestamp + 1 hours;
+
+        uint256 notSenderSk = senderSk == user1Sk ? user2Sk : user1Sk;
+        address from = vm.addr(senderSk);
+
+        // Make permit signature from notFromSk, but call from 'from'
+        (uint8 v, bytes32 r, bytes32 s) = getPermitSignature(
+            notSenderSk, 
+            address(payments), 
+            amount, 
+            deadline
+        );
+
+        vm.startPrank(from);
+        vm.expectRevert();
+        payments.depositWithPermit(
+            address(testToken), 
+            to, 
+            amount, 
+            deadline, 
+            v, r, s
+        );
+        vm.stopPrank();
+    }
 }

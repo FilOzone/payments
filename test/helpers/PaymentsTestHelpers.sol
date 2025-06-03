@@ -121,6 +121,12 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         address from = vm.addr(fromPrivateKey);
         uint256 deadline = block.timestamp + 1 hours;
 
+        // Capture pre-deposit balances and state
+        uint256 fromBalanceBefore = _balanceOf(from, false);
+        uint256 paymentsBalanceBefore = _balanceOf(address(payments), false);
+        Payments.Account memory toAccountBefore = _getAccountData(to, false);
+
+        // get signature for permit
         (uint8 v, bytes32 r, bytes32 s) = getPermitSignature(
             fromPrivateKey, 
             address(payments), 
@@ -128,6 +134,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             deadline
         );
 
+        // Execute deposit with permit
         vm.startPrank(from);
 
         payments.depositWithPermit(
@@ -141,6 +148,29 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         );
 
         vm.stopPrank();
+
+        // Capture post-deposit balances and state
+        uint256 fromBalanceAfter = _balanceOf(from, false);
+        uint256 paymentsBalanceAfter = _balanceOf(address(payments), false);
+        Payments.Account memory toAccountAfter = _getAccountData(to, false);
+
+        // Asserts / Checks
+        assertEq(
+            fromBalanceAfter,
+            fromBalanceBefore - amount,
+            "Sender's balance not reduced correctly"
+        );
+        assertEq(
+            paymentsBalanceAfter,
+            paymentsBalanceBefore + amount,
+            "Payments contract balance not increased correctly"
+        );
+        assertEq(
+            toAccountAfter.funds,
+            toAccountBefore.funds + amount,
+            "Recipient's account balance not increased correctly"
+        );
+        console.log("toAccountAfter.funds", toAccountAfter.funds);
     }
 
     function getAccountData(

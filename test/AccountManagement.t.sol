@@ -40,6 +40,22 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER2, DEPOSIT_AMOUNT);
     }
 
+    /*//////////////////////////////////////////////////////////////
+                        DEPOSIT WITH PERMIT TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function testDepositWithPermit() public {
+        helper.makeDepositWithPermit(user1Sk, USER1, DEPOSIT_AMOUNT);
+    }
+
+    function testDepositWithPermitToAnotherUser() public {
+        helper.makeDepositWithPermit(user1Sk, USER2, DEPOSIT_AMOUNT);
+    }
+
+    function testDepositWithPermitExpiredPermitReverts() public {
+        helper.expectExpiredPermitToRevert(user1Sk, USER2, DEPOSIT_AMOUNT);
+    }
+
     function testNativeDepositWithInsufficientNativeTokens() public {
         vm.startPrank(USER1);
 
@@ -250,4 +266,41 @@ contract AccountManagementTest is Test, BaseTestHelper {
             block.number // expected last settled
         );
     }
+
+    // Local permit test helpers
+
+    // function _expectExpiredPermitToRevert(
+    //     uint256 senderSk,
+    //     address to,
+    //     uint256 amount
+    // ) internal {
+    //     address from = vm.addr(senderSk);
+    //     uint256 deadline = block.timestamp;
+    //     (uint8 v, bytes32 r, bytes32 s) = helper.getPermitSignature(
+    //         senderSk,
+    //         address(payments),
+    //         amount,
+    //         deadline
+    //     );
+
+    //     vm.warp(deadline + 10);
+    //     vm.startPrank(from);
+
+    //     // Using try-catch instead of vm.expectRevert due to Foundry issue #5454:
+    //     // vm.expectRevert fails to catch reverts in nested calls
+    //     // See: https://github.com/foundry-rs/foundry/issues/5454
+    //     try payments.depositWithPermit(
+    //         address(helper.testToken()),
+    //         to,
+    //         amount,
+    //         deadline,
+    //         v, r, s
+    //     ) {
+    //         emit log("Expected revert, but did not revert");
+    //         fail();
+    //     } catch Error(string memory reason) {
+    //         assertEq(reason, "ERC2612ExpiredSignature(1)");
+    //     }
+    //     vm.stopPrank();
+    // }
 }

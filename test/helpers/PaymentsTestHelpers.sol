@@ -17,6 +17,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
     Payments public payments;
     IERC20 public testToken;
 
+    error ERC2612ExpiredSignature(uint256 deadline);
+
     // Standard test environment setup with common addresses and token
     function setupStandardTestEnvironment() public {
         vm.startPrank(OWNER);
@@ -865,5 +867,31 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             paymentFee,
             "Platform fee not accumulated correctly"
         );
+    }
+
+    function expectExpiredPermitToRevert(
+        uint256 senderSk,
+        address to,
+        uint256 amount
+    ) public {
+        address from = vm.addr(senderSk);
+        uint256 deadline = block.timestamp;
+        (uint8 v, bytes32 r, bytes32 s) = getPermitSignature(
+            senderSk,
+            address(payments),
+            amount,
+            deadline
+        );
+        vm.warp(deadline+10);
+        vm.startPrank(from);
+        vm.expectRevert(abi.encodeWithSelector(ERC2612ExpiredSignature.selector, deadline));
+        payments.depositWithPermit(
+            address(testToken),
+            to,
+            amount,
+            deadline,
+            v, r, s
+        );
+        vm.stopPrank();
     }
 }

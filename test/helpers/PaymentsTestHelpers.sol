@@ -893,4 +893,25 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         );
         vm.stopPrank();
     }
+
+    function expectNativeTokenDepositWithPermitToRevert(
+        uint256 senderSk, 
+        address to, 
+        uint256 amount
+    ) public {
+        uint256 deadline = block.timestamp + 1 hours;
+        address from = vm.addr(senderSk);
+        vm.startPrank(from);
+        vm.expectRevert("depositWithPermit: native token not supported");
+        payments.depositWithPermit(
+            address(0), // Native token is not allowed
+            to,
+            amount,
+            deadline,
+            0, // v
+            bytes32(0), // r
+            bytes32(0)  // s
+        );
+        vm.stopPrank();
+    }
 }

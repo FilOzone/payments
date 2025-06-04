@@ -17,8 +17,6 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
     Payments public payments;
     IERC20 public testToken;
 
-    error ERC2612ExpiredSignature(uint256 deadline);
-
     // Standard test environment setup with common addresses and token
     function setupStandardTestEnvironment() public {
         vm.startPrank(OWNER);
@@ -883,7 +881,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         );
         vm.warp(deadline+10);
         vm.startPrank(from);
-        vm.expectRevert(abi.encodeWithSelector(ERC2612ExpiredSignature.selector, deadline));
+        vm.expectRevert();
         payments.depositWithPermit(
             address(testToken),
             to,

@@ -141,6 +141,9 @@ contract Payments is
         string note;
     }
 
+    // Events
+    event DepositWithPermit(address indexed token, address indexed from, address indexed to, uint256 amount);
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -443,6 +446,8 @@ contract Payments is
         Account storage account = accounts[token][to];
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         account.funds += amount;
+
+        emit DepositWithPermit(token, msg.sender, to, amount);
     }
 
     /// @notice Withdraws tokens from the caller's account to the caller's account, up to the amount of currently available tokens (the tokens not currently locked in rails).

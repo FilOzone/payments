@@ -7,6 +7,7 @@ import {ERC1967Proxy} from "../../src/ERC1967Proxy.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {BaseTestHelper} from "./BaseTestHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {console} from "forge-std/console.sol";
 contract PaymentsTestHelpers is Test, BaseTestHelper {
     // Common constants
@@ -16,6 +17,9 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
 
     Payments public payments;
     IERC20 public testToken;
+
+    address public depositPermitTester;
+    uint256 internal key;
 
     // Standard test environment setup with common addresses and token
     function setupStandardTestEnvironment() public {
@@ -28,17 +32,20 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         payments = Payments(address(proxy));
         vm.stopPrank();
 
+        (depositPermitTester, key) = makeAddrAndKey("tester");
         // Setup test token and assign to common users
-        address[] memory users = new address[](6);
+        address[] memory users = new address[](7);
         users[0] = OWNER;
         users[1] = USER1;
         users[2] = USER2;
         users[3] = OPERATOR;
         users[4] = OPERATOR2;
         users[5] = ARBITER;
+        users[6] = depositPermitTester;
 
         vm.deal(USER1, INITIAL_BALANCE);
         vm.deal(USER2, INITIAL_BALANCE);
+        vm.deal(depositPermitTester, INITIAL_BALANCE);
 
         testToken = setupTestToken(
             "Test Token",
@@ -187,6 +194,191 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             "Recipient's account balance not increased correctly"
         );
         console.log("toAccountAfter.funds", toAccountAfter.funds);
+    }
+
+    function makeDepositWithPermit(
+        address from,
+        address to,
+        uint256 amount,
+        uint256 deadline
+    ) public {
+        _performDepositWithPermit(from, to, amount, deadline, false);
+    }
+
+    function makeDepositWithPermitWithExpiredDeadline(
+        address from,
+        address to,
+        uint256 amount
+    ) public {
+        _performDepositWithPermit(from, to, amount, block.timestamp - 1, true);
+    }
+
+    function makeDepositWithPermitWithInvalidSignature(
+        address from,
+        address to,
+        uint256 amount,
+        uint256 deadline
+    ) public {
+        (uint8 v, bytes32 r, bytes32 s) = _getPermitSignature(
+            key,
+            address(payments),
+            amount,
+            IERC20Permit(address(testToken)).nonces(from),
+            deadline
+        );
+
+        // Modify the signature to make it invalid
+        s = bytes32(uint256(s) + 1);
+
+        // Get the recovered signer address
+        address recoveredSigner = _recoverPermitSigner(
+            address(testToken),
+            depositPermitTester,
+            address(payments),
+            DEPOSIT_AMOUNT,
+            IERC20Permit(address(testToken)).nonces(from),
+            deadline,
+            v,
+            r,
+            s
+        );
+
+        vm.startPrank(from);
+        vm.expectRevert(abi.encodeWithSignature("ERC2612InvalidSigner(address,address)", recoveredSigner, depositPermitTester));
+        payments.depositWithPermit(
+            address(testToken),
+            to,
+            amount,
+            deadline,
+            v,
+            r,
+            s
+        );
+        vm.stopPrank();
+    }
+
+    function _performDepositWithPermit(
+        address from,
+        address to,
+        uint256 amount,
+        uint256 deadline,
+        bool expectExpired
+    ) private {
+        // Capture pre-deposit balances
+        uint256 fromBalanceBefore = _balanceOf(from, false);
+        uint256 paymentsBalanceBefore = _balanceOf(address(payments), false);
+        Payments.Account memory toAccountBefore = _getAccountData(to, false);
+
+        // Get permit signature
+        (uint8 v, bytes32 r, bytes32 s) = _getPermitSignature(
+            key,
+            address(payments),
+            amount,
+            IERC20Permit(address(testToken)).nonces(from),
+            deadline
+        );
+
+        // Make the deposit with permit
+        vm.startPrank(from);
+        if (expectExpired) {
+            vm.expectRevert(abi.encodeWithSignature("ERC2612ExpiredSignature(uint256)", block.timestamp - 1));
+        }
+        payments.depositWithPermit(
+            address(testToken),
+            to,
+            amount,
+            deadline,
+            v,
+            r,
+            s
+        );
+        vm.stopPrank();
+
+        if (!expectExpired) {
+            // Verify token balances
+            uint256 fromBalanceAfter = _balanceOf(from, false);
+            uint256 paymentsBalanceAfter = _balanceOf(address(payments), false);
+            Payments.Account memory toAccountAfter = _getAccountData(to, false);
+
+            // Verify balances
+            assertEq(
+                fromBalanceAfter,
+                fromBalanceBefore - amount,
+                "Sender's balance not reduced correctly"
+            );
+            assertEq(
+                paymentsBalanceAfter,
+                paymentsBalanceBefore + amount,
+                "Payments contract balance not increased correctly"
+            );
+            assertEq(
+                toAccountAfter.funds,
+                toAccountBefore.funds + amount,
+                "Recipient's account balance not increased correctly"
+            );
+        }
+    }
+
+    function _getPermitSignature(
+        uint256 ownerPk,
+        address spender,
+        uint256 value,
+        uint256 nonce,
+        uint256 deadline
+    ) internal view returns (uint8 v, bytes32 r, bytes32 s) {
+        bytes32 domainSeparator = IERC20Permit(address(testToken)).DOMAIN_SEPARATOR();
+        address owner = vm.addr(ownerPk);
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+                ),
+                owner,
+                spender,
+                value,
+                nonce,
+                deadline
+            )
+        );
+
+        bytes32 hash = keccak256(
+            abi.encodePacked("\x19\x01", domainSeparator, structHash)
+        );
+
+        (v, r, s) = vm.sign(ownerPk, hash);
+    }
+
+     function _recoverPermitSigner(
+        address tokenAddress,
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 nonce,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) internal view returns (address) {
+        bytes32 domainSeparator = MockERC20(tokenAddress).DOMAIN_SEPARATOR();
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+                ),
+                owner,
+                spender,
+                value,
+                nonce,
+                deadline
+            )
+        );
+
+        bytes32 hash = keccak256(
+            abi.encodePacked("\x19\x01", domainSeparator, structHash)
+        );
+
+        return ecrecover(hash, v, r, s);
     }
 
     function makeWithdrawal(address from, uint256 amount) public {

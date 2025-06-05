@@ -85,6 +85,45 @@ contract AccountManagementTest is Test, BaseTestHelper {
     }
 
     /*//////////////////////////////////////////////////////////////
+                        DEPOSIT WITH PERMIT TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function testDepositWithPermit() public {
+        helper.makeDepositWithPermit(
+            helper.depositPermitTester(),
+            USER1,
+            DEPOSIT_AMOUNT,
+            block.timestamp + 1 days
+        );
+    }
+
+    function testDepositWithPermitToAnotherUser() public {
+        helper.makeDepositWithPermit(
+            helper.depositPermitTester(),
+            USER2,
+            DEPOSIT_AMOUNT,
+            block.timestamp + 1 days
+        );
+    }
+
+    function testDepositWithPermitWithExpiredDeadline() public {
+        helper.makeDepositWithPermitWithExpiredDeadline(
+            helper.depositPermitTester(),
+            USER1,
+            DEPOSIT_AMOUNT
+        );
+    }
+
+    function testDepositWithPermitWithInvalidSignature() public {
+        helper.makeDepositWithPermitWithInvalidSignature(
+            helper.depositPermitTester(),
+            USER1,
+            DEPOSIT_AMOUNT,
+            block.timestamp + 1 days
+        );
+    }
+
+    /*//////////////////////////////////////////////////////////////
                            WITHDRAWAL TESTS
     //////////////////////////////////////////////////////////////*/
 

@@ -166,6 +166,24 @@ Modifies a rail's payment rate and/or makes a one-time payment.
   - For active rails: rate changes restricted if client's account isn't fully funded
   - One-time payment must not exceed fixed lockup
 
+#### `getRailsForPayerAndToken(address payer, address token)`
+
+Retrieves all rails where the given address is the payer for a specific token.
+- **Parameters**:
+  - `payer`: Payer address
+  - `token`: ERC20 token contract address
+- **Returns**: Array of `RailInfo` structs containing rail IDs and termination status.
+- **Requirements**: None (returns an array, empty if no matching rails).
+
+#### `getRailsForPayeeAndToken(address payee, address token)`
+
+Retrieves all rails where the given address is the payee for a specific token.
+- **Parameters**:
+  - `payee`: Payee address
+  - `token`: ERC20 token contract address
+- **Returns**: Array of `RailInfo` structs containing rail IDs and termination status.
+- **Requirements**: None (returns an array, empty if no matching rails).
+
 ### Settlement
 
 #### `settleRail(uint256 railId, uint256 untilEpoch)`

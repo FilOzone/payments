@@ -174,7 +174,9 @@ contract AccountManagementTest is Test, BaseTestHelper {
             0, // no payment rate
             0, // no lockup period
             lockedAmount, // fixed lockup of half the deposit
-            address(0) // no fixed lockup
+            address(0), // no fixed lockup
+            SERVICE_FEE_RECIPIENT // operator commision receiver
+
         );
 
         // Verify lockup worked by checking account state
@@ -221,7 +223,9 @@ contract AccountManagementTest is Test, BaseTestHelper {
             lockupRate, // payment rate (creates lockup rate)
             10, // lockup period
             0, // no fixed lockup
-            address(0) // no fixed lockup
+            address(0), // no fixed lockup
+            SERVICE_FEE_RECIPIENT // operator commision receiver
+
         );
 
         // Create a second rail to get to 1 ether lockup rate on the account
@@ -232,7 +236,9 @@ contract AccountManagementTest is Test, BaseTestHelper {
             lockupRate, // payment rate (creates another 0.5 ether/block lockup rate)
             10, // lockup period
             0, // no fixed lockup
-            address(0) // no fixed lockup
+            address(0), // no fixed lockup
+            SERVICE_FEE_RECIPIENT // operator commision receiver
+
         );
 
         // Advance 10 blocks to create settlement gap

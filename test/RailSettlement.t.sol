@@ -49,7 +49,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0), // No arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance a few blocks
@@ -76,7 +77,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             3, // lockupPeriod - total locked: 150 ether (3 * 50)
             0, // No fixed lockup
-            address(0)
+            address(0),
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance 7 blocks
@@ -128,7 +130,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // Standard arbiter
+            address(0), // Standard arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
         uint256 newRate1 = 6 ether;
         uint256 newRate2 = 7 ether;
@@ -195,7 +198,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(arbiter) // Standard arbiter
+            address(arbiter), // Standard arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance several blocks
@@ -244,7 +248,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(arbiter) // Standard arbiter
+            address(arbiter), // Standard arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         vm.startPrank(OPERATOR);
@@ -289,7 +294,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(arbiter) // Reduced amount arbiter
+            address(arbiter), // Reduced amount arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance several blocks
@@ -354,7 +360,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(arbiter) // Reduced duration arbiter
+            address(arbiter), // Reduced duration arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance several blocks
@@ -400,7 +407,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(arbiter) // Malicious arbiter
+            address(arbiter), // Malicious arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance several blocks
@@ -443,7 +451,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             lockupPeriod, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0), // No arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance several blocks
@@ -540,7 +549,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0), // No arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Settle immediately without advancing blocks - should be a no-op
@@ -579,7 +589,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             lockupPeriod, 
             0, // No fixed lockup
-            address(arbiter)
+            address(arbiter),
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Simulate 5 blocks passing (blocks 1-5)
@@ -594,8 +605,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             ,
             ,
         ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
-        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,
-        MAX_LOCKUP_PERIOD);
+        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,MAX_LOCKUP_PERIOD);
 
         // Operator doubles the payment rate from 5 ETH to 10 ETH per block
         // This creates a rate change in the queue
@@ -639,7 +649,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             lockupPeriod,
             0, // No fixed lockup
-            address(arbiter)
+            address(arbiter),
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Simulate 5 blocks passing (blocks 1-5)
@@ -663,8 +674,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             ,
             ,
         ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
-        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,
-        MAX_LOCKUP_PERIOD);
+        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,MAX_LOCKUP_PERIOD);
 
         // Operator doubles the payment rate from 5 ETH to 10 ETH per block
         // This creates a rate change in the queue
@@ -726,7 +736,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             USER1,
             USER2,
             address(0), // no arbiter
-            operatorCommissionBps
+            operatorCommissionBps,
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
         vm.stopPrank();
 
@@ -749,6 +760,10 @@ contract RailSettlementTest is Test, BaseTestHelper {
             OPERATOR
         );
         uint256 feesBefore = payments.accumulatedFees(address(token));
+
+        uint256 operatorBalanceBefore = token.balanceOf(
+            SERVICE_FEE_RECIPIENT
+        );
 
         // --- Settle Rail ---
         vm.startPrank(USER1); // Any participant can settle
@@ -816,13 +831,18 @@ contract RailSettlementTest is Test, BaseTestHelper {
         );
         assertEq(
             operatorAfter.funds,
-            operatorBefore.funds + expectedOperatorCommission,
+            operatorBefore.funds,
             "Operator funds mismatch"
         );
         assertEq(
             feesAfter,
             feesBefore + expectedPaymentFee,
             "Accumulated fees mismatch"
+        );
+        assertEq(
+            token.balanceOf(SERVICE_FEE_RECIPIENT),
+            operatorBalanceBefore + expectedOperatorCommission,
+            "Operator commission balance mismatch"
         );
 
         // --- Test Fees Withdrawal and Subsequent Fee Accumulation ---

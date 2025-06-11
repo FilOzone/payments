@@ -52,6 +52,37 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
         );
     }
 
+    function testFuzz_settlementWithNoLockupRate(uint256 depositAmount1, uint256 depositAmount2) public {
+        // Ensure deposit amounts are within a reasonable range
+        depositAmount1 = bound(depositAmount1, 1e15, 10000 ether);
+
+        // Ensure user has enough balance to deposit
+        deal(address(helper.testToken()), USER1, depositAmount1);
+        // Setup: deposit funds
+        helper.makeDeposit(USER1, USER1, depositAmount1);
+
+        //Advance blocks to create a settlement gap without a rate
+        helper.advanceBlocks(10);
+
+        // Ensure new deposit amount is also within a reasonable range
+        depositAmount2 = bound(depositAmount2, 1e15, 10000 ether);
+
+        // Ensure user has enough balance to deposit
+        deal(address(helper.testToken()), USER1, depositAmount2);
+
+        // Trigger settlement with a new deposit
+        helper.makeDeposit(USER1, USER1, depositAmount2);
+
+        // Verify settlement occurred
+        helper.assertAccountState(
+            USER1,
+            depositAmount1 + depositAmount2, // Total funds
+            0, // No lockup since no rail was created
+            0, // No lockup rate
+            block.number // Current block number
+        );
+    }
+
     function testSimpleLockupAccumulation() public {
         // Setup: deposit funds
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
@@ -89,6 +120,64 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
         helper.assertAccountState(
             USER1,
             DEPOSIT_AMOUNT * 2,
+            expectedLockup,
+            lockupRate,
+            block.number
+        );
+    }
+    
+    function testFuzz_simpleLockupAccumulation(
+        uint256 depositAmount1,
+        uint256 depositAmount2,
+        uint256 lockupRate,
+        uint256 lockupPeriod,
+        uint256 elapsedBlocks
+    ) public {
+        // Bound values to reasonable limits
+        depositAmount1 = bound(depositAmount1, 1e15, 10000 ether);
+        depositAmount2 = bound(depositAmount2, 1e15, 10000 ether);
+        lockupRate = bound(lockupRate, 1 ether, 10 ether);
+        lockupPeriod = bound(lockupPeriod, 1, MAX_LOCKUP_PERIOD);
+        elapsedBlocks = bound(elapsedBlocks, 1, 50); // to avoid too much time advancement
+
+        // Calculate required lockup to prevent underflow/overflow or logic fail
+        uint256 requiredLockup = lockupRate * (lockupPeriod + elapsedBlocks);
+
+        // Fuzz assumptions to avoid invalid states
+        vm.assume(depositAmount1 >= lockupRate * lockupPeriod); // initial lockup fits
+        vm.assume(depositAmount1 + depositAmount2 >= requiredLockup); // full settlement possible
+
+        // Step 1: make initial deposit
+        deal(address(helper.testToken()), USER1, depositAmount1);
+        helper.makeDeposit(USER1, USER1, depositAmount1);
+
+        // Step 2: create rail
+        helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            lockupRate,
+            lockupPeriod,
+            0,
+            address(0)
+        );
+
+        // Step 3: advance time
+        helper.advanceBlocks(elapsedBlocks);
+
+        // Step 4: second deposit triggers settlement
+        deal(address(helper.testToken()), USER1, depositAmount2);
+        helper.makeDeposit(USER1, USER1, depositAmount2);
+
+        // Step 5: compute expected lockup
+        uint256 initialLockup = lockupRate * lockupPeriod;
+        uint256 accumulatedLockup = lockupRate * elapsedBlocks;
+        uint256 expectedLockup = initialLockup + accumulatedLockup;
+
+        // Final assertion
+        helper.assertAccountState(
+            USER1,
+            depositAmount1 + depositAmount2,
             expectedLockup,
             lockupRate,
             block.number
@@ -183,6 +272,61 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
         );
     }
 
+    function testFuzz_settlementAfterGap(uint256 depositAmount1, uint256 depositAmount2, uint256 lockupRate, uint256 lockupPeriod, uint256 initialLockup) public {
+        depositAmount1 = bound(depositAmount1,100 ether, 10000 ether);
+        // Ensure user has enough balance to deposit
+        deal(address(helper.testToken()), USER1, depositAmount1);
+
+        // Setup: deposit funds
+        helper.makeDeposit(USER1, USER1, depositAmount1);
+
+        // Ensure lockup rate is within a reasonable range
+        lockupRate = bound(lockupRate, 1 ether, 7 ether);
+        // Ensure lockup period is within a reasonable range
+        lockupPeriod = bound(lockupPeriod, 1, MAX_LOCKUP_PERIOD);
+        // Ensure initial lockup is within a reasonable range
+        initialLockup = bound(initialLockup, 1 ether, 10 ether);
+        // Skip cases where lockup rate * lockup period exceeds initial deposit
+        // Just to ensure we don't create an invalid state that breaks the invariant
+        vm.assume(initialLockup + lockupRate * lockupPeriod <= depositAmount1); // Ensure lockup does not exceed initial deposit
+        // Set up rail with the desired rate
+        helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            lockupRate, // payment rate
+            lockupPeriod, // lockup period
+            initialLockup, // initial fixed lockup
+            address(0) // no fixed lockup
+        );
+
+        // Roll forward many blocks
+        helper.advanceBlocks(lockupPeriod);
+
+        // Ensure new deposit amount is also within a reasonable range
+        depositAmount2 = bound(depositAmount2, 100 ether, 10000 ether);
+
+        // Ensure user has enough balance to deposit
+        deal(address(helper.testToken()), USER1, depositAmount2);
+
+        // Trigger settlement with a new deposit
+        helper.makeDeposit(USER1, USER1, depositAmount2);
+
+        // The correct expected value is:
+        uint256 expectedLockup = initialLockup +
+            (lockupRate * lockupPeriod) +
+            (lockupRate * lockupPeriod); // accumulated lockup + future lockup
+
+        // Verify settlement occurred
+        helper.assertAccountState(
+            USER1,
+            depositAmount1 + depositAmount2,
+            expectedLockup,
+            lockupRate,
+            block.number
+        );
+    }
+
     function testSettlementInvariants() public {
         // Setup: deposit a specific amount
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
@@ -244,6 +388,74 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
         vm.stopPrank();
     }
 
+    function testFuzz_SettlementInvariants(uint256 initialDepositAmount,uint256 laterDepositAmount, uint256 lockupPeriod) public {
+        initialDepositAmount = bound(initialDepositAmount, 100 ether, 10000 ether);
+        // Ensure user has enough balance to deposit
+        deal(address(helper.testToken()), USER1, initialDepositAmount);
+
+        // Setup: deposit initial funds
+        helper.makeDeposit(USER1, USER1, initialDepositAmount);
+
+        // Scenario 1: Lockup exactly matches funds by creating a rail with fixed lockup
+        // exactly matching the deposit amount
+        // Ensure lockup period is within a reasonable range
+        lockupPeriod = bound(lockupPeriod, 1, MAX_LOCKUP_PERIOD);
+
+        // Create a rail with fixed lockup = all available funds
+        helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            0, // no payment rate
+            lockupPeriod, // Lockup period
+            initialDepositAmount, // fixed lockup equal to all funds
+            address(0) // no fixed lockup
+        );
+
+        // Verify the account state
+        helper.assertAccountState(
+            USER1,
+            initialDepositAmount,
+            initialDepositAmount,
+            0, // no payment rate
+            block.number
+        );
+
+        // Add more funds to the account
+        laterDepositAmount = bound(laterDepositAmount, 1 ether, 10000 ether);
+        // Ensure user has enough balance to deposit
+        deal(address(helper.testToken()), USER1, laterDepositAmount);
+        helper.makeDeposit(USER1, USER1, laterDepositAmount);
+
+        // Scenario 2: Verify we can't create a situation where lockup > funds
+        // We'll try to create a rail with an impossibly high fixed lockup
+        // Increase operator approval allowance
+
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            0, // no rate allowance needed
+            (initialDepositAmount + laterDepositAmount) * 3, // much higher lockup allowance
+            MAX_LOCKUP_PERIOD // max lockup period
+        );
+
+        // Try to set up a rail with lockup > funds which should fail
+        vm.startPrank(OPERATOR);
+        uint256 railId = payments.createRail(
+            address(helper.testToken()),
+            USER1,
+            USER2,
+            address(0),
+            0
+        );
+        // This should fail because lockupFixed > available funds
+        vm.expectRevert(
+            "invariant failure: insufficient funds to cover lockup after function execution"
+        );
+        payments.modifyRailLockup(railId, lockupPeriod, (initialDepositAmount + laterDepositAmount) * 2);
+        vm.stopPrank();
+    }
+
     function testWithdrawWithLockupSettlement() public {
         helper.makeDeposit(
             USER1,
@@ -286,6 +498,62 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             USER1,
             60 ether, // expected funds
             60 ether, // expected lockup
+            lockupRate, // expected lockup rate
+            block.number // expected settlement block
+        );
+    }
+
+    function testFuzz_WithdrawWithLockupSettlement(uint256 depositAmount, uint256 lockupRate, uint256 lockupPeriod, uint256 initialLockup) public {
+        depositAmount = bound(depositAmount, 100 ether, 10000 ether);
+        // Ensure user has enough balance to deposit
+        deal(address(helper.testToken()), USER1, depositAmount);
+
+        // Setup: deposit funds
+        helper.makeDeposit(USER1, USER1, depositAmount);
+
+        // Set a lockup rate and an existing lockup via a rail
+        // Ensure lockup rate is within a reasonable range
+        lockupRate = bound(lockupRate, 1 ether, 7 ether);
+
+        lockupPeriod = bound(lockupPeriod, 1, MAX_LOCKUP_PERIOD);
+
+        initialLockup = bound(initialLockup, 1 ether, 5 ether);
+
+        vm.assume(initialLockup + lockupRate * lockupPeriod <= depositAmount);
+
+        // Create rail with fixed + rate-based lockup
+        helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            lockupRate, 
+            lockupPeriod,
+            initialLockup,
+            address(0)
+        );
+
+        uint256 availableForWithdraw = depositAmount - (initialLockup + (lockupRate * lockupPeriod));
+
+        // Try to withdraw more than available (should fail)
+        helper.expectWithdrawalToFail(
+            USER1,
+            availableForWithdraw + 1, // Try to withdraw more than available
+            bytes("insufficient unlocked funds for withdrawal")
+        );
+
+        // Withdraw exactly the available amount (should succeed and also settle account lockup)
+        helper.makeWithdrawal(USER1, availableForWithdraw);
+
+        // Verify account state after withdrawal
+        // Remaining funds: depositAmount - availableForWithdraw
+
+        uint256 remainingFunds = depositAmount - availableForWithdraw;
+        uint256 expectedLockup = initialLockup + (lockupRate * lockupPeriod);
+
+        helper.assertAccountState(
+            USER1,
+            remainingFunds, // expected funds
+            expectedLockup, // expected lockup 
             lockupRate, // expected lockup rate
             block.number // expected settlement block
         );

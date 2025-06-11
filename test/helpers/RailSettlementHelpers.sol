@@ -39,7 +39,8 @@ contract RailSettlementHelpers is Test {
         address arbiter,
         uint256[] memory rates,
         uint256 lockupPeriod,
-        uint256 lockupFixed
+        uint256 lockupFixed,
+        uint256 maxLokkupPeriod
     ) public returns (uint256) {
         require(
             arbiter != address(0),
@@ -62,7 +63,8 @@ contract RailSettlementHelpers is Test {
             from,
             operator,
             maxRate, // Rate allowance
-            totalLockupAllowance // Lockup allowance
+            totalLockupAllowance, // Lockup allowance
+            maxLokkupPeriod // Max lockup period
         );
 
         // Create rail with parameters
@@ -275,6 +277,7 @@ contract RailSettlementHelpers is Test {
             ,
             uint256 rateUsageBefore,
             uint256 lockupUsageBefore
+            ,
         ) = paymentsContract.operatorApprovals(
                 address(baseHelper.testToken()),
                 client,
@@ -338,6 +341,7 @@ contract RailSettlementHelpers is Test {
             ,
             uint256 rateUsageAfter,
             uint256 lockupUsageAfter
+            ,
         ) = paymentsContract.operatorApprovals(
                 address(baseHelper.testToken()),
                 client,

@@ -14,6 +14,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
 
     uint256 internal constant DEPOSIT_AMOUNT = 100 ether;
     uint256 internal constant INITIAL_BALANCE = 1000 ether;
+    uint256 internal constant MAX_LOCKUP_PERIOD = 100;
 
     function setUp() public {
         // Create test helpers and setup environment
@@ -161,7 +162,8 @@ contract AccountManagementTest is Test, BaseTestHelper {
             USER1,
             OPERATOR,
             100 ether, // rateAllowance
-            lockedAmount // lockupAllowance exactly matches what we need
+            lockedAmount, // lockupAllowance exactly matches what we need
+            MAX_LOCKUP_PERIOD // max lockup period
         );
 
         // Create rail with the fixed lockup
@@ -204,7 +206,8 @@ contract AccountManagementTest is Test, BaseTestHelper {
             USER1,
             OPERATOR,
             100 ether, // rateAllowance
-            1000 ether // lockupAllowance
+            1000 ether, // lockupAllowance
+            MAX_LOCKUP_PERIOD // max lockup period
         );
 
         uint256 lockupRate = 0.5 ether; // 0.5 token per block

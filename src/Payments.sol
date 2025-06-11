@@ -77,6 +77,7 @@ contract Payments is
         uint256 lockupAllowance;
         uint256 rateUsage; // Track actual usage for rate
         uint256 lockupUsage; // Track actual usage for lockup
+        uint256 maxLockupPeriod; // Maximum lockup period the operator can set for rails created on behalf of the client
     }
 
     // Counter for generating unique rail IDs
@@ -310,12 +311,14 @@ contract Payments is
     /// @param approved Whether the operator is approved (true) or not (false) to create new rails>
     /// @param rateAllowance The maximum payment rate the operator can set across all rails created by the operator on behalf of the message sender. If this is less than the current payment rate, the operator will only be able to reduce rates until they fall below the target.
     /// @param lockupAllowance The maximum amount of funds the operator can lock up on behalf of the message sender towards future payments. If this exceeds the current total amount of funds locked towards future payments, the operator will only be able to reduce future lockup.
+    /// @param maxLockupPeriod The maximum number of epochs (blocks) the operator can lock funds for. If this is less than the current lockup period for a rail, the operator will only be able to reduce the lockup period.
     function setOperatorApproval(
         address token,
         address operator,
         bool approved,
         uint256 rateAllowance,
-        uint256 lockupAllowance
+        uint256 lockupAllowance,
+         uint256 maxLockupPeriod
     ) external nonReentrant validateNonZeroAddress(operator, "operator") {
         OperatorApproval storage approval = operatorApprovals[token][
             msg.sender
@@ -325,6 +328,7 @@ contract Payments is
         approval.isApproved = approved;
         approval.rateAllowance = rateAllowance;
         approval.lockupAllowance = lockupAllowance;
+        approval.maxLockupPeriod = maxLockupPeriod;
     }
 
     /// @notice Terminates a payment rail, preventing further payments after the rail's lockup period. After calling this method, the lockup period cannot be changed, and the rail's rate and fixed lockup may only be reduced.
@@ -598,6 +602,20 @@ contract Payments is
             );
         }
 
+        // Get operator approval
+        OperatorApproval storage operatorApproval = operatorApprovals[
+            rail.token
+        ][rail.from][rail.operator];
+
+        // Check if period exceeds the max lockup period allowed for this operator
+        // Only enforce this constraint when increasing the period, not when decreasing
+        if (period > rail.lockupPeriod) {
+            require(
+                period <= operatorApproval.maxLockupPeriod,
+                "requested lockup period exceeds operator's maximum allowed lockup period"
+            );
+        }
+
         // Calculate current (old) lockup.
         uint256 oldLockup = rail.lockupFixed +
             (rail.paymentRate * rail.lockupPeriod);
@@ -614,9 +632,7 @@ contract Payments is
         // amount, we'll revert in the post-condition.
         payer.lockupCurrent = payer.lockupCurrent - oldLockup + newLockup;
 
-        OperatorApproval storage operatorApproval = operatorApprovals[
-            rail.token
-        ][rail.from][rail.operator];
+       
         updateOperatorLockupUsage(operatorApproval, oldLockup, newLockup);
 
         // Update rail lockup parameters
@@ -673,8 +689,8 @@ contract Payments is
             );
         }
 
-        // --- Settlement Prior to Rate Change ---
-        handleRateChangeSettlement(railId, rail, oldRate, newRate);
+        // enqueuing rate change
+        enqueueRateChange(rail, oldRate, newRate);
 
         // Calculate the effective lockup period
         uint256 effectiveLockupPeriod;
@@ -759,34 +775,16 @@ contract Payments is
         rail.paymentRate = 0;
     }
 
-    function handleRateChangeSettlement(
-        uint256 railId,
+    function enqueueRateChange(
         Rail storage rail,
         uint256 oldRate,
         uint256 newRate
     ) internal {
-        // If rate hasn't changed, nothing to do
-        if (newRate == oldRate) {
+        // If rate hasn't changed or rail is already settled up to current block, nothing to do
+        if (newRate == oldRate || rail.settledUpTo == block.number) {
             return;
         }
 
-        // No need to settle the rail or enqueue the rate change if the rail has already been settled upto
-        // the current epoch
-        if (rail.settledUpTo == block.number) {
-            return;
-        }
-
-        // If there is no arbiter, settle the rail immediately
-        if (rail.arbiter == address(0)) {
-            (, , , , uint256 settledUpto, ) = settleRail(railId, block.number);
-            require(
-                settledUpto == block.number,
-                "failed to settle rail up to current epoch"
-            );
-            return;
-        }
-
-        // For arbitrated rails with rate change, handle queue
         // Only queue the previous rate once per epoch
         if (
             rail.rateChangeQueue.isEmpty() ||
@@ -970,7 +968,6 @@ contract Payments is
         Account storage payer = accounts[rail.token][rail.from];
 
         // Handle terminated and fully settled rails that are still not finalised
-
         if (isRailTerminated(rail) && rail.settledUpTo >= rail.endEpoch) {
             finalizeTerminatedRail(rail, payer);
             return (
@@ -1007,26 +1004,6 @@ contract Payments is
             );
         }
 
-        // For zero rate rails with empty queue, just advance the settlement epoch
-        // without transferring funds
-        uint256 currentRate = rail.paymentRate;
-        if (currentRate == 0 && rail.rateChangeQueue.isEmpty()) {
-            rail.settledUpTo = maxSettlementEpoch;
-
-            return
-                checkAndFinalizeTerminatedRail(
-                    rail,
-                    payer,
-                    0,
-                    0,
-                    0,
-                    0,
-                    maxSettlementEpoch,
-                    "zero rate payment rail",
-                    "zero rate terminated rail fully settled and finalized"
-                );
-        }
-
         // Process settlement depending on whether rate changes exist
         if (rail.rateChangeQueue.isEmpty()) {
             (
@@ -1039,7 +1016,7 @@ contract Payments is
                     railId,
                     startEpoch,
                     maxSettlementEpoch,
-                    currentRate,
+                    rail.paymentRate,
                     skipArbitration
                 );
 
@@ -1069,7 +1046,7 @@ contract Payments is
                 string memory settledNote
             ) = _settleWithRateChanges(
                     railId,
-                    currentRate,
+                    rail.paymentRate,
                     startEpoch,
                     maxSettlementEpoch,
                     skipArbitration
@@ -1315,6 +1292,11 @@ contract Payments is
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
         Account storage payee = accounts[rail.token][rail.to];
+
+        if (rate == 0) {
+            rail.settledUpTo = epochEnd;
+            return (0, 0, 0, 0, "Zero rate payment rail");
+        }
 
         // Calculate the default settlement values (without arbitration)
         uint256 duration = epochEnd - epochStart;

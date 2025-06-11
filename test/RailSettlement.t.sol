@@ -18,6 +18,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
     MockERC20 token;
 
     uint256 constant DEPOSIT_AMOUNT = 200 ether;
+    uint256 constant MAX_LOCKUP_PERIOD = 100;
 
     function setUp() public {
         helper = new PaymentsTestHelpers();
@@ -117,6 +118,66 @@ contract RailSettlementTest is Test, BaseTestHelper {
         );
     }
 
+    function testSettleRailWithRateChange() public {
+        // Set up a rail
+        uint256 rate = 5 ether;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            rate,
+            10, // lockupPeriod
+            0, // No fixed lockup
+            address(0) // Standard arbiter
+        );
+        uint256 newRate1 = 6 ether;
+        uint256 newRate2 = 7 ether;
+
+        // Set the rate to 6 ether after 7 blocks
+        helper.advanceBlocks(7);
+
+        // Increase operator allowances to allow rate modification
+        // We increase rate allowance = 5 + 6 + 7 ether and add buffer for lockup
+        uint256 rateAllowance = rate + newRate1 + newRate2;
+        uint256 lockupAllowance = (rate + newRate1 + newRate2) * 10;
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            rateAllowance,
+            lockupAllowance,
+            MAX_LOCKUP_PERIOD
+        );
+
+        // Operator increases the payment rate from 5 ETH to 6 ETH per block for epochs (9-14)
+        // This creates a rate change queue
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, newRate1, 0);
+        vm.stopPrank();
+
+        // Advance 6 blocks
+        helper.advanceBlocks(6);
+
+        // Operator increases the payment rate from 6 ETH to 7 ETH per block for epochs (15-21)
+        // This creates a rate change queue
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, newRate2, 0);
+        vm.stopPrank();
+
+        // Advance 6 blocks
+        helper.advanceBlocks(7);
+
+        // expectedAmount = 5 * 7 + 6 * 6 + 7 * 7 = 120 ether
+        uint256 expectedAmount = rate * 7 + newRate1 * 6 + newRate2 * 7;
+
+        // settle and verify
+        settlementHelper.settleRailAndVerify(
+            railId,
+            block.number,
+            expectedAmount,
+            block.number
+        );
+    }
+
     //--------------------------------
     // 2. Arbitration Scenarios
     //--------------------------------
@@ -169,7 +230,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             USER1, // from
             OPERATOR,
             10,
-            100 ether
+            100 ether,
+            MAX_LOCKUP_PERIOD // lockup period
         );
 
         // Create a rail with the arbiter
@@ -422,14 +484,14 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Final settlement after termination
         vm.prank(USER1);
 
-        (
-            uint256 settledAmount,
-            uint256 netPayeeAmount,
-            uint256 paymentFee,
-            ,
-            uint256 settledUpto,
 
-        ) = payments.settleRail(railId, block.number);
+        (uint256 settledAmount, uint256 netPayeeAmount, uint256 paymentFee, uint256 totalOperatorCommission, uint256 settledUpto,) = 
+
+            payments.settleRail(railId, block.number);
+        
+        // Verify that total settled amount is equal to the sum of net payee amount, payment fee, and operator commission
+        assertEq(settledAmount, netPayeeAmount + paymentFee + totalOperatorCommission, "Mismatch in settled amount breakdown");
+        
 
         // Should settle up to endEpoch, which is lockupPeriod blocks after the last settlement
         uint256 expectedAmount2 = rate * lockupPeriod; // lockupPeriod = 5 blocks
@@ -501,6 +563,138 @@ contract RailSettlementTest is Test, BaseTestHelper {
         );
     }
 
+    function testSettleRailWithRateChangeQueueForReducedAmountArbitration() public {
+        // Deploy an arbiter that reduces the payment amount by a percentage
+        uint256 factor = 80; // 80% of the original amount
+        MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.REDUCE_AMOUNT);
+        arbiter.configure(factor);
+
+        // Create a rail with the arbiter
+        uint256 rate = 5 ether;
+        uint256 lockupPeriod = 10;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            rate,
+            lockupPeriod, 
+            0, // No fixed lockup
+            address(arbiter)
+        );
+
+        // Simulate 5 blocks passing (blocks 1-5)
+        helper.advanceBlocks(5);
+
+        // Increase operator allowances to allow rate modification
+        // We double the rate allowance and add buffer for lockup
+        (
+            ,
+            uint256 rateAllowance,
+            uint256 lockupAllowance,
+            ,
+            ,
+        ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
+        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,
+        MAX_LOCKUP_PERIOD);
+
+        // Operator doubles the payment rate from 5 ETH to 10 ETH per block
+        // This creates a rate change in the queue
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, rate * 2, 0);
+        vm.stopPrank();
+
+        // Simulate 5 blocks passing (blocks 6-10)
+        helper.advanceBlocks(5);
+
+        // Calculate expected settlement:
+        // Phase 1 (blocks 1-5): 5 blocks at 5 ETH/block → 25 ETH total -> after arbitration (80%) -> 20 ETH total
+        // Phase 2 (blocks 6-10): 5 blocks at 10 ETH/block → 50 ETH total -> after arbitration (80%) -> 40 ETH total
+        // Total after arbitration (80%) -> 60 ETH total
+        uint256 expectedDurationOldRate = 5; // Epochs 1-5 ( rate = 5 )
+        uint256 expectedDurationNewRate = 5; // Epochs 6-10 ( rate = 10 )
+        uint256 expectedAmountOldRate = (rate * expectedDurationOldRate * factor ) / 100; // 20 ETH (25 * 0.8)
+        uint256 expectedAmountNewRate = ((rate * 2 )* expectedDurationNewRate * factor ) / 100; // 40 ETH (50 * 0.8)
+        uint256 expectedAmount = expectedAmountOldRate + expectedAmountNewRate; // 60 ETH total
+
+        // settle and verify rail
+        RailSettlementHelpers.SettlementResult memory result = 
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
+
+        console.log("result.note", result.note);
+    }
+
+    function testSettleRailWithRateChangeQueueForReducedDurationArbitration() public {
+        // Deploy an arbiter that reduces the duration by a percentage
+        uint256 factor = 60; // 60% of the original duration
+        MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.REDUCE_DURATION);
+        arbiter.configure(factor);
+
+        // Create a rail with the arbiter
+        uint256 rate = 5 ether;
+        uint256 lockupPeriod = 10;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            rate,
+            lockupPeriod,
+            0, // No fixed lockup
+            address(arbiter)
+        );
+
+        // Simulate 5 blocks passing (blocks 1-5)
+        helper.advanceBlocks(5);
+
+        // Initial settlement for the first 5 blocks ( epochs 1-5 )
+        // Duration reduction: 5 blocks * 60% = 3 blocks settled
+        // Amount: 3 blocks * 5 ETH = 15 ETH
+        // LastSettledUpto: 1 + (6 - 1) * 60% = 4
+        vm.prank(USER1);
+        payments.settleRail(railId, block.number);
+        uint256 lastSettledUpto = 1 + ((block.number - 1) * factor) / 100; // arbiter only settles for 60% of the duration (block.number - lastSettledUpto = epoch 1)
+        vm.stopPrank();
+
+
+        // update operator allowances for rate modification
+        (
+            ,
+            uint256 rateAllowance,
+            uint256 lockupAllowance,
+            ,
+            ,
+        ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
+        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,
+        MAX_LOCKUP_PERIOD);
+
+        // Operator doubles the payment rate from 5 ETH to 10 ETH per block
+        // This creates a rate change in the queue
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, rate * 2, 0);
+        vm.stopPrank();
+
+        // Simulate 5 blocks passing (blocks 6-10)
+        helper.advanceBlocks(5);
+
+        // Expected settlement calculation:
+        // - Rate change was at block 5, creating a boundary
+        // - Duration reduction applies only to the first rate segment (epochs 1-5)
+        // - We already settled 3 blocks (1-3) in the first settlement
+        // - Remaining in first segment: 2 blocks (4-5) at original rate
+        // - Duration reduction: 2 blocks * 60% = 1.2 blocks (truncated to 1 block)
+        // - Amount: 1 epoch * 5 ETH/epoch = 5 ETH
+        // - rail.settledUpto = 4 + 1 = 5 < segmentBoundary ( 6 ) => doesn't go to next settlement segment (epochs 6-10)
+        uint256 firstSegmentEndBoundary = 6; // Block where rate change occurred
+        uint256 expectedDuration = ( (firstSegmentEndBoundary - lastSettledUpto) * factor ) / 100; // (6-3)*0.6 = 1.8 → 1 block
+        uint256 expectedSettledUpto = lastSettledUpto + expectedDuration; // 4 + 1 = 5
+        uint256 expectedAmount = rate * expectedDuration; // 5 ETH/epoch * 1 epoch = 5 ETH
+
+        // settle and verify rail
+        RailSettlementHelpers.SettlementResult memory result = 
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, expectedSettledUpto);
+
+        console.log("result.note", result.note);
+    }
+
     //--------------------------------
     // Helper Functions
     //--------------------------------
@@ -519,7 +713,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             USER1, // from
             OPERATOR,
             10 ether, // rate allowance
-            100 ether // lockup allowance
+            100 ether, // lockup allowance
+            MAX_LOCKUP_PERIOD // max lockup period
         );
 
         // Create rail with 2% operator commission (200 BPS)

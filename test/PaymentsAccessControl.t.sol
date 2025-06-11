@@ -12,6 +12,7 @@ contract AccessControlTest is Test, BaseTestHelper {
     PaymentsTestHelpers helper;
 
     uint256 constant DEPOSIT_AMOUNT = 100 ether;
+    uint256 constant MAX_LOCKUP_PERIOD = 100;
     uint256 railId;
 
     function setUp() public {
@@ -24,7 +25,8 @@ contract AccessControlTest is Test, BaseTestHelper {
             USER1,
             OPERATOR,
             10 ether, // rateAllowance
-            100 ether // lockupAllowance
+            100 ether, // lockupAllowance
+            MAX_LOCKUP_PERIOD // maxLockupPeriod
         );
 
         // Deposit funds for client

@@ -144,7 +144,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             USER1,
             OPERATOR,
             rateAllowance,
-            lockupAllowance
+            lockupAllowance,
+            MAX_LOCKUP_PERIOD
         );
 
         // Operator increases the payment rate from 5 ETH to 6 ETH per block for epochs (9-14)
@@ -591,8 +592,10 @@ contract RailSettlementTest is Test, BaseTestHelper {
             uint256 rateAllowance,
             uint256 lockupAllowance,
             ,
+            ,
         ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
-        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate);
+        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,
+        MAX_LOCKUP_PERIOD);
 
         // Operator doubles the payment rate from 5 ETH to 10 ETH per block
         // This creates a rate change in the queue
@@ -658,8 +661,10 @@ contract RailSettlementTest is Test, BaseTestHelper {
             uint256 rateAllowance,
             uint256 lockupAllowance,
             ,
+            ,
         ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
-        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate);
+        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,
+        MAX_LOCKUP_PERIOD);
 
         // Operator doubles the payment rate from 5 ETH to 10 ETH per block
         // This creates a rate change in the queue

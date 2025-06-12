@@ -90,7 +90,8 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             5 ether, // rate
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0), // No arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Rail 2: Another rail with token1 and USER2 as payee
@@ -101,7 +102,8 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             3 ether, // rate
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0), // No arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Rail 3: Will be terminated
@@ -112,7 +114,8 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             2 ether, // rate
             5, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0), // No arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Rail 4: With token2 and USER2 as payee
@@ -122,7 +125,8 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             USER1, // from
             USER2, // to (payee)
             address(0), // no arbiter
-            0 // no commission
+            0, // no commission
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
         payments.modifyRailPayment(rail4Id, 4 ether, 0);
         payments.modifyRailLockup(rail4Id, 10, 0);
@@ -136,7 +140,8 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             1 ether, // rate
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0), // No arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Terminate Rail 3

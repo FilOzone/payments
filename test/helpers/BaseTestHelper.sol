@@ -8,4 +8,5 @@ contract BaseTestHelper {
     address public constant OPERATOR = address(0x4);
     address public constant OPERATOR2 = address(0x5);
     address public constant ARBITER = address(0x6);
+    address public constant SERVICE_FEE_RECIPIENT = address(0x7);
 }

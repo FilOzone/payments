@@ -68,7 +68,8 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             lockupRate, // payment rate
             lockupPeriod, // lockup period
             0, // no fixed lockup
-            address(0) // no fixed lockup
+            address(0), // no fixed lockup
+            SERVICE_FEE_RECIPIENT // operator comission fee receiver
         );
         assertEq(railId, 1);
 
@@ -112,7 +113,8 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             lockupRate, // Very high payment rate (20 ether per block)
             1, // lockup period
             0, // no fixed lockup
-            address(0) // no fixed lockup
+            address(0), // no fixed lockup
+            SERVICE_FEE_RECIPIENT
         );
 
         // When a rail is created, its settledUpTo is set to the current block
@@ -159,7 +161,8 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             lockupRate, // 1 token per block
             lockupPeriod, // Lockup period of 30 blocks
             initialLockup, // initial fixed lockup of 10 ether
-            address(0) // no fixed lockup
+            address(0), // no fixed lockup
+            SERVICE_FEE_RECIPIENT // operator comission fee receiver
         );
 
         // Roll forward many blocks
@@ -198,7 +201,8 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             0, // no payment rate
             10, // Lockup period
             DEPOSIT_AMOUNT, // fixed lockup equal to all funds
-            address(0) // no fixed lockup
+            address(0), // no fixed lockup
+            SERVICE_FEE_RECIPIENT // operator comission fee receiver
         );
 
         // Verify the account state
@@ -233,7 +237,8 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             USER1,
             USER2,
             address(0),
-            0
+            0,
+            SERVICE_FEE_RECIPIENT // operator comission fee receiver
         );
 
         // This should fail because lockupFixed > available funds
@@ -263,7 +268,8 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
             lockupRate, // 1 ether per block
             lockupPeriod, // Lockup period of 10 blocks
             initialLockup, // 50 ether fixed lockup
-            address(0) // no fixed lockup
+            address(0), // no fixed lockup
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Total lockup at rail creation: 50 ether fixed + (1 ether * 10 blocks) = 60 ether

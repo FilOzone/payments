@@ -33,7 +33,7 @@ contract AccessControlTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
 
         // Create a rail for testing
-        railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        railId = helper.createRail(USER1, USER2, OPERATOR, address(0), SERVICE_FEE_RECIPIENT);
 
         // Set up rail parameters
         vm.startPrank(OPERATOR);

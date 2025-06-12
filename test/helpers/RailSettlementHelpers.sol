@@ -40,7 +40,8 @@ contract RailSettlementHelpers is Test {
         uint256[] memory rates,
         uint256 lockupPeriod,
         uint256 lockupFixed,
-        uint256 maxLokkupPeriod
+        uint256 maxLokkupPeriod,
+        address serviceFeeRecipient
     ) public returns (uint256) {
         require(
             arbiter != address(0),
@@ -75,7 +76,8 @@ contract RailSettlementHelpers is Test {
             rates[0], // Initial rate
             lockupPeriod,
             lockupFixed,
-            arbiter
+            arbiter,
+            serviceFeeRecipient
         );
 
         // Apply rate changes for the rest of the rates
@@ -99,7 +101,8 @@ contract RailSettlementHelpers is Test {
         uint256 paymentRate,
         uint256 lockupPeriod,
         uint256 fundAmount,
-        uint256 fixedLockup
+        uint256 fixedLockup,
+        address serviceFeeRecipient
     ) public returns (uint256) {
         baseHelper.makeDeposit(from, from, fundAmount);
 
@@ -111,7 +114,8 @@ contract RailSettlementHelpers is Test {
             paymentRate,
             lockupPeriod,
             fixedLockup,
-            address(0)
+            address(0),
+            serviceFeeRecipient
         );
 
         // Advance blocks past the lockup period to force the rail into debt

@@ -503,6 +503,11 @@ contract Payments is
             commissionRateBps <= COMMISSION_MAX_BPS,
             "commission rate exceeds maximum"
         );
+        
+        require(
+            commissionRateBps == 0 || serviceFeeRecipient != address(0),
+            "non-zero commission requires service fee recipient"
+        );
 
         uint256 railId = _nextRailId++;
 
@@ -515,9 +520,7 @@ contract Payments is
         rail.settledUpTo = block.number;
         rail.endEpoch = 0;
         rail.commissionRateBps = commissionRateBps;
-        rail.serviceFeeRecipient = serviceFeeRecipient == address(0)
-            ? operator // If no service fee recipient is specified, use the operator as the default
-            : serviceFeeRecipient;
+        rail.serviceFeeRecipient = serviceFeeRecipient;
 
         // Record this rail in the payee's and payer's lists
         payeeRails[token][to].push(railId);

@@ -184,6 +184,62 @@ Retrieves all rails where the given address is the payee for a specific token.
 - **Returns**: Array of `RailInfo` structs containing rail IDs and termination status.
 - **Requirements**: None (returns an array, empty if no matching rails).
 
+### One-Time Payments
+
+One-time payments enable operators to transfer fixed amounts immediately from payer to payee, bypassing the regular rate-based payment flow. These payments are deducted from the rail's fixed lockup amount.
+
+#### Key Characteristics
+
+- **Operator-Initiated**: Only the rail operator can execute one-time payments through `modifyRailPayment`
+- **Fixed Lockup Source**: Payments are drawn from `rail.lockupFixed`, which must be pre-allocated via `modifyRailLockup`
+- **Always Available**: Once locked, these funds remain available regardless of the payer's account balance
+- **Operator Approval**: Counts against the operator's `lockupAllowance` and reduces `lockupUsage` when spent
+- **Commission Applied**: One-time payments are subject to the rail's operator commission rate, just like regular payments
+
+#### Usage
+
+One-time payments require a two-step process:
+
+1. **Lock funds** using `modifyRailLockup` to allocate fixed lockup:
+
+```solidity
+// Allocate 10 tokens for one-time payments
+Payments.modifyRailLockup(
+    railId,       // Rail ID
+    lockupPeriod, // Lockup period (unchanged or new value)
+    10 * 10**18   // Fixed lockup amount
+);
+```
+
+This will revert if:
+- The client lacks sufficient unlocked funds to cover the requested lockup
+- The operator exceeds their `lockupAllowance` or `maxLockupPeriod` limits
+
+2. **Make payments** using `modifyRailPayment` with a non-zero `oneTimePayment`:
+
+```solidity
+// Make a 5 token one-time payment from the locked funds
+Payments.modifyRailPayment(
+    railId,      // Rail ID
+    newRate,     // Payment rate (can remain unchanged)
+    5 * 10**18   // One-time payment amount (must be ≤ rail.lockupFixed)
+);
+```
+
+#### Lifecycle
+
+1. **Allocation**: Fixed lockup is set when creating/modifying a rail via `modifyRailLockup`
+2. **Usage**: Operator makes one-time payments, reducing the available fixed lockup
+3. **Termination**: Unused fixed lockup remains available for one-time payments even after rail termination
+4. **Finalization**: After full rail settlement, any remaining fixed lockup is automatically refunded to the client
+
+#### Example Use Cases
+
+- Onboarding fees or setup costs
+- Performance bonuses or penalties
+- Urgent payments outside regular settlement cycles
+- Termination fees when canceling services
+
 ### Settlement
 
 #### `settleRail(uint256 railId, uint256 untilEpoch)`

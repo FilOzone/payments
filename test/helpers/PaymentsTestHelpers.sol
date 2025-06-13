@@ -87,11 +87,11 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
 
     function getPermitSignature (
         uint256 privateKey,
+        address owner,
         address spender,
         uint256 value,
         uint256 deadline
-    ) public returns (uint8 v, bytes32 r, bytes32 s) {
-        address owner = vm.addr(privateKey);
+    ) public view returns (uint8 v, bytes32 r, bytes32 s) {
         uint256 nonce = MockERC20(address(testToken)).nonces(owner);
         bytes32 DOMAIN_SEPARATOR = MockERC20(address(testToken)).DOMAIN_SEPARATOR();
 
@@ -131,6 +131,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         // get signature for permit
         (uint8 v, bytes32 r, bytes32 s) = getPermitSignature(
             fromPrivateKey, 
+            from,
             address(payments), 
             amount, 
             deadline
@@ -878,6 +879,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         uint256 futureDeadline = block.timestamp + 1 hours;
         (uint8 v, bytes32 r, bytes32 s) = getPermitSignature(
             senderSk,
+            from,
             address(payments),
             amount,
             futureDeadline
@@ -934,13 +936,22 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         // Make permit signature from notFromSk, but call from 'from'
         (uint8 v, bytes32 r, bytes32 s) = getPermitSignature(
             notSenderSk, 
+            from,
             address(payments), 
             amount, 
             deadline
         );
 
         vm.startPrank(from);
-        vm.expectRevert();
+
+        // Expect custom error: ERC2612InvalidSigner(wrongRecovered, expectedOwner)
+        vm.expectRevert(
+            abi.encodeWithSignature(
+                "ERC2612InvalidSigner(address,address)",
+                vm.addr(notSenderSk),
+                from
+            )
+        );
         payments.depositWithPermit(
             address(testToken), 
             to, 

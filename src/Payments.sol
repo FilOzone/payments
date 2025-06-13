@@ -322,8 +322,8 @@ contract Payments is
         bool approved,
         uint256 rateAllowance,
         uint256 lockupAllowance,
-        uint256 maxLockupPeriod
-    ) external validateNonZeroAddress(operator, "operator") {
+         uint256 maxLockupPeriod
+    ) external nonReentrant validateNonZeroAddress(operator, "operator") {
         OperatorApproval storage approval = operatorApprovals[token][
             msg.sender
         ][operator];
@@ -1525,6 +1525,7 @@ contract Payments is
         rail.lockupPeriod = 0;
         rail.settledUpTo = 0;
         rail.endEpoch = 0;
+        rail.commissionRateBps = 0;
     }
 
     function updateOperatorRateUsage(

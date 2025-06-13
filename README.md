@@ -2,6 +2,7 @@
 
 The FWS Payments contract enables ERC20 token payment flows through "rails" - automated payment channels between clients and recipients. The contract supports continuous payments, one-time transfers, and payment arbitration.
 
+- [Deployment Info](#deployment-info)
 - [Key Concepts](#key-concepts)
 - [Core Functions](#core-functions)
   - [Account Management](#account-management)
@@ -11,6 +12,10 @@ The FWS Payments contract enables ERC20 token payment flows through "rails" - au
   - [Arbitration](#arbitration)
 - [Worked Example](#worked-example)
 - [Emergency Scenarios](#emergency-scenarios)
+
+## Deployment Info
+- On calibration net at `0x0E690D3e60B0576D01352AB03b258115eb84A047`
+- Coming soon to mainnet...
 
 ## Key Concepts
 
@@ -160,6 +165,24 @@ Modifies a rail's payment rate and/or makes a one-time payment.
   - For terminated rails: cannot increase rate
   - For active rails: rate changes restricted if client's account isn't fully funded
   - One-time payment must not exceed fixed lockup
+
+#### `getRailsForPayerAndToken(address payer, address token)`
+
+Retrieves all rails where the given address is the payer for a specific token.
+- **Parameters**:
+  - `payer`: Payer address
+  - `token`: ERC20 token contract address
+- **Returns**: Array of `RailInfo` structs containing rail IDs and termination status.
+- **Requirements**: None (returns an array, empty if no matching rails).
+
+#### `getRailsForPayeeAndToken(address payee, address token)`
+
+Retrieves all rails where the given address is the payee for a specific token.
+- **Parameters**:
+  - `payee`: Payee address
+  - `token`: ERC20 token contract address
+- **Returns**: Array of `RailInfo` structs containing rail IDs and termination status.
+- **Requirements**: None (returns an array, empty if no matching rails).
 
 ### Settlement
 

@@ -8,6 +8,7 @@ import {MockERC20} from "../mocks/MockERC20.sol";
 import {BaseTestHelper} from "./BaseTestHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {console} from "forge-std/console.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 contract PaymentsTestHelpers is Test, BaseTestHelper {
     // Common constants
     uint256 public constant INITIAL_BALANCE = 1000 ether;
@@ -105,10 +106,12 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             )
         );
 
-        bytes32 digest = keccak256(
-            abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash)
+        bytes32 digest = MessageHashUtils.toTypedDataHash(
+            DOMAIN_SEPARATOR,
+            structHash
         );
 
+        // Sign the exact digest that `permit` expects using the provided private key
         (v, r, s) = vm.sign(privateKey, digest);
     }
 
@@ -872,21 +875,26 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         uint256 amount
     ) public {
         address from = vm.addr(senderSk);
-        uint256 deadline = block.timestamp;
+        uint256 futureDeadline = block.timestamp + 1 hours;
         (uint8 v, bytes32 r, bytes32 s) = getPermitSignature(
             senderSk,
             address(payments),
             amount,
-            deadline
+            futureDeadline
         );
-        vm.warp(deadline+10);
+        vm.warp(futureDeadline + 10);
         vm.startPrank(from);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSignature(
+                "ERC2612ExpiredSignature(uint256)",
+                futureDeadline
+            )
+        );
         payments.depositWithPermit(
             address(testToken),
             to,
             amount,
-            deadline,
+            futureDeadline,
             v, r, s
         );
         vm.stopPrank();

@@ -265,7 +265,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
             uint256 totalBalance,
             uint256 availableBalance,
             uint256 lockupRate
-        ) = payments.getAccountInfo(address(helper.testToken()), USER1);
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance, DEPOSIT_AMOUNT, "total balance mismatch");
@@ -305,7 +305,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
             uint256 totalBalance,
             uint256 availableBalance,
             uint256 lockupRate
-        ) = payments.getAccountInfo(address(helper.testToken()), USER1);
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance, DEPOSIT_AMOUNT, "total balance mismatch");
@@ -389,7 +389,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
             uint256 totalBalance1,
             uint256 availableBalance1,
             uint256 lockupRate1
-        ) = payments.getAccountInfo(address(helper.testToken()), USER1);
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance1, DEPOSIT_AMOUNT, "total balance mismatch");
@@ -444,7 +444,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
             uint256 totalBalance2,
             uint256 availableBalance2,
             uint256 lockupRate3
-        ) = payments.getAccountInfo(address(helper.testToken()), USER1);
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance2, DEPOSIT_AMOUNT, "total balance mismatch");
@@ -489,7 +489,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
             uint256 totalBalance3,
             uint256 availableBalance3,
             uint256 lockupRate3
-        ) = payments.getAccountInfo(address(helper.testToken()), USER1);
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance3, DEPOSIT_AMOUNT, "total balance mismatch");
@@ -549,7 +549,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
             uint256 totalBalance4,
             uint256 availableBalance4,
             uint256 lockupRate4
-        ) = payments.getAccountInfo(address(helper.testToken()), USER1);
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance4, DEPOSIT_AMOUNT, "total balance mismatch");

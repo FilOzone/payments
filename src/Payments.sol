@@ -1042,12 +1042,7 @@ contract Payments is
                 )
             );
         }
-        // This avoids redundant zero-rate entries and saves gas.
-        if (rail.rateChangeQueue.isEmpty() && rail.paymentRate == 0) {
-            if (maxSettlementEpoch > rail.settledUpTo) {
-                rail.settledUpTo = maxSettlementEpoch;
-                }         
-        }
+
         // Process settlement depending on whether rate changes exist
         if (rail.rateChangeQueue.isEmpty()) {
             (
@@ -1708,10 +1703,6 @@ contract Payments is
 
         return result;
     }
-    /// @dev Test-only helper to get the size of a rail's rateChangeQueue.
-    function getRateChangeQueueSize(uint256 railId) public view returns (uint256) {
-        return rails[railId].rateChangeQueue.size();
-        }
 }
 
 function min(uint256 a, uint256 b) pure returns (uint256) {

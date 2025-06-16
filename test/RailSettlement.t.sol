@@ -694,6 +694,52 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         console.log("result.note", result.note);
     }
+    
+    function testModifyRailPayment_SkipsZeroRateEnqueue() public {
+        uint256 initialRate = 0;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            initialRate,
+            10,            // lockupPeriod
+            0,             // fixed lockup
+            address(0)     // no arbiter
+            );
+            
+            // give the operator enough allowance to change the rate
+            helper.setupOperatorApproval(
+                USER1,
+                OPERATOR,
+                10 ether,
+                100 ether,
+                MAX_LOCKUP_PERIOD
+                );
+                
+                // advance a few blocks so there is “history” to mark as settled
+                helper.advanceBlocks(4);
+                uint256 beforeBlock = block.number;
+                
+                // change rate: 0 → 5 ether
+                vm.prank(OPERATOR);
+                payments.modifyRailPayment(railId, 5 ether, 0);
+                vm.stopPrank();
+                
+                // queue must still be empty
+                assertEq(
+                    payments.getRateChangeQueueSize(railId),
+                    0,
+                    "queue should stay empty"
+                    );
+                    
+                    // settledUpTo must equal the block where modification occurred
+                    Payments.RailView memory rv = payments.getRail(railId);
+                    assertEq(
+                        rv.settledUpTo,
+                        beforeBlock,
+                        "settledUpTo should equal current block"
+                        );
+                        }
 
     //--------------------------------
     // Helper Functions

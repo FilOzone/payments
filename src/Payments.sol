@@ -824,6 +824,12 @@ contract Payments is
             return;
         }
 
+        // Skip putting a 0-rate entry on an empty queue
+        if (oldRate == 0 && rail.rateChangeQueue.isEmpty()) {
+            rail.settledUpTo = block.number;
+            return;
+            }
+
         // Only queue the previous rate once per epoch
         if (
             rail.rateChangeQueue.isEmpty() ||
@@ -1702,6 +1708,11 @@ contract Payments is
         }
 
         return result;
+    }
+    
+    /// @notice Number of pending rate-change entries for a rail
+    function getRateChangeQueueSize(uint256 railId) external view returns (uint256) {
+    return rails[railId].rateChangeQueue.size();
     }
 }
 

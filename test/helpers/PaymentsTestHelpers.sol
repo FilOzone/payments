@@ -8,6 +8,7 @@ import {MockERC20} from "../mocks/MockERC20.sol";
 import {BaseTestHelper} from "./BaseTestHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {console} from "forge-std/console.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 contract PaymentsTestHelpers is Test, BaseTestHelper {
     // Common constants
     uint256 public constant INITIAL_BALANCE = 1000 ether;
@@ -82,6 +83,97 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         }
 
         return newToken;
+    }
+
+    function getPermitSignature (
+        uint256 privateKey,
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline
+    ) public view returns (uint8 v, bytes32 r, bytes32 s) {
+        uint256 nonce = MockERC20(address(testToken)).nonces(owner);
+        bytes32 DOMAIN_SEPARATOR = MockERC20(address(testToken)).DOMAIN_SEPARATOR();
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                owner,
+                spender,
+                value,
+                nonce,
+                deadline
+            )
+        );
+
+        bytes32 digest = MessageHashUtils.toTypedDataHash(
+            DOMAIN_SEPARATOR,
+            structHash
+        );
+
+        // Sign the exact digest that `permit` expects using the provided private key
+        (v, r, s) = vm.sign(privateKey, digest);
+    }
+
+    function makeDepositWithPermit(
+        uint256 fromPrivateKey,
+        address to,
+        uint256 amount
+    ) public {
+        address from = vm.addr(fromPrivateKey);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        // Capture pre-deposit balances and state
+        uint256 fromBalanceBefore = _balanceOf(from, false);
+        uint256 paymentsBalanceBefore = _balanceOf(address(payments), false);
+        Payments.Account memory toAccountBefore = _getAccountData(to, false);
+
+        // get signature for permit
+        (uint8 v, bytes32 r, bytes32 s) = getPermitSignature(
+            fromPrivateKey, 
+            from,
+            address(payments), 
+            amount, 
+            deadline
+        );
+
+        // Execute deposit with permit
+        vm.startPrank(from);
+
+        payments.depositWithPermit(
+            address(testToken),
+            to, 
+            amount, 
+            deadline, 
+            v, 
+            r, 
+            s
+        );
+
+        vm.stopPrank();
+
+        // Capture post-deposit balances and state
+        uint256 fromBalanceAfter = _balanceOf(from, false);
+        uint256 paymentsBalanceAfter = _balanceOf(address(payments), false);
+        Payments.Account memory toAccountAfter = _getAccountData(to, false);
+
+        // Asserts / Checks
+        assertEq(
+            fromBalanceAfter,
+            fromBalanceBefore - amount,
+            "Sender's balance not reduced correctly"
+        );
+        assertEq(
+            paymentsBalanceAfter,
+            paymentsBalanceBefore + amount,
+            "Payments contract balance not increased correctly"
+        );
+        assertEq(
+            toAccountAfter.funds,
+            toAccountBefore.funds + amount,
+            "Recipient's account balance not increased correctly"
+        );
+        console.log("toAccountAfter.funds", toAccountAfter.funds);
     }
 
     function getAccountData(
@@ -784,5 +876,97 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             paymentFee,
             "Platform fee not accumulated correctly"
         );
+    }
+
+    function expectExpiredPermitToRevert(
+        uint256 senderSk,
+        address to,
+        uint256 amount
+    ) public {
+        address from = vm.addr(senderSk);
+        uint256 futureDeadline = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = getPermitSignature(
+            senderSk,
+            from,
+            address(payments),
+            amount,
+            futureDeadline
+        );
+        vm.warp(futureDeadline + 10);
+        vm.startPrank(from);
+        vm.expectRevert(
+            abi.encodeWithSignature(
+                "ERC2612ExpiredSignature(uint256)",
+                futureDeadline
+            )
+        );
+        payments.depositWithPermit(
+            address(testToken),
+            to,
+            amount,
+            futureDeadline,
+            v, r, s
+        );
+        vm.stopPrank();
+    }
+
+    function expectNativeTokenDepositWithPermitToRevert(
+        uint256 senderSk, 
+        address to, 
+        uint256 amount
+    ) public {
+        uint256 deadline = block.timestamp + 1 hours;
+        address from = vm.addr(senderSk);
+        vm.startPrank(from);
+        vm.expectRevert("depositWithPermit: native token not supported");
+        payments.depositWithPermit(
+            address(0), // Native token is not allowed
+            to,
+            amount,
+            deadline,
+            0, // v
+            bytes32(0), // r
+            bytes32(0)  // s
+        );
+        vm.stopPrank();
+    }
+
+    function expectInvalidPermitToRevert(
+        uint256 senderSk,
+        address to,
+        uint256 amount
+    ) public {
+        uint256 deadline = block.timestamp + 1 hours;
+
+        uint256 notSenderSk = senderSk == user1Sk ? user2Sk : user1Sk;
+        address from = vm.addr(senderSk);
+
+        // Make permit signature from notFromSk, but call from 'from'
+        (uint8 v, bytes32 r, bytes32 s) = getPermitSignature(
+            notSenderSk, 
+            from,
+            address(payments), 
+            amount, 
+            deadline
+        );
+
+        vm.startPrank(from);
+
+        // Expect custom error: ERC2612InvalidSigner(wrongRecovered, expectedOwner)
+        vm.expectRevert(
+            abi.encodeWithSignature(
+                "ERC2612InvalidSigner(address,address)",
+                vm.addr(notSenderSk),
+                from
+            )
+        );
+        payments.depositWithPermit(
+            address(testToken), 
+            to, 
+            amount, 
+            deadline, 
+            v, r, s
+        );
+        vm.stopPrank();
     }
 }

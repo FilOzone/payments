@@ -40,6 +40,39 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER2, DEPOSIT_AMOUNT);
     }
 
+    /*//////////////////////////////////////////////////////////////
+                        DEPOSIT WITH PERMIT TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function testDepositWithPermit() public {
+        helper.makeDepositWithPermit(user1Sk, USER1, DEPOSIT_AMOUNT);
+    }
+
+    function testDepositWithPermitToAnotherUser() public {
+        helper.makeDepositWithPermit(user1Sk, USER2, DEPOSIT_AMOUNT);
+    }
+
+    function testDepositWithPermitExpiredPermitReverts() public {
+        helper.expectExpiredPermitToRevert(user1Sk, USER2, DEPOSIT_AMOUNT);
+    }
+
+    function testDepositWithPermitZeroAmountNoEffect() public {
+        helper.makeDepositWithPermit(user1Sk, USER1, 0);
+    }
+
+    function testDepositWithPermitMultiple() public {
+        helper.makeDepositWithPermit(user1Sk, USER1, DEPOSIT_AMOUNT);
+        helper.makeDepositWithPermit(user1Sk, USER1, DEPOSIT_AMOUNT);
+    }
+
+    function testDepositWithPermitRevertsForNativeToken() public {
+        helper.expectNativeTokenDepositWithPermitToRevert(user1Sk, USER1, DEPOSIT_AMOUNT);
+    }
+
+    function testDepositWithPermitInvalidPermitReverts() public {
+        helper.expectInvalidPermitToRevert(user1Sk, USER1, DEPOSIT_AMOUNT);
+    }
+
     function testNativeDepositWithInsufficientNativeTokens() public {
         vm.startPrank(USER1);
 

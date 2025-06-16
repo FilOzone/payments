@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract BaseTestHelper {
-    address public constant OWNER = address(0x1);
-    address public constant USER1 = address(0x2);
-    address public constant USER2 = address(0x3);
-    address public constant OPERATOR = address(0x4);
-    address public constant OPERATOR2 = address(0x5);
-    address public constant ARBITER = address(0x6);
+import {Test} from "forge-std/Test.sol";
+
+contract BaseTestHelper is Test {
+    uint256 internal ownerSk = 1;
+    uint256 internal user1Sk = 2;
+    uint256 internal user2Sk = 3;
+    uint256 internal operatorSk = 4;
+    uint256 internal operator2Sk = 5;
+    uint256 internal arbiterSk = 6;
+
+    address public immutable OWNER = vm.addr(ownerSk);
+    address public immutable USER1 = vm.addr(user1Sk);
+    address public immutable USER2 = vm.addr(user2Sk);
+    address public immutable OPERATOR = vm.addr(operatorSk);
+    address public immutable OPERATOR2 = vm.addr(operator2Sk);
+    address public immutable ARBITER = vm.addr(arbiterSk);
 }

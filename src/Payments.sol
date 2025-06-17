@@ -628,19 +628,6 @@ contract Payments is
     ) internal {
         Account storage payer = accounts[rail.token][rail.from];
 
-        // Don't allow changing the lockup period or increasing the fixed lockup unless the payer's
-        // account is fully settled.
-        if (!isAccountLockupFullySettled(payer)) {
-            require(
-                period == rail.lockupPeriod,
-                "cannot change the lockup period: insufficient funds to cover the current lockup"
-            );
-            require(
-                lockupFixed <= rail.lockupFixed,
-                "cannot increase the fixed lockup: insufficient funds to cover the current lockup"
-            );
-        }
-
         // Get operator approval
         OperatorApproval storage operatorApproval = operatorApprovals[
             rail.token
@@ -662,14 +649,18 @@ contract Payments is
         // Calculate new lockup amount with new parameters
         uint256 newLockup = lockupFixed + (rail.paymentRate * period);
 
-        require(
-            payer.lockupCurrent >= oldLockup,
-            "payer's current lockup cannot be less than old lockup"
-        );
+        // Calculate the difference in lockup amounts
+        int256 lockupDifference = int256(newLockup) - int256(oldLockup);
 
-        // We blindly update the payer's lockup. If they don't have enough funds to cover the new
-        // amount, we'll revert in the post-condition.
-        payer.lockupCurrent = payer.lockupCurrent - oldLockup + newLockup;
+        // We blindly update the payer's lockup. If they don't have enough funds to cover the
+        // new amount, we'll revert in the post-condition.
+
+        if (lockupDifference > 0) {
+            payer.lockupCurrent += uint256(lockupDifference);
+        } else if (lockupDifference < 0) {
+            // For decreases, we can safely subtract the difference
+            payer.lockupCurrent -= uint256(-lockupDifference);
+        }
 
        
         updateOperatorLockupUsage(operatorApproval, oldLockup, newLockup);

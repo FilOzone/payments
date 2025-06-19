@@ -318,7 +318,7 @@ contract Payments is
         bool approved,
         uint256 rateAllowance,
         uint256 lockupAllowance,
-         uint256 maxLockupPeriod
+        uint256 maxLockupPeriod
     ) external nonReentrant validateNonZeroAddress(operator, "operator") {
         OperatorApproval storage approval = operatorApprovals[token][
             msg.sender
@@ -632,7 +632,6 @@ contract Payments is
         // amount, we'll revert in the post-condition.
         payer.lockupCurrent = payer.lockupCurrent - oldLockup + newLockup;
 
-       
         updateOperatorLockupUsage(operatorApproval, oldLockup, newLockup);
 
         // Update rail lockup parameters
@@ -1172,16 +1171,18 @@ contract Payments is
                     targetEpoch
                 );
 
-            // if current rate is zero, there's nothing left to do and we've finished settlement
+            // if current segment rate is zero, advance settlement to end of this segment and continue
             if (segmentRate == 0) {
-                rail.settledUpTo = targetEpoch;
-                return (
-                    state.totalSettledAmount,
-                    state.totalNetPayeeAmount,
-                    state.totalPaymentFee,
-                    state.totalOperatorCommission,
-                    "Zero rate payment rail"
-                );
+                rail.settledUpTo = segmentEndBoundary;
+                state.processedEpoch = segmentEndBoundary;
+
+                // Remove the processed rate change from the queue if it exists
+                if (!rateQueue.isEmpty()) {
+                    rateQueue.dequeue();
+                }
+
+                // Continue to next segment
+                continue;
             }
 
             // Settle the current segment with potentially arbitrated outcomes

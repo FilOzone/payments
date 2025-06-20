@@ -1340,7 +1340,8 @@ contract Payments is
 
         // Calculate the default settlement values (without arbitration)
         uint256 duration = epochEnd - epochStart;
-        uint256 settledAmount = rate * duration;
+        uint256 expectedSettledAmount = rate * duration;
+        uint256 settledAmount = expectedSettledAmount;
         uint256 settledUntilEpoch = epochEnd;
         note = "";
 
@@ -1404,8 +1405,8 @@ contract Payments is
         // Credit payee
         payee.funds += netPayeeAmount;
 
-        // Reduce the lockup by the total settled amount
-        payer.lockupCurrent -= settledAmount;
+        // Reduce the lockup by the expected settled amount previously added to the current lockup
+        payer.lockupCurrent -= expectedSettledAmount;
 
         // Update the rail's settled epoch
         rail.settledUpTo = settledUntilEpoch;

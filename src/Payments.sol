@@ -142,7 +142,7 @@ contract Payments is
     }
 
     // Events
-    event DepositWithPermit(address indexed token, address indexed from, address indexed to, uint256 amount);
+    event DepositWithPermit(address indexed token, address indexed account, uint256 amount);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -419,7 +419,7 @@ contract Payments is
     /**
     * @notice Deposits tokens using permit (EIP-2612) approval in a single transaction.
     * @param token The ERC20 token address to deposit.
-    * @param to The address whose account will be credited.
+    * @param to The address whose account will be credited (must be the permit signer).
     * @param amount The amount of tokens to deposit.
     * @param deadline Permit deadline (timestamp).
     * @param v,r,s Permit signature.
@@ -441,15 +441,16 @@ contract Payments is
         // Revert if token is address(0) as permit is not supported for native tokens
         require(token != address(0), "depositWithPermit: native token not supported");
 
-        // Approve this contract to spend tokens on behalf of msg.sender using permit
-        IERC20Permit(token).permit(msg.sender, address(this), amount, deadline, v, r, s);
+        // Use 'to' as the owner in permit call (the address that signed the permit)
+        IERC20Permit(token).permit(to, address(this), amount, deadline, v, r, s);
 
         Account storage account = accounts[token][to];
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        IERC20(token).safeTransferFrom(to, address(this), amount);
         account.funds += amount;
 
-        emit DepositWithPermit(token, msg.sender, to, amount);
+        emit DepositWithPermit(token, to, amount);
     }
+
 
     /// @notice Withdraws tokens from the caller's account to the caller's account, up to the amount of currently available tokens (the tokens not currently locked in rails).
     /// @param token The ERC20 token address to withdraw.
@@ -672,7 +673,6 @@ contract Payments is
         // amount, we'll revert in the post-condition.
         payer.lockupCurrent = payer.lockupCurrent - oldLockup + newLockup;
 
-       
         updateOperatorLockupUsage(operatorApproval, oldLockup, newLockup);
 
         // Update rail lockup parameters

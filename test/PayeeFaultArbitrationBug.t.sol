@@ -69,7 +69,7 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
         console.log("Expected lockup:", expectedTotalLockup);
 
 
-        require(payerFinal.lockupCurrent == expectedTotalLockup, "Payee fault bug: Fixed lockup not fully returned");
+        require(payerFinal.lockupCurrent == 0, "Payee fault bug: Fixed lockup not fully returned");
     }
 
      function testLockupReturnedWithFault() public {

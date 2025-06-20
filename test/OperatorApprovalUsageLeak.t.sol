@@ -116,19 +116,9 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
         console.log("  Rate usage:", rateUsageAfter);
         console.log("  Lockup usage:", lockupUsageAfter);
         
-        // The bug: lockupUsageAfter should be 0, but it's actually (paymentRate * lockupPeriod)
-        // because finalizeTerminatedRail only reduces the fixed lockup, not the rate-based lockup
-        
-        // This assertion should pass with the current buggy implementation
-        assertEq(lockupUsageAfter, paymentRate * lockupPeriod, "Bug reproduced: Lockup usage leak detected");
-        
-        // This is what it should be (will fail with current implementation)
-        // assertEq(lockupUsageAfter, 0, "Lockup usage should be 0 after finalization");
-        
-        console.log("\nBUG CONFIRMED: Operator lockup usage leaked!");
-        console.log("Expected lockup usage after finalization: 0");
-        console.log("Actual lockup usage after finalization:", lockupUsageAfter);
-        console.log("Leaked amount:", lockupUsageAfter);
+        // Assert the correct behavior: lockup usage should be 0 after finalization
+        assertEq(lockupUsageAfter, 0, "Lockup usage should be 0 after rail finalization");
+        assertEq(rateUsageAfter, 0, "Rate usage should be 0 after rail finalization");
     }
 
     function testMultipleRailsShowCumulativeLeak() public {
@@ -193,10 +183,11 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
             uint256 finalLockupUsage,
         ) = payments.operatorApprovals(address(testToken), USER1, OPERATOR);
 
-        console.log("\n=== CUMULATIVE LEAK ===");
-        console.log("Total leaked lockup usage:", totalLeakedUsage);
+        console.log("\n=== FINAL OPERATOR USAGE ===");
         console.log("Final operator lockup usage:", finalLockupUsage);
+        console.log("Expected (correct) lockup usage: 0");
         
-        assertEq(finalLockupUsage, totalLeakedUsage, "Cumulative lockup usage leak confirmed");
+        // Assert the correct behavior: all lockup usage should be cleared after all rails are finalized
+        assertEq(finalLockupUsage, 0, "All lockup usage should be cleared after finalizing all rails");
     }
 }

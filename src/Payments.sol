@@ -1171,8 +1171,11 @@ contract Payments is
         OperatorApproval storage operatorApproval = operatorApprovals[
             rail.token
         ][rail.from][rail.operator];
+        // Calculate current (old) lockup.
+        uint256 oldLockup = rail.lockupFixed +
+            (rail.paymentRate * rail.lockupPeriod);
 
-        updateOperatorLockupUsage(operatorApproval, rail.lockupFixed, 0);
+        updateOperatorLockupUsage(operatorApproval, oldLockup, 0);
 
         // Zero out the rail to mark it as inactive
         _zeroOutRail(rail);

@@ -919,4 +919,129 @@ contract RailSettlementTest is Test, BaseTestHelper {
             "Accumulated fees incorrect after resettlement"
         );
     }
+
+    function testSettleRailWithNonZeroZeroNonZeroRateSequence() public {
+        // Setup operator approval for rate modifications
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            25 ether, // rate allowance
+            200 ether, // lockup allowance
+            MAX_LOCKUP_PERIOD
+        );
+
+        // Create a rail with initial rate
+        uint256 initialRate = 5 ether;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            initialRate,
+            10, // lockupPeriod
+            0, // No fixed lockup
+            address(0) // No arbiter
+        );
+
+        // Advance 3 blocks at initial rate (5 ether/block)
+        helper.advanceBlocks(3);
+
+        // Change rate to zero
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, 0, 0);
+        vm.stopPrank();
+
+        // Advance 4 blocks at zero rate (no payment)
+        helper.advanceBlocks(4);
+
+        // Change rate to new non-zero rate
+        uint256 finalRate = 8 ether;
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, finalRate, 0);
+        vm.stopPrank();
+
+        // Advance 5 blocks at final rate (8 ether/block)
+        helper.advanceBlocks(5);
+
+        // Calculate expected settlement:
+        // Phase 1 (blocks 1-3): 3 blocks at 5 ether/block = 15 ether
+        // Phase 2 (blocks 4-7): 4 blocks at 0 ether/block = 0 ether
+        // Phase 3 (blocks 8-12): 5 blocks at 8 ether/block = 40 ether
+        // Total expected: 15 + 0 + 40 = 55 ether
+        uint256 expectedAmount = (initialRate * 3) + (0 * 4) + (finalRate * 5);
+
+        // Settle and verify
+        RailSettlementHelpers.SettlementResult memory result = settlementHelper
+            .settleRailAndVerify(
+                railId,
+                block.number,
+                expectedAmount,
+                block.number
+            );
+
+        console.log(
+            "Non-zero -> Zero -> Non-zero settlement note:",
+            result.note
+        );
+    }
+
+    function testSettleRailWithZeroNonZeroZeroRateSequence() public {
+        // Setup operator approval for rate modifications
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            15 ether, // rate allowance
+            150 ether, // lockup allowance
+            MAX_LOCKUP_PERIOD
+        );
+
+        // Create a rail starting with zero rate
+        uint256 initialRate = 0;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            initialRate,
+            10, // lockupPeriod
+            0, // No fixed lockup
+            address(0) // No arbiter
+        );
+
+        // Advance 2 blocks at zero rate (no payment)
+        helper.advanceBlocks(2);
+
+        // Change rate to non-zero
+        uint256 middleRate = 6 ether;
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, middleRate, 0);
+        vm.stopPrank();
+
+        // Advance 4 blocks at middle rate (6 ether/block)
+        helper.advanceBlocks(4);
+
+        // Change rate back to zero
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, 0, 0);
+        vm.stopPrank();
+
+        // Advance 3 blocks at zero rate again (no payment)
+        helper.advanceBlocks(3);
+
+        // Calculate expected settlement:
+        // Phase 1 (blocks 1-2): 2 blocks at 0 ether/block = 0 ether
+        // Phase 2 (blocks 3-6): 4 blocks at 6 ether/block = 24 ether
+        // Phase 3 (blocks 7-9): 3 blocks at 0 ether/block = 0 ether
+        // Total expected: 0 + 24 + 0 = 24 ether
+        uint256 expectedAmount = (0 * 2) + (middleRate * 4) + (0 * 3);
+
+        // Settle and verify
+        RailSettlementHelpers.SettlementResult memory result = settlementHelper
+            .settleRailAndVerify(
+                railId,
+                block.number,
+                expectedAmount,
+                block.number
+            );
+
+        console.log("Zero -> Non-zero -> Zero settlement note:", result.note);
+    }
 }

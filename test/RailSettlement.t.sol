@@ -3,9 +3,9 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {Payments, IArbiter} from "../src/Payments.sol";
+import {Payments} from "../src/Payments.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {MockArbiter} from "./mocks/MockArbiter.sol";
+import {MockValidator} from "./mocks/MockValidator.sol";
 import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {RailSettlementHelpers} from "./helpers/RailSettlementHelpers.sol";
 import {console} from "forge-std/console.sol";
@@ -49,7 +49,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0) // No validator
         );
 
         // Advance a few blocks
@@ -128,7 +128,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // Standard arbiter
+            address(0) // Standard validator
         );
         uint256 newRate1 = 6 ether;
         uint256 newRate2 = 7 ether;
@@ -179,14 +179,14 @@ contract RailSettlementTest is Test, BaseTestHelper {
     }
 
     //--------------------------------
-    // 2. Arbitration Scenarios
+    // 2. Validation Scenarios
     //--------------------------------
 
-    function testArbitrationWithStandardApproval() public {
-        // Deploy a standard arbiter that approves everything
-        MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.STANDARD);
+    function testValidationWithStandardApproval() public {
+        // Deploy a standard validator that approves everything
+        MockValidator validator = new MockValidator(MockValidator.ValidatorMode.STANDARD);
 
-        // Create a rail with the arbiter
+        // Create a rail with the validator
         uint256 rate = 5 ether;
         uint256 railId = helper.setupRailWithParameters(
             USER1,
@@ -195,16 +195,16 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(arbiter) // Standard arbiter
+            address(validator) // Standard validator
         );
 
         // Advance several blocks
         helper.advanceBlocks(5);
 
-        // Verify standard arbiter approves full amount
+        // Verify standard validator approves full amount
         uint256 expectedAmount = rate * 5; // 5 blocks * 5 ether
 
-        // Settle with arbitration
+        // Settle with validation
         RailSettlementHelpers.SettlementResult memory result = settlementHelper
             .settleRailAndVerify(
                 railId,
@@ -213,17 +213,17 @@ contract RailSettlementTest is Test, BaseTestHelper {
                 block.number
             );
 
-        // Verify arbiter note
+        // Verify validaton note
         assertEq(
             result.note,
             "Standard approved payment",
-            "Arbiter note should match"
+            "Validator note should match"
         );
     }
 
-    function testArbitrationWithMultipleRateChanges() public {
-        // Deploy a standard arbiter that approves everything
-        MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.STANDARD);
+    function testValidationWithMultipleRateChanges() public {
+        // Deploy a standard validator that approves everything
+        MockValidator validator = new MockValidator(MockValidator.ValidatorMode.STANDARD);
 
         // Setup operator approval first
         helper.setupOperatorApproval(
@@ -234,7 +234,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             MAX_LOCKUP_PERIOD // lockup period
         );
 
-        // Create a rail with the arbiter
+        // Create a rail with the validator
         uint256 rate = 1;
         uint256 expectedAmount = 0;
         uint256 railId = helper.setupRailWithParameters(
@@ -244,7 +244,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(arbiter) // Standard arbiter
+            address(validator) // Standard validator
         );
 
         vm.startPrank(OPERATOR);
@@ -256,7 +256,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         }
         vm.stopPrank();
 
-        // Settle with arbitration
+        // Settle with validation
         RailSettlementHelpers.SettlementResult memory result = settlementHelper
             .settleRailAndVerify(
                 railId,
@@ -265,22 +265,22 @@ contract RailSettlementTest is Test, BaseTestHelper {
                 block.number
             );
 
-        // Verify arbiter note
+        // Verify validator note
         assertEq(
             result.note,
             "Standard approved payment",
-            "Arbiter note should match"
+            "Validator note should match"
         );
     }
 
-    function testArbitrationWithReducedAmount() public {
-        // Deploy an arbiter that reduces payment amounts
-        MockArbiter arbiter = new MockArbiter(
-            MockArbiter.ArbiterMode.REDUCE_AMOUNT
+    function testValidationWithReducedAmount() public {
+        // Deploy an validator that reduces payment amounts
+        MockValidator validator = new MockValidator(
+            MockValidator.ValidatorMode.REDUCE_AMOUNT
         );
-        arbiter.configure(80); // 80% of the original amount
+        validator.configure(80); // 80% of the original amount
 
-        // Create a rail with the arbiter
+        // Create a rail with the validator
         uint256 rate = 10 ether;
         uint256 railId = helper.setupRailWithParameters(
             USER1,
@@ -289,7 +289,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(arbiter) // Reduced amount arbiter
+            address(validator) // Reduced amount validator
         );
 
         // Advance several blocks
@@ -298,7 +298,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Verify reduced amount (80% of original)
         uint256 expectedAmount = (rate * 5 * 80) / 100; // 5 blocks * 10 ether * 80%
 
-        // Calculate expected contract fee (1% of the arbitrated amount)
+        // Calculate expected contract fee (1% of the validated amount)
         uint256 paymentFee = (expectedAmount * payments.PAYMENT_FEE_BPS()) /
             payments.COMMISSION_MAX_BPS();
         uint256 netPayeeAmount = expectedAmount - paymentFee;
@@ -306,7 +306,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Capture fee balance before settlement
         uint256 feesBefore = payments.accumulatedFees(address(token));
 
-        // Settle with arbitration - verify against NET payee amount
+        // Settle with validation - verify against NET payee amount
         RailSettlementHelpers.SettlementResult memory result = settlementHelper
             .settleRailAndVerify(
                 railId,
@@ -330,22 +330,22 @@ contract RailSettlementTest is Test, BaseTestHelper {
         assertEq(result.paymentFee, paymentFee, "Payment fee incorrect");
         assertEq(result.operatorCommission, 0, "Operator commission incorrect");
 
-        // Verify arbiter note
+        // Verify validator note
         assertEq(
             result.note,
-            "Arbiter reduced payment amount",
-            "Arbiter note should match"
+            "Validator reduced payment amount",
+            "Validator note should match"
         );
     }
 
-    function testArbitrationWithReducedDuration() public {
-        // Deploy an arbiter that reduces settlement duration
-        MockArbiter arbiter = new MockArbiter(
-            MockArbiter.ArbiterMode.REDUCE_DURATION
+    function testValidationWithReducedDuration() public {
+        // Deploy an validator that reduces settlement duration
+        MockValidator validator = new MockValidator(
+            MockValidator.ValidatorMode.REDUCE_DURATION
         );
-        arbiter.configure(60); // 60% of the original duration
+        validator.configure(60); // 60% of the original duration
 
-        // Create a rail with the arbiter
+        // Create a rail with the validator
         uint256 rate = 10 ether;
         uint256 railId = helper.setupRailWithParameters(
             USER1,
@@ -354,7 +354,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(arbiter) // Reduced duration arbiter
+            address(validator) // Reduced duration validator
         );
 
         // Advance several blocks
@@ -368,7 +368,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             expectedDuration;
         uint256 expectedAmount = rate * expectedDuration; // expectedDuration blocks * 10 ether
 
-        // Settle with arbitration
+        // Settle with validation
         RailSettlementHelpers.SettlementResult memory result = settlementHelper
             .settleRailAndVerify(
                 railId,
@@ -377,21 +377,21 @@ contract RailSettlementTest is Test, BaseTestHelper {
                 expectedSettledUpto
             );
 
-        // Verify arbiter note
+        // Verify validator note
         assertEq(
             result.note,
-            "Arbiter reduced settlement duration",
-            "Arbiter note should match"
+            "Validator reduced settlement duration",
+            "Validator note should match"
         );
     }
 
-    function testMaliciousArbiterHandling() public {
-        // Deploy a malicious arbiter
-        MockArbiter arbiter = new MockArbiter(
-            MockArbiter.ArbiterMode.MALICIOUS
+    function testMaliciousValidatorHandling() public {
+        // Deploy a malicious validator
+        MockValidator validator = new MockValidator(
+            MockValidator.ValidatorMode.MALICIOUS
         );
 
-        // Create a rail with the arbiter
+        // Create a rail with the validator
         uint256 rate = 5 ether;
         uint256 railId = helper.setupRailWithParameters(
             USER1,
@@ -400,22 +400,22 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(arbiter) // Malicious arbiter
+            address(validator) // Malicious validator
         );
 
         // Advance several blocks
         helper.advanceBlocks(5);
 
-        // Attempt settlement with malicious arbiter - should revert
+        // Attempt settlement with malicious validator - should revert
         vm.prank(USER1);
-        vm.expectRevert("arbiter settled beyond segment end");
+        vm.expectRevert("validator settled beyond segment end");
         payments.settleRail(railId, block.number);
 
-        // Set the arbiter to return invalid amount but valid settlement duration
-        arbiter.setMode(MockArbiter.ArbiterMode.CUSTOM_RETURN);
+        // Set the validator to return invalid amount but valid settlement duration
+        validator.setMode(MockValidator.ValidatorMode.CUSTOM_RETURN);
         uint256 proposedAmount = rate * 5; // 5 blocks * 5 ether
         uint256 invalidAmount = proposedAmount * 2; // Double the correct amount
-        arbiter.setCustomValues(
+        validator.setCustomValues(
             invalidAmount,
             block.number,
             "Attempting excessive payment"
@@ -424,7 +424,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Attempt settlement with excessive amount - should also revert
         vm.prank(USER1);
         vm.expectRevert(
-            "arbiter modified amount exceeds maximum for settled duration"
+            "validator modified amount exceeds maximum for settled duration"
         );
         payments.settleRail(railId, block.number);
     }
@@ -443,7 +443,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             lockupPeriod, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0) // No validator
         );
 
         // Advance several blocks
@@ -540,7 +540,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0) // No validator
         );
 
         // Settle immediately without advancing blocks - should be a no-op
@@ -563,13 +563,13 @@ contract RailSettlementTest is Test, BaseTestHelper {
         );
     }
 
-    function testSettleRailWithRateChangeQueueForReducedAmountArbitration() public {
-        // Deploy an arbiter that reduces the payment amount by a percentage
+    function testSettleRailWithRateChangeQueueForReducedAmountValidation() public {
+        // Deploy an validator that reduces the payment amount by a percentage
         uint256 factor = 80; // 80% of the original amount
-        MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.REDUCE_AMOUNT);
-        arbiter.configure(factor);
+        MockValidator validator = new MockValidator(MockValidator.ValidatorMode.REDUCE_AMOUNT);
+        validator.configure(factor);
 
-        // Create a rail with the arbiter
+        // Create a rail with the validator
         uint256 rate = 5 ether;
         uint256 lockupPeriod = 10;
         uint256 railId = helper.setupRailWithParameters(
@@ -579,7 +579,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             lockupPeriod, 
             0, // No fixed lockup
-            address(arbiter)
+            address(validator)
         );
 
         // Simulate 5 blocks passing (blocks 1-5)
@@ -607,9 +607,9 @@ contract RailSettlementTest is Test, BaseTestHelper {
         helper.advanceBlocks(5);
 
         // Calculate expected settlement:
-        // Phase 1 (blocks 1-5): 5 blocks at 5 ETH/block → 25 ETH total -> after arbitration (80%) -> 20 ETH total
-        // Phase 2 (blocks 6-10): 5 blocks at 10 ETH/block → 50 ETH total -> after arbitration (80%) -> 40 ETH total
-        // Total after arbitration (80%) -> 60 ETH total
+        // Phase 1 (blocks 1-5): 5 blocks at 5 ETH/block → 25 ETH total -> after validation (80%) -> 20 ETH total
+        // Phase 2 (blocks 6-10): 5 blocks at 10 ETH/block → 50 ETH total -> after validation (80%) -> 40 ETH total
+        // Total after validation (80%) -> 60 ETH total
         uint256 expectedDurationOldRate = 5; // Epochs 1-5 ( rate = 5 )
         uint256 expectedDurationNewRate = 5; // Epochs 6-10 ( rate = 10 )
         uint256 expectedAmountOldRate = (rate * expectedDurationOldRate * factor ) / 100; // 20 ETH (25 * 0.8)
@@ -623,13 +623,13 @@ contract RailSettlementTest is Test, BaseTestHelper {
         console.log("result.note", result.note);
     }
 
-    function testSettleRailWithRateChangeQueueForReducedDurationArbitration() public {
-        // Deploy an arbiter that reduces the duration by a percentage
+    function testSettleRailWithRateChangeQueueForReducedDurationValidation() public {
+        // Deploy an validator that reduces the duration by a percentage
         uint256 factor = 60; // 60% of the original duration
-        MockArbiter arbiter = new MockArbiter(MockArbiter.ArbiterMode.REDUCE_DURATION);
-        arbiter.configure(factor);
+        MockValidator validator = new MockValidator(MockValidator.ValidatorMode.REDUCE_DURATION);
+        validator.configure(factor);
 
-        // Create a rail with the arbiter
+        // Create a rail with the validator
         uint256 rate = 5 ether;
         uint256 lockupPeriod = 10;
         uint256 railId = helper.setupRailWithParameters(
@@ -639,7 +639,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             lockupPeriod,
             0, // No fixed lockup
-            address(arbiter)
+            address(validator)
         );
 
         // Simulate 5 blocks passing (blocks 1-5)
@@ -651,7 +651,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // LastSettledUpto: 1 + (6 - 1) * 60% = 4
         vm.prank(USER1);
         payments.settleRail(railId, block.number);
-        uint256 lastSettledUpto = 1 + ((block.number - 1) * factor) / 100; // arbiter only settles for 60% of the duration (block.number - lastSettledUpto = epoch 1)
+        uint256 lastSettledUpto = 1 + ((block.number - 1) * factor) / 100; // validator only settles for 60% of the duration (block.number - lastSettledUpto = epoch 1)
         vm.stopPrank();
 
 
@@ -725,7 +725,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             address(token),
             USER1,
             USER2,
-            address(0), // no arbiter
+            address(0), // no validator
             operatorCommissionBps
         );
         vm.stopPrank();

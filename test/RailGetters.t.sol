@@ -3,7 +3,7 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {Payments, IArbiter} from "../src/Payments.sol";
+import {Payments} from "../src/Payments.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {RailSettlementHelpers} from "./helpers/RailSettlementHelpers.sol";
@@ -90,7 +90,7 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             5 ether, // rate
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0) // No validator
         );
 
         // Rail 2: Another rail with token1 and USER2 as payee
@@ -101,7 +101,7 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             3 ether, // rate
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0) // No validator
         );
 
         // Rail 3: Will be terminated
@@ -112,7 +112,7 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             2 ether, // rate
             5, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0) // No validator
         );
 
         // Rail 4: With token2 and USER2 as payee
@@ -121,7 +121,7 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             address(token2),
             USER1, // from
             USER2, // to (payee)
-            address(0), // no arbiter
+            address(0), // no validator
             0 // no commission
         );
         payments.modifyRailPayment(rail4Id, 4 ether, 0);
@@ -136,7 +136,7 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             1 ether, // rate
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0) // No validator
         );
 
         // Terminate Rail 3

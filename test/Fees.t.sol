@@ -3,7 +3,7 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {Payments, IArbiter} from "../src/Payments.sol";
+import {Payments} from "../src/Payments.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {RailSettlementHelpers} from "./helpers/RailSettlementHelpers.sol";
@@ -117,7 +117,7 @@ contract FeesTest is Test, BaseTestHelper {
             RAIL1_RATE,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0) // No validator
         );
 
         // Create a rail with token2
@@ -126,7 +126,7 @@ contract FeesTest is Test, BaseTestHelper {
             address(token2),
             USER1, // from
             USER2, // to
-            address(0), // no arbiter
+            address(0), // no validator
             0 // no commission
         );
 
@@ -139,7 +139,7 @@ contract FeesTest is Test, BaseTestHelper {
             address(token3),
             USER1, // from
             USER2, // to
-            address(0), // no arbiter
+            address(0), // no validator
             0 // no commission
         );
 

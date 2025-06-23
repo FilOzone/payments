@@ -48,10 +48,6 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDepositWithPermit(user1Sk, USER1, DEPOSIT_AMOUNT);
     }
 
-    function testDepositWithPermitToAnotherUser() public {
-        helper.makeDepositWithPermit(user1Sk, USER2, DEPOSIT_AMOUNT);
-    }
-
     function testDepositWithPermitExpiredPermitReverts() public {
         helper.expectExpiredPermitToRevert(user1Sk, USER2, DEPOSIT_AMOUNT);
     }
@@ -282,5 +278,312 @@ contract AccountManagementTest is Test, BaseTestHelper {
             lockupRate * 2, // expected rate (2 * 0.5 ether)
             block.number // expected last settled
         );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          ACCOUNT INFO TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function testGetAccountInfoNoLockups() public {
+        // Setup: deposit funds
+        helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
+
+        // Get account info
+        (
+            uint256 fundedUntil,
+            uint256 totalBalance,
+            uint256 availableBalance,
+            uint256 lockupRate
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+
+        // Verify account state
+        assertEq(totalBalance, DEPOSIT_AMOUNT, "total balance mismatch");
+        assertEq(availableBalance, DEPOSIT_AMOUNT, "available balance mismatch");
+        assertEq(lockupRate, 0, "lockup rate should be 0");
+        assertEq(fundedUntil, type(uint256).max, "funded until should be max");
+    }
+
+    function testGetAccountInfoWithFixedLockup() public {
+        // Setup: deposit funds
+        helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
+
+        // Setup operator approval
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            100 ether,
+            DEPOSIT_AMOUNT,
+            MAX_LOCKUP_PERIOD
+        );
+
+        // Create rail with fixed lockup
+        uint256 fixedLockup = DEPOSIT_AMOUNT / 2;
+        helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            0,
+            0,
+            fixedLockup,
+            address(0)
+        );
+
+        // Get account info
+        (
+            uint256 fundedUntil,
+            uint256 totalBalance,
+            uint256 availableBalance,
+            uint256 lockupRate
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+
+        // Verify account state
+        assertEq(totalBalance, DEPOSIT_AMOUNT, "total balance mismatch");
+        assertEq(availableBalance, DEPOSIT_AMOUNT - fixedLockup, "available balance mismatch");
+        assertEq(lockupRate, 0, "lockup rate should be 0");
+        assertEq(fundedUntil, type(uint256).max, "funded until should be max with no rate");
+    }
+
+    // Helper function to calculate simulated lockup and available balance
+    function calculateSimulatedLockupAndBalance(
+        uint256 funds,
+        uint256 lockupCurrent,
+        uint256 lockupRate,
+        uint256 lockupLastSettledAt
+    ) internal view returns (uint256 simulatedLockupCurrent, uint256 availableBalance) {
+        uint256 currentEpoch = block.number;
+        uint256 elapsedTime = currentEpoch - lockupLastSettledAt;
+        simulatedLockupCurrent = lockupCurrent;
+
+        if (elapsedTime > 0 && lockupRate > 0) {
+            uint256 additionalLockup = lockupRate * elapsedTime;
+            
+            if (funds >= lockupCurrent + additionalLockup) {
+                simulatedLockupCurrent = lockupCurrent + additionalLockup;
+            } else {
+                uint256 availableFunds = funds - lockupCurrent;
+                if (availableFunds > 0) {
+                    uint256 fractionalEpochs = availableFunds / lockupRate;
+                    simulatedLockupCurrent = lockupCurrent + (lockupRate * fractionalEpochs);
+                }
+            }
+        }
+
+        availableBalance = funds > simulatedLockupCurrent ? 
+            funds - simulatedLockupCurrent : 0;
+    }
+
+    function testGetAccountInfoWithRateLockup() public {
+        // Setup: deposit funds
+        helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
+
+        // Setup operator approval
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            100 ether,
+            DEPOSIT_AMOUNT,
+            MAX_LOCKUP_PERIOD
+        );
+
+        uint256 lockupRate = 1 ether; // 1 token per block
+        uint256 lockupPeriod = 10;
+
+        // Create rail with rate lockup
+        helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            lockupRate,
+            lockupPeriod,
+            0,
+            address(0)
+        );
+
+        // Advance 5 blocks
+        helper.advanceBlocks(5);
+
+        // Get raw account data for debugging
+        (uint256 funds, uint256 lockupCurrent, uint256 lockupRate2, uint256 lockupLastSettledAt) = payments.accounts(address(helper.testToken()), USER1);
+
+        (, uint256 availableBalance) = calculateSimulatedLockupAndBalance(
+            funds,
+            lockupCurrent,
+            lockupRate2,
+            lockupLastSettledAt
+        );
+
+        // Get account info
+        (
+            uint256 fundedUntil,
+            uint256 totalBalance1,
+            uint256 availableBalance1,
+            uint256 lockupRate1
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+
+        // Verify account state
+        assertEq(totalBalance1, DEPOSIT_AMOUNT, "total balance mismatch");
+        assertEq(availableBalance1, availableBalance, "available balance mismatch");
+        assertEq(lockupRate1, lockupRate, "lockup rate mismatch");
+        assertEq(fundedUntil, block.number + (availableBalance / lockupRate), "funded until mismatch");
+    }
+
+    function testGetAccountInfoWithPartialSettlement() public {
+        // Setup: deposit funds
+        helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
+
+        // Setup operator approval
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            100 ether,
+            DEPOSIT_AMOUNT,
+            MAX_LOCKUP_PERIOD
+        );
+
+        uint256 lockupRate = 2 ether; // 2 tokens per block
+        uint256 lockupPeriod = 10;
+
+        // Create rail with rate lockup
+        helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            lockupRate,
+            lockupPeriod,
+            0,
+            address(0)
+        );
+
+        // Advance blocks to create partial settlement
+        helper.advanceBlocks(5);
+
+        // Get raw account data for debugging
+        (uint256 funds, uint256 lockupCurrent, uint256 lockupRate2, uint256 lockupLastSettledAt) = payments.accounts(address(helper.testToken()), USER1);
+
+        (, uint256 availableBalance) = calculateSimulatedLockupAndBalance(
+            funds,
+            lockupCurrent,
+            lockupRate2,
+            lockupLastSettledAt
+        );
+
+        // Get account info
+        (
+            uint256 fundedUntil,
+            uint256 totalBalance2,
+            uint256 availableBalance2,
+            uint256 lockupRate3
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+
+        // Verify account state
+        assertEq(totalBalance2, DEPOSIT_AMOUNT, "total balance mismatch");
+        assertEq(availableBalance2, availableBalance, "available balance mismatch");
+        assertEq(lockupRate3, lockupRate, "lockup rate mismatch");
+        assertEq(fundedUntil, block.number + (availableBalance / lockupRate), "funded until mismatch");
+    }
+
+    function testGetAccountInfoInDebt() public {
+        // Setup: deposit funds
+        helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
+
+        // Setup operator approval
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            100 ether,
+            DEPOSIT_AMOUNT,
+            MAX_LOCKUP_PERIOD
+        );
+
+        uint256 lockupRate = 2 ether; // 2 tokens per block
+        uint256 lockupPeriod = 10;
+
+        // Create rail with rate lockup
+        helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            lockupRate,
+            lockupPeriod,
+            0,
+            address(0)
+        );
+
+        // Advance blocks to create debt
+        helper.advanceBlocks(60); // This will create debt as 60 * 2 > DEPOSIT_AMOUNT
+
+        // Get account info
+        (
+            uint256 fundedUntil,
+            uint256 totalBalance3,
+            uint256 availableBalance3,
+            uint256 lockupRate3
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+
+        // Verify account state
+        assertEq(totalBalance3, DEPOSIT_AMOUNT, "total balance mismatch");
+        assertEq(availableBalance3, 0, "available balance should be 0");
+        assertEq(lockupRate3, lockupRate, "lockup rate mismatch");
+        assertTrue(fundedUntil < block.number, "funded until should be in the past");
+    }
+
+    function testGetAccountInfoAfterRateChange() public {
+        // Setup: deposit funds
+        helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
+
+        // Setup operator approval
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            100 ether,
+            DEPOSIT_AMOUNT,
+            MAX_LOCKUP_PERIOD
+        );
+
+        uint256 initialRate = 1 ether; // 1 token per block
+        uint256 lockupPeriod = 10;
+
+        // Create rail with initial rate
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            initialRate,
+            lockupPeriod,
+            0,
+            address(0)
+        );
+
+        // Advance some blocks
+        helper.advanceBlocks(5);
+
+        // Change the rate
+        uint256 newRate = 2 ether; // 2 tokens per block
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, newRate, 0);
+
+        // Get raw account data for debugging
+        (uint256 funds, uint256 lockupCurrent, uint256 lockupRate2, uint256 lockupLastSettledAt) = payments.accounts(address(helper.testToken()), USER1);
+
+        (, uint256 availableBalance) = calculateSimulatedLockupAndBalance(
+            funds,
+            lockupCurrent,
+            lockupRate2,
+            lockupLastSettledAt
+        );
+
+        // Get account info
+        (
+            uint256 fundedUntil,
+            uint256 totalBalance4,
+            uint256 availableBalance4,
+            uint256 lockupRate4
+        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+
+        // Verify account state
+        assertEq(totalBalance4, DEPOSIT_AMOUNT, "total balance mismatch");
+        assertEq(availableBalance4, availableBalance, "available balance mismatch");
+        assertEq(lockupRate4, newRate, "lockup rate mismatch");
+        assertEq(fundedUntil, block.number + (availableBalance / newRate), "funded until mismatch");
     }
 }

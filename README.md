@@ -479,3 +479,32 @@ If an arbiter contract is malfunctioning, the _client_ may forcibly settle the r
 // Emergency settlement for terminated rails with stuck arbitration
 (uint256 amount, uint256 settledEpoch, string memory note) = Payments(paymentsContractAddress).settleTerminatedRailWithoutArbitration(railId);
 ```
+
+### Client Reducing Operator Allowance After Deal Proposal
+
+#### Scenario
+If a client reduces an operator’s `rateAllowance` after a deal proposal but before the service provider (SP) accepts the deal, the following can occur:
+1. The operator has already locked a fixed amount in a rail for the deal.
+2. The SP, seeing the locked funds, does the work and tries to accept the deal.
+3. The client reduces the operator’s `rateAllowance` before the operator can start the payment stream.
+4. When the operator tries to begin payments (by setting the payment rate), the contract checks the current allowance and **the operation fails** if the new rate exceeds the reduced allowance—even if there is enough fixed lockup.
+
+#### Contract Behavior
+- The contract enforces that operators cannot lock funds at a rate higher than their current allowance.
+- The operator might not be able to initiate the payment stream as planned if the allowance is decreased after the rail setup.
+
+#### Resolution: One-Time Payment from Fixed Lockup
+From the fixed lockup, the operator can still use the `modifyRailPayment` function to make a **one-time payment** to the SP. Even if the rate allowance was lowered following the deal proposal, this still enables the SP to be compensated for their work.
+
+**Example Usage:**
+```solidity
+Payments.modifyRailPayment(
+    railId,
+    0,
+    amount
+);
+```
+
+#### Best Practice
+- Unless absolutely required, clients should refrain from cutting operator allowances for ongoing transactions.
+- In the event that the rate stream cannot be initiated, operators should be prepared for this possibility and utilize one-time payments as a backup.

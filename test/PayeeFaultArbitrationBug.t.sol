@@ -94,7 +94,6 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
         console.log("Rate-based lockup:", paymentRate * lockupPeriod);
         console.log("Expected total lockup:", expectedTotalLockup);
 
-        // SP fails immediately, terminate
         vm.prank(OPERATOR);
         helper.advanceBlocks(15);
 

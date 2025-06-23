@@ -1787,6 +1787,7 @@ contract Payments is
             fundedUntilEpoch = currentEpoch + epochsUntilDebt;
         }
     }
+}
 
 function min(uint256 a, uint256 b) pure returns (uint256) {
     return a < b ? a : b;

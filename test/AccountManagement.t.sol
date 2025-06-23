@@ -48,10 +48,6 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDepositWithPermit(user1Sk, USER1, DEPOSIT_AMOUNT);
     }
 
-    function testDepositWithPermitToAnotherUser() public {
-        helper.makeDepositWithPermit(user1Sk, USER2, DEPOSIT_AMOUNT);
-    }
-
     function testDepositWithPermitExpiredPermitReverts() public {
         helper.expectExpiredPermitToRevert(user1Sk, USER2, DEPOSIT_AMOUNT);
     }

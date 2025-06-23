@@ -714,7 +714,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             initialRate,
             10,            // lockupPeriod
             0,             // fixed lockup
-            address(0)     // no arbiter
+            address(0),     // no arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
             );
             
             // give the operator enough allowance to change the rate
@@ -808,10 +809,6 @@ contract RailSettlementTest is Test, BaseTestHelper {
         Payments.Account memory serviceFeeRecipientBefore = helper
             .getAccountData(SERVICE_FEE_RECIPIENT);
         uint256 feesBefore = payments.accumulatedFees(address(token));
-
-        uint256 operatorBalanceBefore = token.balanceOf(
-            SERVICE_FEE_RECIPIENT
-        );
 
         // --- Settle Rail ---
         vm.startPrank(USER1); // Any participant can settle
@@ -1009,7 +1006,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             initialRate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0), // No arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance 3 blocks at initial rate (5 ether/block)
@@ -1073,7 +1071,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             initialRate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No arbiter
+            address(0), // No arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance 2 blocks at zero rate (no payment)

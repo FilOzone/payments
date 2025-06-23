@@ -4,6 +4,12 @@ A place for all tools related to deploying, upgrading, and managing the Payments
 
 ## Tools
 
+### Available Tools
+
+- **Deployment Scripts**: `deploy-devnet.sh`, `deploy-calibnet.sh`, `deploy-mainnet.sh`
+- **Upgrade Scripts**: `upgrade-contract-calibnet.sh`, `upgrade-contract-mainnet.sh`
+- **Ownership Management**: `transfer-owner.sh`, `propose-owner.sh`, `claim-owner.sh`
+
 ### Deployment Scripts
 
 #### deploy-devnet.sh
@@ -41,6 +47,24 @@ To use these scripts, set the following environment variables:
 - `IMPLEMENTATION_PATH` - Path to the implementation contract (e.g., "src/Payments.sol:Payments")
 - `UPGRADE_DATA` - Calldata for the upgrade (usually empty for simple upgrades)
 - `NEW_OWNER` - Address of the new owner (for ownership transfers)
+
+### Make Targets
+
+```bash
+# Deployment
+make deploy-devnet      # Deploy to local devnet
+make deploy-calibnet    # Deploy to Calibration Testnet
+make deploy-mainnet     # Deploy to Mainnet
+
+# Upgrades
+make upgrade-calibnet   # Upgrade on Calibration Testnet
+make upgrade-mainnet    # Upgrade on Mainnet
+
+# Ownership
+make transfer-owner     # Transfer ownership
+make propose-owner      # Propose new owner (two-step)
+make claim-owner        # Claim ownership (two-step)
+```
 
 ### Example Usage
 

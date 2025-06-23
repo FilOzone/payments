@@ -759,6 +759,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
         Payments.Account memory operatorBefore = helper.getAccountData(
             OPERATOR
         );
+        Payments.Account memory serviceFeeRecipientBefore = helper
+            .getAccountData(SERVICE_FEE_RECIPIENT);
         uint256 feesBefore = payments.accumulatedFees(address(token));
 
         uint256 operatorBalanceBefore = token.balanceOf(
@@ -817,6 +819,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
         Payments.Account memory payerAfter = helper.getAccountData(USER1);
         Payments.Account memory payeeAfter = helper.getAccountData(USER2);
         Payments.Account memory operatorAfter = helper.getAccountData(OPERATOR);
+        Payments.Account memory serviceFeeRecipientAfter = helper
+            .getAccountData(SERVICE_FEE_RECIPIENT);
         uint256 feesAfter = payments.accumulatedFees(address(token));
 
         assertEq(
@@ -840,9 +844,9 @@ contract RailSettlementTest is Test, BaseTestHelper {
             "Accumulated fees mismatch"
         );
         assertEq(
-            token.balanceOf(SERVICE_FEE_RECIPIENT),
-            operatorBalanceBefore + expectedOperatorCommission,
-            "Operator commission balance mismatch"
+            serviceFeeRecipientAfter.funds,
+            serviceFeeRecipientBefore.funds + expectedOperatorCommission,
+            "Service fee recipient funds mismatch"
         );
 
         // --- Test Fees Withdrawal and Subsequent Fee Accumulation ---

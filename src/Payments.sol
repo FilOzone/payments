@@ -850,7 +850,7 @@ contract Payments is
     function calculateAndPayFees(
         uint256 amount,
         address token,
-        address operator,
+        address serviceFeeRecipient,
         uint256 commissionRateBps
     )
         internal
@@ -882,17 +882,8 @@ contract Payments is
 
         // Credit operator (if commission exists)
         if (operatorCommission > 0) {
-            // Ensure the contract has enough funds to pay the operator commission
-            require(
-              IERC20(token).balanceOf(address(this)) >= operatorCommission,
-              "insufficient funds to pay operator commission"  
-            );
-
-            // Transfer operator commission to the operator
-            IERC20(token).safeTransfer(
-                operator,
-                operatorCommission
-            );
+            Account storage serviceFeeRecipientAccount = accounts[token][serviceFeeRecipient];
+            serviceFeeRecipientAccount.funds += operatorCommission;
         }
 
         // Track platform fee

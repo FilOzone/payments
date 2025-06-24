@@ -2,8 +2,8 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {Payments, IArbiter} from "../../src/Payments.sol";
-import {MockArbiter} from "../mocks/MockArbiter.sol";
+import {Payments} from "../../src/Payments.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
 import {PaymentsTestHelpers} from "./PaymentsTestHelpers.sol";
 import {console} from "forge-std/console.sol";
 
@@ -29,18 +29,21 @@ contract RailSettlementHelpers is Test {
         string note;
     }
 
-    function setupRailWithArbitrerAndRateChangeQueue(
+    function setupRailWithValidatorAndRateChangeQueue(
         address from,
         address to,
         address operator,
-        address arbiter,
+        address validator,
         uint256[] memory rates,
         uint256 lockupPeriod,
         uint256 lockupFixed,
         uint256 maxLokkupPeriod,
         address serviceFeeRecipient
     ) public returns (uint256) {
-        require(arbiter != address(0), "RailSettlementHelpers: arbiter cannot be zero address");
+        require(
+            validator != address(0),
+            "RailSettlementHelpers: validator cannot be zero address"
+        );
 
         // Setup operator approval with sufficient allowances
         uint256 maxRate = 0;
@@ -70,7 +73,7 @@ contract RailSettlementHelpers is Test {
             rates[0], // Initial rate
             lockupPeriod,
             lockupFixed,
-            arbiter,
+            validator,
             serviceFeeRecipient
         );
 
@@ -111,8 +114,10 @@ contract RailSettlementHelpers is Test {
         return railId;
     }
 
-    function deployMockArbiter(MockArbiter.ArbiterMode mode) public returns (MockArbiter) {
-        return new MockArbiter(mode);
+    function deployMockValidator(
+        MockValidator.ValidatorMode mode
+    ) public returns (MockValidator) {
+        return new MockValidator(mode);
     }
 
     function settleRailAndVerify(uint256 railId, uint256 untilEpoch, uint256 expectedAmount, uint256 expectedUpto)

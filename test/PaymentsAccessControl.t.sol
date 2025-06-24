@@ -123,7 +123,9 @@ contract AccessControlTest is Test, BaseTestHelper {
         vm.stopPrank();
     }
 
-    function testSettleTerminatedRailWithoutArbitration_RevertsWhenCalledByOperator() public {
+    function testSettleTerminatedRailWithoutValidation_RevertsWhenCalledByOperator()
+        public
+    {
         // 2. Add more funds
         helper.makeDeposit(
             USER1,
@@ -139,7 +141,7 @@ contract AccessControlTest is Test, BaseTestHelper {
         // Attempt to settle from operator account
         vm.startPrank(OPERATOR);
         vm.expectRevert("only the rail client can perform this action");
-        payments.settleTerminatedRailWithoutArbitration(railId);
+        payments.settleTerminatedRailWithoutValidation(railId);
         vm.stopPrank();
     }
 

@@ -5,7 +5,7 @@ pragma solidity ^0.8.20;
 import {Test} from "forge-std/Test.sol";
 import {Payments} from "../src/Payments.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {MockArbiter} from "./mocks/MockArbiter.sol";
+import {MockValidator} from "./mocks/MockValidator.sol";
 import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
 import {console} from "forge-std/console.sol";
@@ -14,7 +14,7 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
     PaymentsTestHelpers helper;
     Payments payments;
     MockERC20 token;
-    MockArbiter arbiter;
+    MockValidator validator;
 
     uint256 constant DEPOSIT_AMOUNT = 200 ether;
 
@@ -24,9 +24,9 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
         payments = helper.payments();
         token = MockERC20(address(helper.testToken()));
 
-        // Create an arbiter that will reduce payment when payee fails
-        arbiter = new MockArbiter(MockArbiter.ArbiterMode.REDUCE_AMOUNT);
-        arbiter.configure(20); // Only approve 20% of requested payment (simulating payee fault)
+        // Create an validator that will reduce payment when payee fails
+        validator = new MockValidator(MockValidator.ValidatorMode.REDUCE_AMOUNT);
+        validator.configure(20); // Only approve 20% of requested payment (simulating payee fault)
 
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
     }
@@ -37,7 +37,14 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
         uint256 fixedLockup = 10 ether;
 
         uint256 railId = helper.setupRailWithParameters(
-            USER1, USER2, OPERATOR, paymentRate, lockupPeriod, fixedLockup, address(arbiter), SERVICE_FEE_RECIPIENT
+            USER1,
+            USER2,
+            OPERATOR,
+            paymentRate,
+            lockupPeriod,
+            fixedLockup,
+            address(validator),
+            SERVICE_FEE_RECIPIENT   
         );
 
         uint256 expectedTotalLockup = fixedLockup + (paymentRate * lockupPeriod);
@@ -70,7 +77,14 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
         uint256 fixedLockup = 10 ether;
 
         uint256 railId = helper.setupRailWithParameters(
-            USER1, USER2, OPERATOR, paymentRate, lockupPeriod, fixedLockup, address(arbiter), SERVICE_FEE_RECIPIENT
+            USER1,
+            USER2,
+            OPERATOR,
+            paymentRate,
+            lockupPeriod,
+            fixedLockup,
+            address(validator),
+            SERVICE_FEE_RECIPIENT
         );
 
         uint256 expectedTotalLockup = fixedLockup + (paymentRate * lockupPeriod);

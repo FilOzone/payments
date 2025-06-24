@@ -34,7 +34,7 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
         helper.setupOperatorApproval(USER1, OPERATOR, RATE_ALLOWANCE, LOCKUP_ALLOWANCE, MAX_LOCKUP_PERIOD);
 
         // Create a rail
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0), SERVICE_FEE_RECIPIENT);
 
         // Set payment rate and lockup
         uint256 paymentRate = 10 ether;
@@ -114,7 +114,7 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
             console.log("\n=== Rail", i, "===");
 
             // Create rail
-            uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+            uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
             // Set payment rate and lockup
             uint256 paymentRate = 10 ether * i;

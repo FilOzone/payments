@@ -11,25 +11,25 @@ import "./RateChangeQueue.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
-interface IArbiter {
-    struct ArbitrationResult {
-        // The actual payment amount determined by the arbiter after arbitration of a rail during settlement
+interface IValidator {
+    struct ValidationResult {
+        // The actual payment amount determined by the validator after validation of a rail during settlement
         uint256 modifiedAmount;
         // The epoch up to and including which settlement should occur.
         uint256 settleUpto;
-        // A placeholder note for any additional information the arbiter wants to send to the caller of `settleRail`
+        // A placeholder note for any additional information the validator wants to send to the caller of `settleRail`
         string note;
     }
 
-    function arbitratePayment(
+    function validatePayment(
         uint256 railId,
         uint256 proposedAmount,
         // the epoch up to and including which the rail has already been settled
         uint256 fromEpoch,
-        // the epoch up to and including which arbitration is requested; payment will be arbitrated for (toEpoch - fromEpoch) epochs
+        // the epoch up to and including which validation is requested; payment will be validated for (toEpoch - fromEpoch) epochs
         uint256 toEpoch,
         uint256 rate
-    ) external returns (ArbitrationResult memory result);
+    ) external returns (ValidationResult memory result);
 }
 
 // @title Payments contract.
@@ -55,7 +55,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         address from;
         address to;
         address operator;
-        address arbiter;
+        address validator;
         uint256 paymentRate;
         uint256 lockupPeriod;
         uint256 lockupFixed;
@@ -92,7 +92,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         address from;
         address to;
         address operator;
-        address arbiter;
+        address validator;
         uint256 paymentRate;
         uint256 lockupPeriod;
         uint256 lockupFixed;
@@ -257,20 +257,21 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     /// @param railId the ID of the rail.
     function getRail(uint256 railId) external view validateRailActive(railId) returns (RailView memory) {
         Rail storage rail = rails[railId];
-        return RailView({
-            token: rail.token,
-            from: rail.from,
-            to: rail.to,
-            operator: rail.operator,
-            arbiter: rail.arbiter,
-            paymentRate: rail.paymentRate,
-            lockupPeriod: rail.lockupPeriod,
-            lockupFixed: rail.lockupFixed,
-            settledUpTo: rail.settledUpTo,
-            endEpoch: rail.endEpoch,
-            commissionRateBps: rail.commissionRateBps,
-            serviceFeeRecipient: rail.serviceFeeRecipient
-        });
+        return
+            RailView({
+                token: rail.token,
+                from: rail.from,
+                to: rail.to,
+                operator: rail.operator,
+                validator: rail.validator,
+                paymentRate: rail.paymentRate,
+                lockupPeriod: rail.lockupPeriod,
+                lockupFixed: rail.lockupFixed,
+                settledUpTo: rail.settledUpTo,
+                endEpoch: rail.endEpoch,
+                commissionRateBps: rail.commissionRateBps,
+                serviceFeeRecipient: rail.serviceFeeRecipient
+            });
     }
 
     /// @notice Updates the approval status and allowances for an operator on behalf of the message sender.
@@ -433,7 +434,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     /// @param token The ERC20 token address for payments on this rail.
     /// @param from The client address (payer) for this rail.
     /// @param to The recipient address for payments on this rail.
-    /// @param arbiter Optional address of an arbiter contract (can be address(0) for no arbitration).
+    /// @param validator Optional address of an validator contract (can be address(0) for no validation).
     /// @param commissionRateBps Optional operator commission in basis points (0-10000).
     /// @param serviceFeeRecipient Address to receive operator commission
     /// @return The ID of the newly created rail.
@@ -442,7 +443,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         address token,
         address from,
         address to,
-        address arbiter,
+        address validator,
         uint256 commissionRateBps,
         address serviceFeeRecipient
     ) external nonReentrant validateNonZeroAddress(from, "from") validateNonZeroAddress(to, "to") returns (uint256) {
@@ -467,7 +468,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         rail.from = from;
         rail.to = to;
         rail.operator = operator;
-        rail.arbiter = arbiter;
+        rail.validator = validator;
         rail.settledUpTo = block.number;
         rail.endEpoch = 0;
         rail.commissionRateBps = commissionRateBps;
@@ -686,8 +687,11 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         }
 
         // Only queue the previous rate once per epoch
-        if (rail.rateChangeQueue.isEmpty() || rail.rateChangeQueue.peekTail().untilEpoch != block.number) {
-            // For arbitrated rails, we need to enqueue the old rate.
+        if (
+            rail.rateChangeQueue.isEmpty() ||
+            rail.rateChangeQueue.peekTail().untilEpoch != block.number
+        ) {
+            // For validated rails, we need to enqueue the old rate.
             // This ensures that the old rate is applied up to and including the current block.
             // The new rate will be applicable starting from the next block.
             rail.rateChangeQueue.enqueue(oldRate, block.number);
@@ -755,7 +759,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         }
     }
 
-    /// @notice Settles payments for a terminated rail without arbitration. This may only be called by the payee and after the terminated rail's max settlement epoch has passed. It's an escape-hatch to unblock payments in an otherwise stuck rail (e.g., due to a buggy arbiter contract) and it always pays in full.
+    /// @notice Settles payments for a terminated rail without validation. This may only be called by the payee and after the terminated rail's max settlement epoch has passed. It's an escape-hatch to unblock payments in an otherwise stuck rail (e.g., due to a buggy validator contract) and it always pays in full.
     /// @param railId The ID of the rail to settle.
     /// @return totalSettledAmount The total amount settled and transferred.
     /// @return totalNetPayeeAmount The net amount credited to the payee after fees.
@@ -763,7 +767,9 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     /// @return totalOperatorCommission The commission credited to the operator.
     /// @return finalSettledEpoch The epoch up to which settlement was actually completed.
     /// @return note Additional information about the settlement.
-    function settleTerminatedRailWithoutArbitration(uint256 railId)
+    function settleTerminatedRailWithoutValidation(
+        uint256 railId
+    )
         external
         nonReentrant
         validateRailActive(railId)
@@ -783,13 +789,13 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(rails[railId]);
         require(
             block.number > maxSettleEpoch,
-            "terminated rail can only be settled without arbitration after max settlement epoch"
+            "terminated rail can only be settled without validation after max settlement epoch"
         );
 
         return settleRailInternal(railId, maxSettleEpoch, true);
     }
 
-    /// @notice Settles payments for a rail up to the specified epoch. Settlement may fail to reach the target epoch if either the client lacks the funds to pay up to the current epoch or the arbiter refuses to settle the entire requested range.
+    /// @notice Settles payments for a rail up to the specified epoch. Settlement may fail to reach the target epoch if either the client lacks the funds to pay up to the current epoch or the validator refuses to settle the entire requested range.
     /// @param railId The ID of the rail to settle.
     /// @param untilEpoch The epoch up to which to settle (must not exceed current block number).
     /// @return totalSettledAmount The total amount settled and transferred.
@@ -797,8 +803,11 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     /// @return totalPaymentFee The fee retained by the payment contract.
     /// @return totalOperatorCommission The commission credited to the operator.
     /// @return finalSettledEpoch The epoch up to which settlement was actually completed.
-    /// @return note Additional information about the settlement (especially from arbitration).
-    function settleRail(uint256 railId, uint256 untilEpoch)
+    /// @return note Additional information about the settlement (especially from validation).
+    function settleRail(
+        uint256 railId,
+        uint256 untilEpoch
+    )
         public
         nonReentrant
         validateRailActive(railId)
@@ -816,7 +825,11 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         return settleRailInternal(railId, untilEpoch, false);
     }
 
-    function settleRailInternal(uint256 railId, uint256 untilEpoch, bool skipArbitration)
+    function settleRailInternal(
+        uint256 railId,
+        uint256 untilEpoch,
+        bool skipValidation
+    )
         internal
         returns (
             uint256 totalSettledAmount,
@@ -867,7 +880,13 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
                 uint256 paymentFee,
                 uint256 operatorCommission,
                 string memory segmentNote
-            ) = _settleSegment(railId, startEpoch, maxSettlementEpoch, rail.paymentRate, skipArbitration);
+            ) = _settleSegment(
+                    railId,
+                    startEpoch,
+                    maxSettlementEpoch,
+                    rail.paymentRate,
+                    skipValidation
+                );
 
             require(rail.settledUpTo > startEpoch, "No progress in settlement");
 
@@ -889,7 +908,13 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
                 uint256 paymentFee,
                 uint256 operatorCommission,
                 string memory settledNote
-            ) = _settleWithRateChanges(railId, rail.paymentRate, startEpoch, maxSettlementEpoch, skipArbitration);
+            ) = _settleWithRateChanges(
+                    railId,
+                    rail.paymentRate,
+                    startEpoch,
+                    maxSettlementEpoch,
+                    skipValidation
+                );
 
             return checkAndFinalizeTerminatedRail(
                 rail,
@@ -954,7 +979,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         uint256 currentRate,
         uint256 startEpoch,
         uint256 targetEpoch,
-        bool skipArbitration
+        bool skipValidation
     )
         internal
         returns (
@@ -996,23 +1021,29 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
                 continue;
             }
 
-            // Settle the current segment with potentially arbitrated outcomes
+            // Settle the current segment with potentially validated outcomes
             (
                 uint256 segmentSettledAmount,
                 uint256 segmentNetPayeeAmount,
                 uint256 segmentPaymentFee,
                 uint256 segmentOperatorCommission,
-                string memory arbitrationNote
-            ) = _settleSegment(railId, state.processedEpoch, segmentEndBoundary, segmentRate, skipArbitration);
+                string memory validationNote
+            ) = _settleSegment(
+                    railId,
+                    state.processedEpoch,
+                    segmentEndBoundary,
+                    segmentRate,
+                    skipValidation
+                );
 
-            // If arbiter returned no progress, exit early without updating state
+            // If validator returned no progress, exit early without updating state
             if (rail.settledUpTo <= state.processedEpoch) {
                 return (
                     state.totalSettledAmount,
                     state.totalNetPayeeAmount,
                     state.totalPaymentFee,
                     state.totalOperatorCommission,
-                    arbitrationNote
+                    validationNote
                 );
             }
 
@@ -1022,20 +1053,20 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             state.totalPaymentFee += segmentPaymentFee;
             state.totalOperatorCommission += segmentOperatorCommission;
 
-            // If arbiter partially settled the segment, exit early
+            // If validator partially settled the segment, exit early
             if (rail.settledUpTo < segmentEndBoundary) {
                 return (
                     state.totalSettledAmount,
                     state.totalNetPayeeAmount,
                     state.totalPaymentFee,
                     state.totalOperatorCommission,
-                    arbitrationNote
+                    validationNote
                 );
             }
 
             // Successfully settled full segment, update tracking values
             state.processedEpoch = rail.settledUpTo;
-            state.note = arbitrationNote;
+            state.note = validationNote;
 
             // Remove the processed rate change from the queue
             if (!rateQueue.isEmpty()) {
@@ -1076,7 +1107,13 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         }
     }
 
-    function _settleSegment(uint256 railId, uint256 epochStart, uint256 epochEnd, uint256 rate, bool skipArbitration)
+    function _settleSegment(
+        uint256 railId,
+        uint256 epochStart,
+        uint256 epochEnd,
+        uint256 rate,
+        bool skipValidation
+    )
         internal
         returns (
             uint256 totalSettledAmount,
@@ -1095,33 +1132,44 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             return (0, 0, 0, 0, "Zero rate payment rail");
         }
 
-        // Calculate the default settlement values (without arbitration)
+        // Calculate the default settlement values (without validation)
         uint256 duration = epochEnd - epochStart;
         uint256 expectedSettledAmount = rate * duration;
         uint256 settledAmount = expectedSettledAmount;
         uint256 settledUntilEpoch = epochEnd;
         note = "";
 
-        // If this rail has an arbiter and we're not skipping arbitration, let it decide on the final settlement amount
-        if (rail.arbiter != address(0) && !skipArbitration) {
-            IArbiter arbiter = IArbiter(rail.arbiter);
-            IArbiter.ArbitrationResult memory result =
-                arbiter.arbitratePayment(railId, settledAmount, epochStart, epochEnd, rate);
+        // If this rail has an validator and we're not skipping validation, let it decide on the final settlement amount
+        if (rail.validator != address(0) && !skipValidation) {
+            IValidator validator = IValidator(rail.validator);
+            IValidator.ValidationResult memory result = validator.validatePayment(
+                railId,
+                settledAmount,
+                epochStart,
+                epochEnd,
+                rate
+            );
 
-            // Ensure arbiter doesn't settle beyond our segment's end boundary
-            require(result.settleUpto <= epochEnd, "arbiter settled beyond segment end");
-            require(result.settleUpto >= epochStart, "arbiter settled before segment start");
+            // Ensure validator doesn't settle beyond our segment's end boundary
+            require(
+                result.settleUpto <= epochEnd,
+                "validator settled beyond segment end"
+            );
+            require(
+                result.settleUpto >= epochStart,
+                "validator settled before segment start"
+            );
 
             settledUntilEpoch = result.settleUpto;
             settledAmount = result.modifiedAmount;
             note = result.note;
 
-            // Ensure arbiter doesn't allow more payment than the maximum possible
+            // Ensure validator doesn't allow more payment than the maximum possible
             // for the epochs they're confirming
             uint256 maxAllowedAmount = rate * (settledUntilEpoch - epochStart);
             require(
                 result.modifiedAmount <= maxAllowedAmount,
-                "arbiter modified amount exceeds maximum for settled duration"
+                "validator modified amount exceeds maximum for settled duration"
             );
         }
 
@@ -1235,7 +1283,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         rail.from = address(0); // This now marks the rail as inactive
         rail.to = address(0);
         rail.operator = address(0);
-        rail.arbiter = address(0);
+        rail.validator = address(0);
         rail.paymentRate = 0;
         rail.lockupFixed = 0;
         rail.lockupPeriod = 0;

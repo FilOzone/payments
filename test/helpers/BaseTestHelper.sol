@@ -9,7 +9,7 @@ contract BaseTestHelper is Test {
     uint256 internal user2Sk = 3;
     uint256 internal operatorSk = 4;
     uint256 internal operator2Sk = 5;
-    uint256 internal arbiterSk = 6;
+    uint256 internal validatorSk = 6;
     uint256 internal serviceFeeRecipientSk = 7;
 
     address public immutable OWNER = vm.addr(ownerSk);
@@ -17,6 +17,6 @@ contract BaseTestHelper is Test {
     address public immutable USER2 = vm.addr(user2Sk);
     address public immutable OPERATOR = vm.addr(operatorSk);
     address public immutable OPERATOR2 = vm.addr(operator2Sk);
-    address public immutable ARBITER = vm.addr(arbiterSk);
+    address public immutable VALIDATOR = vm.addr(validatorSk);
     address public immutable SERVICE_FEE_RECIPIENT = vm.addr(serviceFeeRecipientSk);
 }

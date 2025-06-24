@@ -1423,9 +1423,12 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         uint256 currentEpoch = block.number;
 
-        fundedUntilEpoch = account.lockupRate == 0 ? type(uint256).max : account.lockupLastSettledAt + (account.funds - account.lockupCurrent) / account.lockupRate;
+        fundedUntilEpoch = account.lockupRate == 0
+            ? type(uint256).max
+            : account.lockupLastSettledAt + (account.funds - account.lockupCurrent) / account.lockupRate;
         uint256 simulatedSettledAt = fundedUntilEpoch >= currentEpoch ? currentEpoch : fundedUntilEpoch;
-        uint256 simulatedLockupCurrent = account.lockupCurrent + account.lockupRate * (simulatedSettledAt - account.lockupLastSettledAt);
+        uint256 simulatedLockupCurrent =
+            account.lockupCurrent + account.lockupRate * (simulatedSettledAt - account.lockupLastSettledAt);
         availableFunds = account.funds - simulatedLockupCurrent;
 
         return (fundedUntilEpoch, currentFunds, availableFunds, currentLockupRate);

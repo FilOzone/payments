@@ -313,6 +313,28 @@ contract Payments is
             });
     }
 
+    /// @notice Checks if a rail is in debt by settling the payer's account lockup and checking if it's behind.
+    /// @param railId The ID of the rail to check.
+    /// @return True if the rail is in debt (payer's lockup cannot be fully settled to current epoch), false otherwise.
+    function isRailInDebt(
+        uint256 railId
+    ) external validateRailActive(railId) nonReentrant returns (bool) {
+        Rail storage rail = rails[railId];
+        
+        // Zero rate rails with empty rate change queues never contribute to debt
+        if (rail.paymentRate == 0 && rail.rateChangeQueue.isEmpty()) {
+            return false;
+        }
+        
+        Account storage payerAccount = accounts[rail.token][rail.from];
+        
+        // Settle the account lockup and get the epoch it was settled to
+        uint256 settledUpToEpoch = settleAccountLockup(payerAccount);
+        
+        // If settledUpToEpoch is less than current epoch, the account is in debt
+        return settledUpToEpoch < block.number;
+    }
+
     /// @notice Updates the approval status and allowances for an operator on behalf of the message sender.
     /// @param token The ERC20 token address for which the approval is being set.
     /// @param operator The address of the operator whose approval is being modified.

@@ -44,7 +44,8 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
             paymentRate,
             lockupPeriod,
             fixedLockup,
-            address(arbiter)
+            address(arbiter),
+            SERVICE_FEE_RECIPIENT   
         );
 
         uint256 expectedTotalLockup = fixedLockup + (paymentRate * lockupPeriod);
@@ -84,7 +85,8 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
             paymentRate,
             lockupPeriod,
             fixedLockup,
-            address(arbiter)
+            address(arbiter),
+            SERVICE_FEE_RECIPIENT
         );
 
         uint256 expectedTotalLockup = fixedLockup + (paymentRate * lockupPeriod);

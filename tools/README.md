@@ -1,4 +1,4 @@
-# Filecoin Payment services Tools
+# Filecoin Payment Services Tools
 
 A place for all tools related to deploying, upgrading, and managing the Payments contract.
 
@@ -6,44 +6,52 @@ A place for all tools related to deploying, upgrading, and managing the Payments
 
 ### Available Tools
 
-- **Deployment Scripts**: `deploy-devnet.sh`, `deploy-calibnet.sh`, `deploy-mainnet.sh`
-- **Upgrade Scripts**: `upgrade-contract-calibnet.sh`, `upgrade-contract-mainnet.sh`
-- **Ownership Management**: `transfer-owner.sh`, `propose-owner.sh`, `claim-owner.sh`
+- **Deployment Script**: `deploy.sh` (all networks)
+- **Upgrade Script**: `upgrade-contract.sh` (all networks)
+- **Ownership Management**: `transfer-owner.sh`, `get-owner.sh`
 
-### Deployment Scripts
+### Deployment Script
 
-#### deploy-devnet.sh
-This script deploys the Payments contract to a local filecoin devnet. It assumes lotus binary is in path and local devnet is running with eth API enabled. The keystore will be funded automatically from lotus default address.
+#### deploy.sh
+This script deploys the Payments contract to the specified network. Usage:
 
-#### deploy-calibnet.sh
-This script deploys the Payments contract to Filecoin Calibration Testnet. Requires environment variables for RPC_URL, KEYSTORE, and PASSWORD.
+```bash
+./tools/deploy.sh <chain_id>
+# Example: 314159 (calibnet), 314 (mainnet), 12345 (devnet)
+```
+- Uses `IMPLEMENTATION_PATH` if set, otherwise defaults to `src/Payments.sol:Payments`.
+- Sets a default `RPC_URL` if not provided, based on `CHAIN_ID`.
+- Outputs the Payments Contract Address (proxy) and Implementation Address.
 
-#### deploy-mainnet.sh
-This script deploys the Payments contract to Filecoin Mainnet. Requires environment variables for RPC_URL, KEYSTORE, and PASSWORD.
+### Upgrade Script
 
-### Upgrade Scripts
+#### upgrade-contract.sh
+This script upgrades the Payments contract on the specified network. Usage:
 
-#### upgrade-contract-calibnet.sh
-This script upgrades the proxy contract to a new implementation on Calibration Testnet. Requires PROXY_ADDRESS, IMPLEMENTATION_PATH, and UPGRADE_DATA environment variables.
-
-#### upgrade-contract-mainnet.sh
-This script upgrades the proxy contract to a new implementation on Mainnet. Requires PROXY_ADDRESS, IMPLEMENTATION_PATH, and UPGRADE_DATA environment variables.
+```bash
+./tools/upgrade-contract.sh <chain_id>
+# Example: 314159 (calibnet), 314 (mainnet), 12345 (devnet)
+```
+- Uses `IMPLEMENTATION_PATH` if set, otherwise defaults to `src/Payments.sol:Payments`.
+- Sets a default `RPC_URL` if not provided, based on `CHAIN_ID`.
+- Requires `PAYMENTS_CONTRACT_ADDRESS` environment variable.
+- Outputs the Payments Contract Address and new Implementation Address.
 
 ### Ownership Management Scripts
 
 #### get-owner.sh
-This script displays the current owner of the proxy contract. Requires PROXY_ADDRESS environment variable.
+This script displays the current owner of the Payments contract. Requires `PAYMENTS_CONTRACT_ADDRESS` environment variable.
 
 #### transfer-owner.sh
-This script transfers ownership of the proxy contract to a new owner. Requires NEW_OWNER environment variable.
+This script transfers ownership of the Payments contract to a new owner. Requires `PAYMENTS_CONTRACT_ADDRESS` and `NEW_OWNER` environment variables.
 
 ### Environment Variables
 
 To use these scripts, set the following environment variables:
-- `RPC_URL` - The RPC URL for the network (devnet/calibnet/mainnet)
+- `RPC_URL` - The RPC URL for the network. For Calibration Testnet (314159) and Mainnet (314), a default is set if not provided. For devnet or any custom CHAIN_ID, you must set `RPC_URL` explicitly.
 - `KEYSTORE` - Path to the keystore file
 - `PASSWORD` - Password for the keystore
-- `PROXY_ADDRESS` - Address of the proxy contract (for upgrades and ownership operations)
+- `PAYMENTS_CONTRACT_ADDRESS` - Address of the Payments contract (proxy, for upgrades and ownership operations)
 - `IMPLEMENTATION_PATH` - Path to the implementation contract (e.g., "src/Payments.sol:Payments")
 - `UPGRADE_DATA` - Calldata for the upgrade (usually empty for simple upgrades)
 - `NEW_OWNER` - Address of the new owner (for ownership transfers)
@@ -52,40 +60,92 @@ To use these scripts, set the following environment variables:
 
 ```bash
 # Deployment
-make deploy-devnet      # Deploy to local devnet
-make deploy-calibnet    # Deploy to Calibration Testnet
-make deploy-mainnet     # Deploy to Mainnet
+make deploy-devnet <chain_id>       # Deploy to local devnet
+make deploy-calibnet                # Deploy to Calibration Testnet
+make deploy-mainnet                 # Deploy to Mainnet
 
 # Upgrades
-make upgrade-calibnet   # Upgrade on Calibration Testnet
-make upgrade-mainnet    # Upgrade on Mainnet
+make upgrade-devnet  <chain_id>     # Upgrade on local devnet
+make upgrade-calibnet               # Upgrade on Calibration Testnet
+make upgrade-mainnet                # Upgrade on Mainnet
 
 # Ownership
 make transfer-owner     # Transfer ownership
-make propose-owner      # Propose new owner (two-step)
-make claim-owner        # Claim ownership (two-step)
+make get-owner          # Display current owner
+```
+
+---
+
+### Direct Script Usage (without Make)
+
+You can run all scripts directly from the `tools/` directory without using Makefile targets.  
+Set the required environment variables as shown below, then invoke the scripts with the appropriate arguments.
+
+**Note:**  
+- For Calibration Testnet (314159) and Mainnet (314), the script sets a default `RPC_URL` if not provided.  
+- For devnet or any custom `CHAIN_ID`, you must set `RPC_URL` explicitly or the script will exit with an error.  
+- You can always inspect each script for more details on required and optional environment variables.
+
+#### Deploy
+
+```bash
+export KEYSTORE="/path/to/keystore"
+export PASSWORD="your-password"
+# Optionally set IMPLEMENTATION_PATH and RPC_URL
+./tools/deploy.sh <chain_id>
+# Example: ./tools/deploy.sh 314159
+```
+
+#### Upgrade
+
+```bash
+export KEYSTORE="/path/to/keystore"
+export PASSWORD="your-password"
+export PAYMENTS_CONTRACT_ADDRESS="0x..."
+# Optionally set IMPLEMENTATION_PATH, UPGRADE_DATA, and RPC_URL
+./tools/upgrade-contract.sh <chain_id>
+# Example: ./tools/upgrade-contract.sh 314
+```
+
+#### Get Owner
+
+```bash
+export PAYMENTS_CONTRACT_ADDRESS="0x..."
+# Optionally set RPC_URL
+./tools/get-owner.sh
+```
+
+#### Transfer Ownership
+
+```bash
+export KEYSTORE="/path/to/keystore"
+export PASSWORD="your-password"
+export PAYMENTS_CONTRACT_ADDRESS="0x..."
+export NEW_OWNER="0x..."
+# Optionally set RPC_URL
+./tools/transfer-owner.sh
 ```
 
 ### Example Usage
 
 ```bash
 # Get current owner
-export PROXY_ADDRESS="0x..."
-./tools/get-owner.sh
+export PAYMENTS_CONTRACT_ADDRESS="0x..."
+make get-owner
 
 # Deploy to calibnet
-export RPC_URL="https://api.calibration.node.glif.io/rpc/v1"
 export KEYSTORE="/path/to/keystore"
 export PASSWORD="your-password"
-./tools/deploy-calibnet.sh
+make deploy-calibnet
 
 # Upgrade contract
-export PROXY_ADDRESS="0x..."
+export PAYMENTS_CONTRACT_ADDRESS="0x..."
 export IMPLEMENTATION_PATH="src/Payments.sol:Payments"
 export UPGRADE_DATA="0x"
-./tools/upgrade-contract-calibnet.sh
+make upgrade-calibnet
 
 # Transfer ownership
+export PAYMENTS_CONTRACT_ADDRESS="0x..."
 export NEW_OWNER="0x..."
-./tools/transfer-owner.sh
+make transfer-owner
 ``` 

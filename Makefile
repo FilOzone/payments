@@ -26,24 +26,28 @@ test:
 # Deployment targets
 .PHONY: deploy-calibnet
 deploy-calibnet:
-	./tools/deploy-calibnet.sh
+	./tools/deploy.sh 314159
 
 .PHONY: deploy-devnet
 deploy-devnet:
-	./tools/deploy-devnet.sh
+	./tools/deploy.sh $${CHAIN_ID}
 
 .PHONY: deploy-mainnet
 deploy-mainnet:
-	./tools/deploy-mainnet.sh
+	./tools/deploy.sh 314
 
 # Upgrade targets
 .PHONY: upgrade-calibnet
 upgrade-calibnet:
-	./tools/upgrade-contract-calibnet.sh
+	./tools/upgrade-contract.sh 314159
+
+.PHONY: upgrade-devnet
+upgrade-devnet:
+	./tools/upgrade-contract.sh $${CHAIN_ID}
 
 .PHONY: upgrade-mainnet
 upgrade-mainnet:
-	./tools/upgrade-contract-mainnet.sh
+	./tools/upgrade-contract.sh 314
 
 # Ownership management targets
 .PHONY: transfer-owner

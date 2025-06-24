@@ -3,7 +3,7 @@
 # Usage: ./tools/upgrade-contract.sh <chain_id>
 # Example: ./tools/upgrade-contract.sh 314159 (calibnet)
 #          ./tools/upgrade-contract.sh 314 (mainnet)
-#          ./tools/upgrade-contract.sh 12345 (devnet)
+#          ./tools/upgrade-contract.sh 31415926 (devnet)
 #
 set -euo pipefail
 

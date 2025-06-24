@@ -60,12 +60,12 @@ To use these scripts, set the following environment variables:
 
 ```bash
 # Deployment
-make deploy-devnet <chain_id>       # Deploy to local devnet
+make deploy-devnet                  # Deploy to local devnet
 make deploy-calibnet                # Deploy to Calibration Testnet
 make deploy-mainnet                 # Deploy to Mainnet
 
 # Upgrades
-make upgrade-devnet  <chain_id>     # Upgrade on local devnet
+make upgrade-devnet                 # Upgrade on local devnet
 make upgrade-calibnet               # Upgrade on Calibration Testnet
 make upgrade-mainnet                # Upgrade on Mainnet
 

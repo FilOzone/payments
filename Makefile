@@ -30,7 +30,7 @@ deploy-calibnet:
 
 .PHONY: deploy-devnet
 deploy-devnet:
-	./tools/deploy.sh $${CHAIN_ID}
+	./tools/deploy.sh 31415926
 
 .PHONY: deploy-mainnet
 deploy-mainnet:
@@ -43,7 +43,7 @@ upgrade-calibnet:
 
 .PHONY: upgrade-devnet
 upgrade-devnet:
-	./tools/upgrade-contract.sh $${CHAIN_ID}
+	./tools/upgrade-contract.sh 31415926
 
 .PHONY: upgrade-mainnet
 upgrade-mainnet:

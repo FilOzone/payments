@@ -1422,48 +1422,13 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         currentLockupRate = account.lockupRate;
 
         uint256 currentEpoch = block.number;
-        uint256 elapsedTime = currentEpoch - account.lockupLastSettledAt;
-        uint256 simulatedLockupCurrent = account.lockupCurrent;
 
-        // Early return for simple cases: no elapsed time or no lockup rate
-        if (elapsedTime <= 0 || account.lockupRate == 0) {
-            availableFunds = account.funds > simulatedLockupCurrent ? account.funds - simulatedLockupCurrent : 0;
+        fundedUntilEpoch = account.lockupRate == 0 ? type(uint256).max : account.lockupLastSettledAt + (account.funds - account.lockupCurrent) / account.lockupRate;
+        uint256 simulatedSettledAt = fundedUntilEpoch >= currentEpoch ? currentEpoch : fundedUntilEpoch;
+        uint256 simulatedLockupCurrent = account.lockupCurrent + account.lockupRate * (simulatedSettledAt - account.lockupLastSettledAt);
+        availableFunds = account.funds - simulatedLockupCurrent;
 
-            // If no lockup rate, account never goes into debt
-            fundedUntilEpoch = account.lockupRate == 0
-                ? type(uint256).max
-                : availableFunds == 0 ? account.lockupLastSettledAt : currentEpoch + (availableFunds / account.lockupRate);
-
-            return (fundedUntilEpoch, currentFunds, availableFunds, currentLockupRate);
-        }
-
-        // Handle case where we need to calculate additional lockup
-        uint256 additionalLockup = account.lockupRate * elapsedTime;
-
-        // If we have sufficient funds to cover the additional lockup
-        if (account.funds >= account.lockupCurrent + additionalLockup) {
-            simulatedLockupCurrent = account.lockupCurrent + additionalLockup;
-        } else {
-            // Calculate partial settlement
-            uint256 availableForLockup = account.funds - account.lockupCurrent;
-            if (availableForLockup > 0) {
-                // Calculate how many epochs we can fund with available funds
-                uint256 fractionalEpochs = availableForLockup / account.lockupRate;
-                simulatedLockupCurrent = account.lockupCurrent + (account.lockupRate * fractionalEpochs);
-            }
-        }
-
-        // Calculate available balance and fundedUntilEpoch
-        availableFunds = account.funds > simulatedLockupCurrent ? account.funds - simulatedLockupCurrent : 0;
-
-        if (availableFunds == 0) {
-            // Calculate when debt started based on how many epochs we could fund
-            uint256 fractionalEpochs = (simulatedLockupCurrent - account.lockupCurrent) / account.lockupRate;
-            fundedUntilEpoch = account.lockupLastSettledAt + fractionalEpochs;
-        } else {
-            uint256 epochsUntilDebt = availableFunds / account.lockupRate;
-            fundedUntilEpoch = currentEpoch + epochsUntilDebt;
-        }
+        return (fundedUntilEpoch, currentFunds, availableFunds, currentLockupRate);
     }
 }
 

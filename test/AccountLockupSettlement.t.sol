@@ -8,6 +8,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
 import {console} from "forge-std/console.sol";
+
 contract AccountLockupSettlementTest is Test, BaseTestHelper {
     PaymentsTestHelpers helper;
     Payments payments;
@@ -43,13 +44,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
 
         // Verify settlement occurred
-        helper.assertAccountState(
-            USER1,
-            DEPOSIT_AMOUNT * 2,
-            0,
-            0,
-            block.number
-        );
+        helper.assertAccountState(USER1, DEPOSIT_AMOUNT * 2, 0, 0, block.number);
     }
 
     function testSimpleLockupAccumulation() public {
@@ -87,13 +82,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
         uint256 expectedLockup = initialLockup + accumulatedLockup;
 
         // Verify settlement occurred
-        helper.assertAccountState(
-            USER1,
-            DEPOSIT_AMOUNT * 2,
-            expectedLockup,
-            lockupRate,
-            block.number
-        );
+        helper.assertAccountState(USER1, DEPOSIT_AMOUNT * 2, expectedLockup, lockupRate, block.number);
     }
 
     function testPartialSettlement() public {
@@ -172,9 +161,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
 
         // Verify settlement occurred
-        uint256 expectedLockup = initialLockup +
-            (lockupRate * 30) +
-            (lockupRate * lockupPeriod); // accumulated lockup // future lockup
+        uint256 expectedLockup = initialLockup + (lockupRate * 30) + (lockupRate * lockupPeriod); // accumulated lockup // future lockup
 
         // Verify settlement occurred
         helper.assertAccountState(
@@ -242,9 +229,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
         );
 
         // This should fail because lockupFixed > available funds
-        vm.expectRevert(
-            "invariant failure: insufficient funds to cover lockup after function execution"
-        );
+        vm.expectRevert("invariant failure: insufficient funds to cover lockup after function execution");
         payments.modifyRailLockup(railId, 10, DEPOSIT_AMOUNT * 2);
         vm.stopPrank();
     }
@@ -276,11 +261,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
         // Available for withdrawal at creation: 200 ether - 60 ether = 140 ether
 
         // Try to withdraw more than available (should fail)
-        helper.expectWithdrawalToFail(
-            USER1,
-            150 ether,
-            bytes("insufficient unlocked funds for withdrawal")
-        );
+        helper.expectWithdrawalToFail(USER1, 150 ether, bytes("insufficient unlocked funds for withdrawal"));
 
         // Withdraw exactly the available amount (should succeed and also settle account lockup)
         helper.makeWithdrawal(USER1, 140 ether);

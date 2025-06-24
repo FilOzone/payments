@@ -31,13 +31,7 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
 
     function testOperatorLockupUsageLeakOnRailFinalization() public {
         // Setup operator approval
-        helper.setupOperatorApproval(
-            USER1,
-            OPERATOR,
-            RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE,
-            MAX_LOCKUP_PERIOD
-        );
+        helper.setupOperatorApproval(USER1, OPERATOR, RATE_ALLOWANCE, LOCKUP_ALLOWANCE, MAX_LOCKUP_PERIOD);
 
         // Create a rail
         uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
@@ -54,7 +48,7 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
 
         // Calculate expected lockup usage
         uint256 expectedLockupUsage = lockupFixed + (paymentRate * lockupPeriod);
-        
+
         console.log("Initial lockup usage calculation:");
         console.log("  Fixed lockup:", lockupFixed);
         console.log("  Rate-based lockup:", paymentRate * lockupPeriod);
@@ -62,14 +56,7 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
 
         // Verify initial lockup usage is correct
         helper.verifyOperatorAllowances(
-            USER1,
-            OPERATOR,
-            true,
-            RATE_ALLOWANCE,
-            LOCKUP_ALLOWANCE,
-            paymentRate,
-            expectedLockupUsage,
-            MAX_LOCKUP_PERIOD
+            USER1, OPERATOR, true, RATE_ALLOWANCE, LOCKUP_ALLOWANCE, paymentRate, expectedLockupUsage, MAX_LOCKUP_PERIOD
         );
 
         // Terminate the rail (by client)
@@ -78,11 +65,11 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
         vm.stopPrank();
 
         // Get the account's lockup settled epoch
-        (, , , uint256 lockupLastSettledAt) = payments.accounts(address(testToken), USER1);
-        
+        (,,, uint256 lockupLastSettledAt) = payments.accounts(address(testToken), USER1);
+
         // Calculate the rail's end epoch
         uint256 endEpoch = lockupLastSettledAt + lockupPeriod;
-        
+
         console.log("\nAfter termination:");
         console.log("  Current block:", block.number);
         console.log("  Lockup last settled at:", lockupLastSettledAt);
@@ -90,13 +77,13 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
 
         // Move time forward to after the rail's end epoch
         vm.roll(endEpoch + 1);
-        
+
         console.log("\nAfter time advance:");
         console.log("  Current block:", block.number);
 
         // Settle the rail completely - this will trigger finalizeTerminatedRail
         vm.startPrank(USER2); // Payee can settle
-        (uint256 settledAmount, , , , uint256 finalEpoch, ) = payments.settleRail(railId, endEpoch);
+        (uint256 settledAmount,,,, uint256 finalEpoch,) = payments.settleRail(railId, endEpoch);
         vm.stopPrank();
 
         console.log("\nAfter settlement:");
@@ -104,18 +91,13 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
         console.log("  Final epoch:", finalEpoch);
 
         // Check operator lockup usage after finalization
-        (
-            ,
-            ,
-            ,
-            uint256 rateUsageAfter,
-            uint256 lockupUsageAfter,
-        ) = payments.operatorApprovals(address(testToken), USER1, OPERATOR);
+        (,,, uint256 rateUsageAfter, uint256 lockupUsageAfter,) =
+            payments.operatorApprovals(address(testToken), USER1, OPERATOR);
 
         console.log("\nFinal operator usage:");
         console.log("  Rate usage:", rateUsageAfter);
         console.log("  Lockup usage:", lockupUsageAfter);
-        
+
         // Assert the correct behavior: lockup usage should be 0 after finalization
         assertEq(lockupUsageAfter, 0, "Lockup usage should be 0 after rail finalization");
         assertEq(rateUsageAfter, 0, "Rate usage should be 0 after rail finalization");
@@ -123,20 +105,14 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
 
     function testMultipleRailsShowCumulativeLeak() public {
         // Setup operator approval with higher allowances
-        helper.setupOperatorApproval(
-            USER1,
-            OPERATOR,
-            RATE_ALLOWANCE * 5,
-            LOCKUP_ALLOWANCE * 5,
-            MAX_LOCKUP_PERIOD
-        );
+        helper.setupOperatorApproval(USER1, OPERATOR, RATE_ALLOWANCE * 5, LOCKUP_ALLOWANCE * 5, MAX_LOCKUP_PERIOD);
 
         uint256 totalLeakedUsage = 0;
 
         // Create and terminate multiple rails to show cumulative effect
-        for (uint i = 1; i <= 3; i++) {
+        for (uint256 i = 1; i <= 3; i++) {
             console.log("\n=== Rail", i, "===");
-            
+
             // Create rail
             uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
 
@@ -156,7 +132,7 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
             vm.stopPrank();
 
             // Get end epoch
-            (, , , uint256 lockupLastSettledAt) = payments.accounts(address(testToken), USER1);
+            (,,, uint256 lockupLastSettledAt) = payments.accounts(address(testToken), USER1);
             uint256 endEpoch = lockupLastSettledAt + lockupPeriod;
 
             // Move time forward
@@ -170,23 +146,17 @@ contract OperatorApprovalUsageLeakTest is Test, BaseTestHelper {
             // Track leaked usage
             uint256 leakedForThisRail = paymentRate * lockupPeriod;
             totalLeakedUsage += leakedForThisRail;
-            
+
             console.log("  Leaked usage from this rail:", leakedForThisRail);
         }
 
         // Check final operator lockup usage
-        (
-            ,
-            ,
-            ,
-            ,
-            uint256 finalLockupUsage,
-        ) = payments.operatorApprovals(address(testToken), USER1, OPERATOR);
+        (,,,, uint256 finalLockupUsage,) = payments.operatorApprovals(address(testToken), USER1, OPERATOR);
 
         console.log("\n=== FINAL OPERATOR USAGE ===");
         console.log("Final operator lockup usage:", finalLockupUsage);
         console.log("Expected (correct) lockup usage: 0");
-        
+
         // Assert the correct behavior: all lockup usage should be cleared after all rails are finalized
         assertEq(finalLockupUsage, 0, "All lockup usage should be cleared after finalizing all rails");
     }

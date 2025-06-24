@@ -7,6 +7,7 @@ import {ERC1967Proxy} from "../src/ERC1967Proxy.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
+
 contract AccessControlTest is Test, BaseTestHelper {
     Payments payments;
     PaymentsTestHelpers helper;
@@ -56,18 +57,14 @@ contract AccessControlTest is Test, BaseTestHelper {
 
     function testTerminateRail_RevertsWhenCalledByRecipient() public {
         vm.startPrank(USER2);
-        vm.expectRevert(
-            "caller is not authorized: must be operator or client with settled lockup"
-        );
+        vm.expectRevert("caller is not authorized: must be operator or client with settled lockup");
         payments.terminateRail(railId);
         vm.stopPrank();
     }
 
     function testTerminateRail_RevertsWhenCalledByUnauthorized() public {
         vm.startPrank(address(0x99));
-        vm.expectRevert(
-            "caller is not authorized: must be operator or client with settled lockup"
-        );
+        vm.expectRevert("caller is not authorized: must be operator or client with settled lockup");
         payments.terminateRail(railId);
         vm.stopPrank();
     }
@@ -126,9 +123,7 @@ contract AccessControlTest is Test, BaseTestHelper {
         vm.stopPrank();
     }
 
-    function testSettleTerminatedRailWithoutArbitration_RevertsWhenCalledByOperator()
-        public
-    {
+    function testSettleTerminatedRailWithoutArbitration_RevertsWhenCalledByOperator() public {
         // 2. Add more funds
         helper.makeDeposit(
             USER1,
@@ -148,17 +143,13 @@ contract AccessControlTest is Test, BaseTestHelper {
         vm.stopPrank();
     }
 
-    function testTerminateRail_OnlyOperatorCanTerminateWhenLockupNotFullySettled()
-        public
-    {
+    function testTerminateRail_OnlyOperatorCanTerminateWhenLockupNotFullySettled() public {
         // Advance blocks to create an unsettled state
         helper.advanceBlocks(500);
 
         // Client should not be able to terminate because lockup is not fully settled
         vm.startPrank(USER1);
-        vm.expectRevert(
-            "caller is not authorized: must be operator or client with settled lockup"
-        );
+        vm.expectRevert("caller is not authorized: must be operator or client with settled lockup");
         payments.terminateRail(railId);
         vm.stopPrank();
 

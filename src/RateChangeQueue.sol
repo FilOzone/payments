@@ -14,11 +14,7 @@ library RateChangeQueue {
         RateChange[] changes;
     }
 
-    function enqueue(
-        Queue storage queue,
-        uint256 rate,
-        uint256 untilEpoch
-    ) internal {
+    function enqueue(Queue storage queue, uint256 rate, uint256 untilEpoch) internal {
         queue.changes.push(RateChange(rate, untilEpoch));
     }
 
@@ -41,16 +37,12 @@ library RateChangeQueue {
         return change;
     }
 
-    function peek(
-        Queue storage queue
-    ) internal view returns (RateChange memory) {
+    function peek(Queue storage queue) internal view returns (RateChange memory) {
         require(queue.head < queue.changes.length, "Queue is empty");
         return queue.changes[queue.head];
     }
 
-    function peekTail(
-        Queue storage queue
-    ) internal view returns (RateChange memory) {
+    function peekTail(Queue storage queue) internal view returns (RateChange memory) {
         require(queue.head < queue.changes.length, "Queue is empty");
         return queue.changes[queue.changes.length - 1];
     }

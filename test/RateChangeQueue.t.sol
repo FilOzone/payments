@@ -10,6 +10,7 @@ contract RateChangeQueueTest is Test {
     struct TestQueueContainer {
         RateChangeQueue.Queue queue;
     }
+
     TestQueueContainer private queueContainer;
 
     function queue() internal view returns (RateChangeQueue.Queue storage) {
@@ -24,29 +25,25 @@ contract RateChangeQueueTest is Test {
         }
     }
 
-    function createSingleItemQueue(
-        uint256 rate,
-        uint256 untilEpoch
-    ) internal returns (RateChangeQueue.RateChange memory) {
+    function createSingleItemQueue(uint256 rate, uint256 untilEpoch)
+        internal
+        returns (RateChangeQueue.RateChange memory)
+    {
         createEmptyQueue();
         RateChangeQueue.enqueue(queue(), rate, untilEpoch);
         assertEq(RateChangeQueue.size(queue()), 1);
         return RateChangeQueue.RateChange(rate, untilEpoch);
     }
 
-    function createMultiItemQueue(
-        uint256[] memory rates,
-        uint256[] memory untilEpochs
-    ) internal returns (RateChangeQueue.RateChange[] memory) {
-        require(
-            rates.length == untilEpochs.length,
-            "Input arrays must have same length"
-        );
+    function createMultiItemQueue(uint256[] memory rates, uint256[] memory untilEpochs)
+        internal
+        returns (RateChangeQueue.RateChange[] memory)
+    {
+        require(rates.length == untilEpochs.length, "Input arrays must have same length");
 
         createEmptyQueue();
 
-        RateChangeQueue.RateChange[]
-            memory items = new RateChangeQueue.RateChange[](rates.length);
+        RateChangeQueue.RateChange[] memory items = new RateChangeQueue.RateChange[](rates.length);
 
         for (uint256 i = 0; i < rates.length; i++) {
             RateChangeQueue.enqueue(queue(), rates[i], untilEpochs[i]);
@@ -82,16 +79,8 @@ contract RateChangeQueueTest is Test {
         RateChangeQueue.RateChange memory expected,
         string memory message
     ) internal pure {
-        assertEq(
-            actual.rate,
-            expected.rate,
-            string.concat(message, " - rate mismatch")
-        );
-        assertEq(
-            actual.untilEpoch,
-            expected.untilEpoch,
-            string.concat(message, " - untilEpoch mismatch")
-        );
+        assertEq(actual.rate, expected.rate, string.concat(message, " - rate mismatch"));
+        assertEq(actual.untilEpoch, expected.untilEpoch, string.concat(message, " - untilEpoch mismatch"));
     }
 
     function testBasicQueueOperations() public {
@@ -105,53 +94,25 @@ contract RateChangeQueueTest is Test {
 
         // Verify peek (head) and peekTail operations
         RateChangeQueue.RateChange memory head = RateChangeQueue.peek(queue());
-        assertRateChangeEq(
-            head,
-            RateChangeQueue.RateChange(100, 5),
-            "Head should match first enqueued item"
-        );
+        assertRateChangeEq(head, RateChangeQueue.RateChange(100, 5), "Head should match first enqueued item");
 
-        RateChangeQueue.RateChange memory tail = RateChangeQueue.peekTail(
-            queue()
-        );
-        assertRateChangeEq(
-            tail,
-            RateChangeQueue.RateChange(300, 15),
-            "Tail should match last enqueued item"
-        );
+        RateChangeQueue.RateChange memory tail = RateChangeQueue.peekTail(queue());
+        assertRateChangeEq(tail, RateChangeQueue.RateChange(300, 15), "Tail should match last enqueued item");
 
         // Size should remain unchanged after peek operations
         assertEq(RateChangeQueue.size(queue()), 3);
 
         // Dequeue and verify FIFO order
-        RateChangeQueue.RateChange memory first = RateChangeQueue.dequeue(
-            queue()
-        );
-        assertRateChangeEq(
-            first,
-            RateChangeQueue.RateChange(100, 5),
-            "First dequeued item mismatch"
-        );
+        RateChangeQueue.RateChange memory first = RateChangeQueue.dequeue(queue());
+        assertRateChangeEq(first, RateChangeQueue.RateChange(100, 5), "First dequeued item mismatch");
         assertEq(RateChangeQueue.size(queue()), 2);
 
-        RateChangeQueue.RateChange memory second = RateChangeQueue.dequeue(
-            queue()
-        );
-        assertRateChangeEq(
-            second,
-            RateChangeQueue.RateChange(200, 10),
-            "Second dequeued item mismatch"
-        );
+        RateChangeQueue.RateChange memory second = RateChangeQueue.dequeue(queue());
+        assertRateChangeEq(second, RateChangeQueue.RateChange(200, 10), "Second dequeued item mismatch");
         assertEq(RateChangeQueue.size(queue()), 1);
 
-        RateChangeQueue.RateChange memory third = RateChangeQueue.dequeue(
-            queue()
-        );
-        assertRateChangeEq(
-            third,
-            RateChangeQueue.RateChange(300, 15),
-            "Third dequeued item mismatch"
-        );
+        RateChangeQueue.RateChange memory third = RateChangeQueue.dequeue(queue());
+        assertRateChangeEq(third, RateChangeQueue.RateChange(300, 15), "Third dequeued item mismatch");
 
         // Queue should now be empty
         assertTrue(RateChangeQueue.isEmpty(queue()));
@@ -187,34 +148,16 @@ contract RateChangeQueueTest is Test {
 
     function testBoundaryValues() public {
         // Test with zero values
-        RateChangeQueue.RateChange memory zeroItem = createSingleItemQueue(
-            0,
-            0
-        );
-        RateChangeQueue.RateChange memory peekedZero = RateChangeQueue.peek(
-            queue()
-        );
-        assertRateChangeEq(
-            peekedZero,
-            zeroItem,
-            "Zero values not stored correctly"
-        );
+        RateChangeQueue.RateChange memory zeroItem = createSingleItemQueue(0, 0);
+        RateChangeQueue.RateChange memory peekedZero = RateChangeQueue.peek(queue());
+        assertRateChangeEq(peekedZero, zeroItem, "Zero values not stored correctly");
         RateChangeQueue.dequeue(queue());
 
         // Test with max uint values
         uint256 maxUint = type(uint256).max;
-        RateChangeQueue.RateChange memory maxItem = createSingleItemQueue(
-            maxUint,
-            maxUint
-        );
-        RateChangeQueue.RateChange memory peekedMax = RateChangeQueue.peek(
-            queue()
-        );
-        assertRateChangeEq(
-            peekedMax,
-            maxItem,
-            "Max values not stored correctly"
-        );
+        RateChangeQueue.RateChange memory maxItem = createSingleItemQueue(maxUint, maxUint);
+        RateChangeQueue.RateChange memory peekedMax = RateChangeQueue.peek(queue());
+        assertRateChangeEq(peekedMax, maxItem, "Max values not stored correctly");
     }
 
     function testQueueReusability() public {
@@ -227,14 +170,8 @@ contract RateChangeQueueTest is Test {
         RateChangeQueue.enqueue(queue(), 200, 10);
         assertEq(RateChangeQueue.size(queue()), 1);
 
-        RateChangeQueue.RateChange memory peeked = RateChangeQueue.peek(
-            queue()
-        );
-        assertRateChangeEq(
-            peeked,
-            RateChangeQueue.RateChange(200, 10),
-            "Queue reuse failed"
-        );
+        RateChangeQueue.RateChange memory peeked = RateChangeQueue.peek(queue());
+        assertRateChangeEq(peeked, RateChangeQueue.RateChange(200, 10), "Queue reuse failed");
 
         // Test with advanced indices
         RateChangeQueue.dequeue(queue());
@@ -245,11 +182,7 @@ contract RateChangeQueueTest is Test {
         assertEq(RateChangeQueue.size(queue()), 1);
 
         peeked = RateChangeQueue.peek(queue());
-        assertRateChangeEq(
-            peeked,
-            RateChangeQueue.RateChange(999, 999),
-            "Queue with advanced indices failed"
-        );
+        assertRateChangeEq(peeked, RateChangeQueue.RateChange(999, 999), "Queue with advanced indices failed");
     }
 
     function testMixedOperations() public {
@@ -259,49 +192,26 @@ contract RateChangeQueueTest is Test {
         RateChangeQueue.enqueue(queue(), 100, 5);
         RateChangeQueue.enqueue(queue(), 200, 10);
 
-        RateChangeQueue.RateChange memory first = RateChangeQueue.dequeue(
-            queue()
-        );
-        assertRateChangeEq(
-            first,
-            RateChangeQueue.RateChange(100, 5),
-            "First dequeue failed"
-        );
+        RateChangeQueue.RateChange memory first = RateChangeQueue.dequeue(queue());
+        assertRateChangeEq(first, RateChangeQueue.RateChange(100, 5), "First dequeue failed");
 
         RateChangeQueue.enqueue(queue(), 300, 15);
         RateChangeQueue.enqueue(queue(), 400, 20);
 
-        assertEq(
-            RateChangeQueue.size(queue()),
-            3,
-            "Queue size incorrect after mixed operations"
-        );
+        assertEq(RateChangeQueue.size(queue()), 3, "Queue size incorrect after mixed operations");
 
         // Verify peek at both ends
         RateChangeQueue.RateChange memory head = RateChangeQueue.peek(queue());
-        assertRateChangeEq(
-            head,
-            RateChangeQueue.RateChange(200, 10),
-            "Head incorrect after mixed operations"
-        );
+        assertRateChangeEq(head, RateChangeQueue.RateChange(200, 10), "Head incorrect after mixed operations");
 
-        RateChangeQueue.RateChange memory tail = RateChangeQueue.peekTail(
-            queue()
-        );
-        assertRateChangeEq(
-            tail,
-            RateChangeQueue.RateChange(400, 20),
-            "Tail incorrect after mixed operations"
-        );
+        RateChangeQueue.RateChange memory tail = RateChangeQueue.peekTail(queue());
+        assertRateChangeEq(tail, RateChangeQueue.RateChange(400, 20), "Tail incorrect after mixed operations");
 
         // Empty the queue
         RateChangeQueue.dequeue(queue());
         RateChangeQueue.dequeue(queue());
         RateChangeQueue.dequeue(queue());
 
-        assertTrue(
-            RateChangeQueue.isEmpty(queue()),
-            "Queue should be empty after all dequeues"
-        );
+        assertTrue(RateChangeQueue.isEmpty(queue()), "Queue should be empty after all dequeues");
     }
 }

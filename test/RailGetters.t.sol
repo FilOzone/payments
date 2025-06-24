@@ -62,7 +62,7 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             OPERATOR, // operator
             15 ether, // rate allowance (sum of all rates: 5+3+2+1 = 11 ether)
             200 ether, // lockup allowance,
-            MAX_LOCKUP_PERIOD  // maximum lockup period
+            MAX_LOCKUP_PERIOD // maximum lockup period
         );
 
         // Setup approval for token2
@@ -151,10 +151,7 @@ contract PayeeRailsTest is Test, BaseTestHelper {
 
     function testGetRailsForPayeeAndToken() public view {
         // Test getting all rails for USER2 and token1 (should include terminated)
-        Payments.RailInfo[] memory rails = payments.getRailsForPayeeAndToken(
-            USER2,
-            address(token)
-        );
+        Payments.RailInfo[] memory rails = payments.getRailsForPayeeAndToken(USER2, address(token));
 
         // Should include 3 rails: rail1Id, rail2Id, and rail3Id (terminated)
         assertEq(rails.length, 3, "Should have 3 rails for USER2 with token1");
@@ -167,28 +164,16 @@ contract PayeeRailsTest is Test, BaseTestHelper {
         for (uint256 i = 0; i < rails.length; i++) {
             if (rails[i].railId == rail1Id) {
                 foundRail1 = true;
-                assertFalse(
-                    rails[i].isTerminated,
-                    "Rail 1 should not be terminated"
-                );
+                assertFalse(rails[i].isTerminated, "Rail 1 should not be terminated");
                 assertEq(rails[i].endEpoch, 0, "Rail 1 should have 0 endEpoch");
             } else if (rails[i].railId == rail2Id) {
                 foundRail2 = true;
-                assertFalse(
-                    rails[i].isTerminated,
-                    "Rail 2 should not be terminated"
-                );
+                assertFalse(rails[i].isTerminated, "Rail 2 should not be terminated");
                 assertEq(rails[i].endEpoch, 0, "Rail 2 should have 0 endEpoch");
             } else if (rails[i].railId == rail3Id) {
                 foundRail3 = true;
-                assertTrue(
-                    rails[i].isTerminated,
-                    "Rail 3 should be terminated"
-                );
-                assertTrue(
-                    rails[i].endEpoch > 0,
-                    "Rail 3 should have non-zero endEpoch"
-                );
+                assertTrue(rails[i].isTerminated, "Rail 3 should be terminated");
+                assertTrue(rails[i].endEpoch > 0, "Rail 3 should have non-zero endEpoch");
             }
         }
 
@@ -197,40 +182,23 @@ contract PayeeRailsTest is Test, BaseTestHelper {
         assertTrue(foundRail3, "Rail 3 not found");
 
         // Test different token (should only return rails for that token)
-        Payments.RailInfo[] memory token2Rails = payments
-            .getRailsForPayeeAndToken(USER2, address(token2));
+        Payments.RailInfo[] memory token2Rails = payments.getRailsForPayeeAndToken(USER2, address(token2));
 
         // Should include only 1 rail with token2: rail4Id
-        assertEq(
-            token2Rails.length,
-            1,
-            "Should have 1 rail for USER2 with token2"
-        );
-        assertEq(
-            token2Rails[0].railId,
-            rail4Id,
-            "Rail ID should match rail4Id"
-        );
+        assertEq(token2Rails.length, 1, "Should have 1 rail for USER2 with token2");
+        assertEq(token2Rails[0].railId, rail4Id, "Rail ID should match rail4Id");
 
         // Test different payee (should only return rails for that payee)
-        Payments.RailInfo[] memory user3Rails = payments
-            .getRailsForPayeeAndToken(USER3, address(token));
+        Payments.RailInfo[] memory user3Rails = payments.getRailsForPayeeAndToken(USER3, address(token));
 
         // Should include only 1 rail for USER3: rail5Id
-        assertEq(
-            user3Rails.length,
-            1,
-            "Should have 1 rail for USER3 with token1"
-        );
+        assertEq(user3Rails.length, 1, "Should have 1 rail for USER3 with token1");
         assertEq(user3Rails[0].railId, rail5Id, "Rail ID should match rail5Id");
     }
 
     function testGetRailsForPayerAndToken() public view {
         // Test getting all rails for USER1 (payer) and token1 (should include terminated)
-        Payments.RailInfo[] memory rails = payments.getRailsForPayerAndToken(
-            USER1,
-            address(token)
-        );
+        Payments.RailInfo[] memory rails = payments.getRailsForPayerAndToken(USER1, address(token));
 
         // Should include 4 rails: rail1Id, rail2Id, rail3Id (terminated), and rail5Id
         assertEq(rails.length, 4, "Should have 4 rails for USER1 with token1");
@@ -244,34 +212,19 @@ contract PayeeRailsTest is Test, BaseTestHelper {
         for (uint256 i = 0; i < rails.length; i++) {
             if (rails[i].railId == rail1Id) {
                 foundRail1 = true;
-                assertFalse(
-                    rails[i].isTerminated,
-                    "Rail 1 should not be terminated"
-                );
+                assertFalse(rails[i].isTerminated, "Rail 1 should not be terminated");
                 assertEq(rails[i].endEpoch, 0, "Rail 1 should have 0 endEpoch");
             } else if (rails[i].railId == rail2Id) {
                 foundRail2 = true;
-                assertFalse(
-                    rails[i].isTerminated,
-                    "Rail 2 should not be terminated"
-                );
+                assertFalse(rails[i].isTerminated, "Rail 2 should not be terminated");
                 assertEq(rails[i].endEpoch, 0, "Rail 2 should have 0 endEpoch");
             } else if (rails[i].railId == rail3Id) {
                 foundRail3 = true;
-                assertTrue(
-                    rails[i].isTerminated,
-                    "Rail 3 should be terminated"
-                );
-                assertTrue(
-                    rails[i].endEpoch > 0,
-                    "Rail 3 should have non-zero endEpoch"
-                );
+                assertTrue(rails[i].isTerminated, "Rail 3 should be terminated");
+                assertTrue(rails[i].endEpoch > 0, "Rail 3 should have non-zero endEpoch");
             } else if (rails[i].railId == rail5Id) {
                 foundRail5 = true;
-                assertFalse(
-                    rails[i].isTerminated,
-                    "Rail 5 should not be terminated"
-                );
+                assertFalse(rails[i].isTerminated, "Rail 5 should not be terminated");
                 assertEq(rails[i].endEpoch, 0, "Rail 5 should have 0 endEpoch");
             }
         }
@@ -282,41 +235,22 @@ contract PayeeRailsTest is Test, BaseTestHelper {
         assertTrue(foundRail5, "Rail 5 not found");
 
         // Test different token (should only return rails for that token)
-        Payments.RailInfo[] memory token2Rails = payments
-            .getRailsForPayerAndToken(USER1, address(token2));
+        Payments.RailInfo[] memory token2Rails = payments.getRailsForPayerAndToken(USER1, address(token2));
 
         // Should include only 1 rail with token2: rail4Id
-        assertEq(
-            token2Rails.length,
-            1,
-            "Should have 1 rail for USER1 with token2"
-        );
-        assertEq(
-            token2Rails[0].railId,
-            rail4Id,
-            "Rail ID should match rail4Id"
-        );
+        assertEq(token2Rails.length, 1, "Should have 1 rail for USER1 with token2");
+        assertEq(token2Rails[0].railId, rail4Id, "Rail ID should match rail4Id");
     }
 
     function testRailsBeyondEndEpoch() public {
         // Get the initial rails when Rail 3 is terminated but not beyond its end epoch
-        Payments.RailInfo[] memory initialPayeeRails = payments
-            .getRailsForPayeeAndToken(USER2, address(token));
-        Payments.RailInfo[] memory initialPayerRails = payments
-            .getRailsForPayerAndToken(USER1, address(token));
+        Payments.RailInfo[] memory initialPayeeRails = payments.getRailsForPayeeAndToken(USER2, address(token));
+        Payments.RailInfo[] memory initialPayerRails = payments.getRailsForPayerAndToken(USER1, address(token));
 
         // Should include all 3 rails for payee
-        assertEq(
-            initialPayeeRails.length,
-            3,
-            "Should have 3 rails initially for payee"
-        );
+        assertEq(initialPayeeRails.length, 3, "Should have 3 rails initially for payee");
         // Should include all 4 rails for payer
-        assertEq(
-            initialPayerRails.length,
-            4,
-            "Should have 4 rails initially for payer"
-        );
+        assertEq(initialPayerRails.length, 4, "Should have 4 rails initially for payer");
 
         // Get the endEpoch for Rail 3
         uint256 endEpoch;
@@ -337,24 +271,14 @@ contract PayeeRailsTest is Test, BaseTestHelper {
         payments.settleRail(rail3Id, endEpoch);
 
         // Get rails again for both payee and payer
-        Payments.RailInfo[] memory finalPayeeRails = payments
-            .getRailsForPayeeAndToken(USER2, address(token));
-        Payments.RailInfo[] memory finalPayerRails = payments
-            .getRailsForPayerAndToken(USER1, address(token));
+        Payments.RailInfo[] memory finalPayeeRails = payments.getRailsForPayeeAndToken(USER2, address(token));
+        Payments.RailInfo[] memory finalPayerRails = payments.getRailsForPayerAndToken(USER1, address(token));
 
         // Should include only 2 rails now for payee, as Rail 3 is beyond its end epoch
-        assertEq(
-            finalPayeeRails.length,
-            2,
-            "Should have 2 rails for payee after advancing beyond end epoch"
-        );
+        assertEq(finalPayeeRails.length, 2, "Should have 2 rails for payee after advancing beyond end epoch");
 
         // Should include only 3 rails now for payer, as Rail 3 is beyond its end epoch
-        assertEq(
-            finalPayerRails.length,
-            3,
-            "Should have 3 rails for payer after advancing beyond end epoch"
-        );
+        assertEq(finalPayerRails.length, 3, "Should have 3 rails for payer after advancing beyond end epoch");
 
         // Verify Rail 3 is no longer included in payee rails
         bool railFoundInPayeeRails = false;
@@ -374,52 +298,26 @@ contract PayeeRailsTest is Test, BaseTestHelper {
             }
         }
 
-        assertFalse(
-            railFoundInPayeeRails,
-            "Rail 3 should not be included in payee rails after its end epoch"
-        );
+        assertFalse(railFoundInPayeeRails, "Rail 3 should not be included in payee rails after its end epoch");
 
-        assertFalse(
-            railFoundInPayerRails,
-            "Rail 3 should not be included in payer rails after its end epoch"
-        );
+        assertFalse(railFoundInPayerRails, "Rail 3 should not be included in payer rails after its end epoch");
     }
 
     function testEmptyResult() public view {
         // Test non-existent payee
-        Payments.RailInfo[] memory nonExistentPayee = payments
-            .getRailsForPayeeAndToken(address(0x123), address(token));
-        assertEq(
-            nonExistentPayee.length,
-            0,
-            "Should return empty array for non-existent payee"
-        );
+        Payments.RailInfo[] memory nonExistentPayee = payments.getRailsForPayeeAndToken(address(0x123), address(token));
+        assertEq(nonExistentPayee.length, 0, "Should return empty array for non-existent payee");
 
         // Test non-existent payer
-        Payments.RailInfo[] memory nonExistentPayer = payments
-            .getRailsForPayerAndToken(address(0x123), address(token));
-        assertEq(
-            nonExistentPayer.length,
-            0,
-            "Should return empty array for non-existent payer"
-        );
+        Payments.RailInfo[] memory nonExistentPayer = payments.getRailsForPayerAndToken(address(0x123), address(token));
+        assertEq(nonExistentPayer.length, 0, "Should return empty array for non-existent payer");
 
         // Test non-existent token for payee
-        Payments.RailInfo[] memory nonExistentTokenForPayee = payments
-            .getRailsForPayeeAndToken(USER2, address(0x456));
-        assertEq(
-            nonExistentTokenForPayee.length,
-            0,
-            "Should return empty array for non-existent token with payee"
-        );
+        Payments.RailInfo[] memory nonExistentTokenForPayee = payments.getRailsForPayeeAndToken(USER2, address(0x456));
+        assertEq(nonExistentTokenForPayee.length, 0, "Should return empty array for non-existent token with payee");
 
         // Test non-existent token for payer
-        Payments.RailInfo[] memory nonExistentTokenForPayer = payments
-            .getRailsForPayerAndToken(USER1, address(0x456));
-        assertEq(
-            nonExistentTokenForPayer.length,
-            0,
-            "Should return empty array for non-existent token with payer"
-        );
+        Payments.RailInfo[] memory nonExistentTokenForPayer = payments.getRailsForPayerAndToken(USER1, address(0x456));
+        assertEq(nonExistentTokenForPayer.length, 0, "Should return empty array for non-existent token with payer");
     }
 }

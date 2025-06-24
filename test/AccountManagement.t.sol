@@ -74,11 +74,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
 
         // Test zero token address
         vm.expectRevert("must send an equal amount of native tokens");
-        payments.deposit{value: DEPOSIT_AMOUNT - 1}(
-            address(0),
-            USER1,
-            DEPOSIT_AMOUNT
-        );
+        payments.deposit{value: DEPOSIT_AMOUNT - 1}(address(0), USER1, DEPOSIT_AMOUNT);
 
         vm.stopPrank();
     }
@@ -157,11 +153,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
 
         // Try to withdraw more than available
-        helper.expectWithdrawalToFail(
-            USER1,
-            DEPOSIT_AMOUNT + 1,
-            bytes("insufficient unlocked funds for withdrawal")
-        );
+        helper.expectWithdrawalToFail(USER1, DEPOSIT_AMOUNT + 1, bytes("insufficient unlocked funds for withdrawal"));
     }
 
     function testWithdrawToWithZeroRecipient() public {
@@ -205,7 +197,6 @@ contract AccountManagementTest is Test, BaseTestHelper {
             lockedAmount, // fixed lockup of half the deposit
             address(0), // no fixed lockup
             SERVICE_FEE_RECIPIENT // operator commision receiver
-
         );
 
         // Verify lockup worked by checking account state
@@ -218,11 +209,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
         );
 
         // Try to withdraw more than unlocked funds
-        helper.expectWithdrawalToFail(
-            USER1,
-            DEPOSIT_AMOUNT,
-            bytes("insufficient unlocked funds for withdrawal")
-        );
+        helper.expectWithdrawalToFail(USER1, DEPOSIT_AMOUNT, bytes("insufficient unlocked funds for withdrawal"));
 
         // Should be able to withdraw up to unlocked amount
         helper.makeWithdrawal(USER1, DEPOSIT_AMOUNT - lockedAmount);
@@ -254,7 +241,6 @@ contract AccountManagementTest is Test, BaseTestHelper {
             0, // no fixed lockup
             address(0), // no fixed lockup
             SERVICE_FEE_RECIPIENT // operator commision receiver
-
         );
 
         // Create a second rail to get to 1 ether lockup rate on the account
@@ -267,7 +253,6 @@ contract AccountManagementTest is Test, BaseTestHelper {
             0, // no fixed lockup
             address(0), // no fixed lockup
             SERVICE_FEE_RECIPIENT // operator commision receiver
-
         );
 
         // Advance 10 blocks to create settlement gap
@@ -295,12 +280,8 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
 
         // Get account info
-        (
-            uint256 fundedUntil,
-            uint256 totalBalance,
-            uint256 availableBalance,
-            uint256 lockupRate
-        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+        (uint256 fundedUntil, uint256 totalBalance, uint256 availableBalance, uint256 lockupRate) =
+            payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance, DEPOSIT_AMOUNT, "total balance mismatch");
@@ -314,13 +295,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
 
         // Setup operator approval
-        helper.setupOperatorApproval(
-            USER1,
-            OPERATOR,
-            100 ether,
-            DEPOSIT_AMOUNT,
-            MAX_LOCKUP_PERIOD
-        );
+        helper.setupOperatorApproval(USER1, OPERATOR, 100 ether, DEPOSIT_AMOUNT, MAX_LOCKUP_PERIOD);
 
         // Create rail with fixed lockup
         uint256 fixedLockup = DEPOSIT_AMOUNT / 2;
@@ -336,12 +311,8 @@ contract AccountManagementTest is Test, BaseTestHelper {
         );
 
         // Get account info
-        (
-            uint256 fundedUntil,
-            uint256 totalBalance,
-            uint256 availableBalance,
-            uint256 lockupRate
-        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+        (uint256 fundedUntil, uint256 totalBalance, uint256 availableBalance, uint256 lockupRate) =
+            payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance, DEPOSIT_AMOUNT, "total balance mismatch");
@@ -363,7 +334,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
 
         if (elapsedTime > 0 && lockupRate > 0) {
             uint256 additionalLockup = lockupRate * elapsedTime;
-            
+
             if (funds >= lockupCurrent + additionalLockup) {
                 simulatedLockupCurrent = lockupCurrent + additionalLockup;
             } else {
@@ -375,8 +346,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
             }
         }
 
-        availableBalance = funds > simulatedLockupCurrent ? 
-            funds - simulatedLockupCurrent : 0;
+        availableBalance = funds > simulatedLockupCurrent ? funds - simulatedLockupCurrent : 0;
     }
 
     function testGetAccountInfoWithRateLockup() public {
@@ -384,13 +354,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
 
         // Setup operator approval
-        helper.setupOperatorApproval(
-            USER1,
-            OPERATOR,
-            100 ether,
-            DEPOSIT_AMOUNT,
-            MAX_LOCKUP_PERIOD
-        );
+        helper.setupOperatorApproval(USER1, OPERATOR, 100 ether, DEPOSIT_AMOUNT, MAX_LOCKUP_PERIOD);
 
         uint256 lockupRate = 1 ether; // 1 token per block
         uint256 lockupPeriod = 10;
@@ -411,22 +375,15 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.advanceBlocks(5);
 
         // Get raw account data for debugging
-        (uint256 funds, uint256 lockupCurrent, uint256 lockupRate2, uint256 lockupLastSettledAt) = payments.accounts(address(helper.testToken()), USER1);
+        (uint256 funds, uint256 lockupCurrent, uint256 lockupRate2, uint256 lockupLastSettledAt) =
+            payments.accounts(address(helper.testToken()), USER1);
 
-        (, uint256 availableBalance) = calculateSimulatedLockupAndBalance(
-            funds,
-            lockupCurrent,
-            lockupRate2,
-            lockupLastSettledAt
-        );
+        (, uint256 availableBalance) =
+            calculateSimulatedLockupAndBalance(funds, lockupCurrent, lockupRate2, lockupLastSettledAt);
 
         // Get account info
-        (
-            uint256 fundedUntil,
-            uint256 totalBalance1,
-            uint256 availableBalance1,
-            uint256 lockupRate1
-        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+        (uint256 fundedUntil, uint256 totalBalance1, uint256 availableBalance1, uint256 lockupRate1) =
+            payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance1, DEPOSIT_AMOUNT, "total balance mismatch");
@@ -440,13 +397,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
 
         // Setup operator approval
-        helper.setupOperatorApproval(
-            USER1,
-            OPERATOR,
-            100 ether,
-            DEPOSIT_AMOUNT,
-            MAX_LOCKUP_PERIOD
-        );
+        helper.setupOperatorApproval(USER1, OPERATOR, 100 ether, DEPOSIT_AMOUNT, MAX_LOCKUP_PERIOD);
 
         uint256 lockupRate = 2 ether; // 2 tokens per block
         uint256 lockupPeriod = 10;
@@ -467,22 +418,15 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.advanceBlocks(5);
 
         // Get raw account data for debugging
-        (uint256 funds, uint256 lockupCurrent, uint256 lockupRate2, uint256 lockupLastSettledAt) = payments.accounts(address(helper.testToken()), USER1);
+        (uint256 funds, uint256 lockupCurrent, uint256 lockupRate2, uint256 lockupLastSettledAt) =
+            payments.accounts(address(helper.testToken()), USER1);
 
-        (, uint256 availableBalance) = calculateSimulatedLockupAndBalance(
-            funds,
-            lockupCurrent,
-            lockupRate2,
-            lockupLastSettledAt
-        );
+        (, uint256 availableBalance) =
+            calculateSimulatedLockupAndBalance(funds, lockupCurrent, lockupRate2, lockupLastSettledAt);
 
         // Get account info
-        (
-            uint256 fundedUntil,
-            uint256 totalBalance2,
-            uint256 availableBalance2,
-            uint256 lockupRate3
-        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+        (uint256 fundedUntil, uint256 totalBalance2, uint256 availableBalance2, uint256 lockupRate3) =
+            payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance2, DEPOSIT_AMOUNT, "total balance mismatch");
@@ -496,13 +440,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
 
         // Setup operator approval
-        helper.setupOperatorApproval(
-            USER1,
-            OPERATOR,
-            100 ether,
-            DEPOSIT_AMOUNT,
-            MAX_LOCKUP_PERIOD
-        );
+        helper.setupOperatorApproval(USER1, OPERATOR, 100 ether, DEPOSIT_AMOUNT, MAX_LOCKUP_PERIOD);
 
         uint256 lockupRate = 2 ether; // 2 tokens per block
         uint256 lockupPeriod = 10;
@@ -523,12 +461,8 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.advanceBlocks(60); // This will create debt as 60 * 2 > DEPOSIT_AMOUNT
 
         // Get account info
-        (
-            uint256 fundedUntil,
-            uint256 totalBalance3,
-            uint256 availableBalance3,
-            uint256 lockupRate3
-        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+        (uint256 fundedUntil, uint256 totalBalance3, uint256 availableBalance3, uint256 lockupRate3) =
+            payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance3, DEPOSIT_AMOUNT, "total balance mismatch");
@@ -542,13 +476,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
 
         // Setup operator approval
-        helper.setupOperatorApproval(
-            USER1,
-            OPERATOR,
-            100 ether,
-            DEPOSIT_AMOUNT,
-            MAX_LOCKUP_PERIOD
-        );
+        helper.setupOperatorApproval(USER1, OPERATOR, 100 ether, DEPOSIT_AMOUNT, MAX_LOCKUP_PERIOD);
 
         uint256 initialRate = 1 ether; // 1 token per block
         uint256 lockupPeriod = 10;
@@ -574,22 +502,15 @@ contract AccountManagementTest is Test, BaseTestHelper {
         payments.modifyRailPayment(railId, newRate, 0);
 
         // Get raw account data for debugging
-        (uint256 funds, uint256 lockupCurrent, uint256 lockupRate2, uint256 lockupLastSettledAt) = payments.accounts(address(helper.testToken()), USER1);
+        (uint256 funds, uint256 lockupCurrent, uint256 lockupRate2, uint256 lockupLastSettledAt) =
+            payments.accounts(address(helper.testToken()), USER1);
 
-        (, uint256 availableBalance) = calculateSimulatedLockupAndBalance(
-            funds,
-            lockupCurrent,
-            lockupRate2,
-            lockupLastSettledAt
-        );
+        (, uint256 availableBalance) =
+            calculateSimulatedLockupAndBalance(funds, lockupCurrent, lockupRate2, lockupLastSettledAt);
 
         // Get account info
-        (
-            uint256 fundedUntil,
-            uint256 totalBalance4,
-            uint256 availableBalance4,
-            uint256 lockupRate4
-        ) = payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
+        (uint256 fundedUntil, uint256 totalBalance4, uint256 availableBalance4, uint256 lockupRate4) =
+            payments.getAccountInfoIfSettled(address(helper.testToken()), USER1);
 
         // Verify account state
         assertEq(totalBalance4, DEPOSIT_AMOUNT, "total balance mismatch");

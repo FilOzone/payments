@@ -119,7 +119,6 @@ contract FeesTest is Test, BaseTestHelper {
             0, // No fixed lockup
             address(0), // No arbiter
             SERVICE_FEE_RECIPIENT // operator commision receiver
-
         );
 
         // Create a rail with token2
@@ -131,7 +130,6 @@ contract FeesTest is Test, BaseTestHelper {
             address(0), // no arbiter
             0, // no commission
             SERVICE_FEE_RECIPIENT // operator commision receiver
-
         );
 
         // Set rail2 parameters
@@ -156,24 +154,13 @@ contract FeesTest is Test, BaseTestHelper {
 
     function testGetAllAccumulatedFees() public {
         // First, verify there are no fees initially
-        (
-            address[] memory initialTokens,
-            uint256[] memory initialAmounts,
-            uint256 initialCount
-        ) = payments.getAllAccumulatedFees();
+        (address[] memory initialTokens, uint256[] memory initialAmounts, uint256 initialCount) =
+            payments.getAllAccumulatedFees();
 
         // Initially there should be no fees
         assertEq(initialCount, 0, "Initial fee token count should be 0");
-        assertEq(
-            initialTokens.length,
-            0,
-            "Initial fee tokens array should be empty"
-        );
-        assertEq(
-            initialAmounts.length,
-            0,
-            "Initial fee amounts array should be empty"
-        );
+        assertEq(initialTokens.length, 0, "Initial fee tokens array should be empty");
+        assertEq(initialAmounts.length, 0, "Initial fee amounts array should be empty");
 
         // Advance blocks to enable settlement
         helper.advanceBlocks(5); // Advance 5 blocks
@@ -182,57 +169,28 @@ contract FeesTest is Test, BaseTestHelper {
         uint256 rail1FirstExpectedAmount = RAIL1_RATE * 5; // 5 blocks * 5 ether
 
         // Settle rail1 (token1)
-        settlementHelper.settleRailAndVerify(
-            rail1Id,
-            block.number,
-            rail1FirstExpectedAmount,
-            block.number
-        );
+        settlementHelper.settleRailAndVerify(rail1Id, block.number, rail1FirstExpectedAmount, block.number);
 
         // Settle rail2 (token2)
         vm.prank(USER1);
-        (uint256 settledAmount2, , , , , ) = payments.settleRail(
-            rail2Id,
-            block.number
-        );
+        (uint256 settledAmount2,,,,,) = payments.settleRail(rail2Id, block.number);
 
         // Settle rail3 (token3)
         vm.prank(USER1);
-        (uint256 settledAmount3, , , , , ) = payments.settleRail(
-            rail3Id,
-            block.number
-        );
+        (uint256 settledAmount3,,,,,) = payments.settleRail(rail3Id, block.number);
 
         // Calculate expected fees based on actual settled amounts (0.1% of settled amounts)
-        uint256 rail1FirstFee = (rail1FirstExpectedAmount *
-            payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
-        uint256 rail2FirstFee = (settledAmount2 * payments.PAYMENT_FEE_BPS()) /
-            payments.COMMISSION_MAX_BPS();
-        uint256 rail3FirstFee = (settledAmount3 * payments.PAYMENT_FEE_BPS()) /
-            payments.COMMISSION_MAX_BPS();
+        uint256 rail1FirstFee = (rail1FirstExpectedAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
+        uint256 rail2FirstFee = (settledAmount2 * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
+        uint256 rail3FirstFee = (settledAmount3 * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
 
         // Verify fees after first round
-        (
-            address[] memory firstTokens,
-            uint256[] memory firstAmounts,
-            uint256 firstCount
-        ) = payments.getAllAccumulatedFees();
+        (address[] memory firstTokens, uint256[] memory firstAmounts, uint256 firstCount) =
+            payments.getAllAccumulatedFees();
 
-        assertEq(
-            firstCount,
-            3,
-            "Should have 3 fee tokens after first settlement"
-        );
-        assertEq(
-            firstTokens.length,
-            3,
-            "Fee tokens array should have 3 elements"
-        );
-        assertEq(
-            firstAmounts.length,
-            3,
-            "Fee amounts array should have 3 elements"
-        );
+        assertEq(firstCount, 3, "Should have 3 fee tokens after first settlement");
+        assertEq(firstTokens.length, 3, "Fee tokens array should have 3 elements");
+        assertEq(firstAmounts.length, 3, "Fee amounts array should have 3 elements");
 
         // Check the accumulated fees match expected values
         // Need to identify which index corresponds to which token
@@ -240,21 +198,9 @@ contract FeesTest is Test, BaseTestHelper {
         uint256 token2Index = findTokenIndex(firstTokens, address(token2));
         uint256 token3Index = findTokenIndex(firstTokens, address(token3));
 
-        assertEq(
-            firstAmounts[token1Index],
-            rail1FirstFee,
-            "Token1 fees incorrect after first settlement"
-        );
-        assertEq(
-            firstAmounts[token2Index],
-            rail2FirstFee,
-            "Token2 fees incorrect after first settlement"
-        );
-        assertEq(
-            firstAmounts[token3Index],
-            rail3FirstFee,
-            "Token3 fees incorrect after first settlement"
-        );
+        assertEq(firstAmounts[token1Index], rail1FirstFee, "Token1 fees incorrect after first settlement");
+        assertEq(firstAmounts[token2Index], rail2FirstFee, "Token2 fees incorrect after first settlement");
+        assertEq(firstAmounts[token3Index], rail3FirstFee, "Token3 fees incorrect after first settlement");
 
         // Advance more blocks for the second round of settlements
         helper.advanceBlocks(7); // Advance 7 blocks
@@ -263,57 +209,29 @@ contract FeesTest is Test, BaseTestHelper {
         uint256 rail1SecondExpectedAmount = RAIL1_RATE * 7; // 7 blocks * 5 ether
 
         // Settle rail1 (token1) again
-        settlementHelper.settleRailAndVerify(
-            rail1Id,
-            block.number,
-            rail1SecondExpectedAmount,
-            block.number
-        );
+        settlementHelper.settleRailAndVerify(rail1Id, block.number, rail1SecondExpectedAmount, block.number);
 
         // Settle rail2 (token2) again
         vm.prank(USER1);
-        (uint256 secondSettledAmount2, , , , , ) = payments.settleRail(
-            rail2Id,
-            block.number
-        );
+        (uint256 secondSettledAmount2,,,,,) = payments.settleRail(rail2Id, block.number);
 
         // Settle rail3 (token3) again
         vm.prank(USER1);
-        (uint256 secondSettledAmount3, , , , , ) = payments.settleRail(
-            rail3Id,
-            block.number
-        );
+        (uint256 secondSettledAmount3,,,,,) = payments.settleRail(rail3Id, block.number);
 
         // Calculate expected fees for second round - use actual settled amounts
-        uint256 rail1SecondFee = (rail1SecondExpectedAmount *
-            payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
-        uint256 rail2SecondFee = (secondSettledAmount2 *
-            payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
-        uint256 rail3SecondFee = (secondSettledAmount3 *
-            payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
+        uint256 rail1SecondFee =
+            (rail1SecondExpectedAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
+        uint256 rail2SecondFee = (secondSettledAmount2 * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
+        uint256 rail3SecondFee = (secondSettledAmount3 * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
 
         // Verify total accumulated fees after both rounds
-        (
-            address[] memory finalTokens,
-            uint256[] memory finalAmounts,
-            uint256 finalCount
-        ) = payments.getAllAccumulatedFees();
+        (address[] memory finalTokens, uint256[] memory finalAmounts, uint256 finalCount) =
+            payments.getAllAccumulatedFees();
 
-        assertEq(
-            finalCount,
-            3,
-            "Should still have 3 fee tokens after second settlement"
-        );
-        assertEq(
-            finalTokens.length,
-            3,
-            "Fee tokens array should still have 3 elements"
-        );
-        assertEq(
-            finalAmounts.length,
-            3,
-            "Fee amounts array should still have 3 elements"
-        );
+        assertEq(finalCount, 3, "Should still have 3 fee tokens after second settlement");
+        assertEq(finalTokens.length, 3, "Fee tokens array should still have 3 elements");
+        assertEq(finalAmounts.length, 3, "Fee amounts array should still have 3 elements");
 
         // Get indices again in case the order changed
         token1Index = findTokenIndex(finalTokens, address(token1));
@@ -326,45 +244,18 @@ contract FeesTest is Test, BaseTestHelper {
         uint256 totalExpectedToken3Fees = rail3FirstFee + rail3SecondFee;
 
         // Verify the array values from getAllAccumulatedFees match the direct mapping access
-        assertEq(
-            finalAmounts[token1Index],
-            payments.accumulatedFees(address(token1)),
-            "Array token1 fees mismatch"
-        );
-        assertEq(
-            finalAmounts[token2Index],
-            payments.accumulatedFees(address(token2)),
-            "Array token2 fees mismatch"
-        );
-        assertEq(
-            finalAmounts[token3Index],
-            payments.accumulatedFees(address(token3)),
-            "Array token3 fees mismatch"
-        );
+        assertEq(finalAmounts[token1Index], payments.accumulatedFees(address(token1)), "Array token1 fees mismatch");
+        assertEq(finalAmounts[token2Index], payments.accumulatedFees(address(token2)), "Array token2 fees mismatch");
+        assertEq(finalAmounts[token3Index], payments.accumulatedFees(address(token3)), "Array token3 fees mismatch");
 
         // Verify the expected calculated fees match the actual accumulated fees
-        assertEq(
-            payments.accumulatedFees(address(token1)),
-            totalExpectedToken1Fees,
-            "Direct token1 fees mismatch"
-        );
-        assertEq(
-            payments.accumulatedFees(address(token2)),
-            totalExpectedToken2Fees,
-            "Direct token2 fees mismatch"
-        );
-        assertEq(
-            payments.accumulatedFees(address(token3)),
-            totalExpectedToken3Fees,
-            "Direct token3 fees mismatch"
-        );
+        assertEq(payments.accumulatedFees(address(token1)), totalExpectedToken1Fees, "Direct token1 fees mismatch");
+        assertEq(payments.accumulatedFees(address(token2)), totalExpectedToken2Fees, "Direct token2 fees mismatch");
+        assertEq(payments.accumulatedFees(address(token3)), totalExpectedToken3Fees, "Direct token3 fees mismatch");
     }
 
     // Helper function to find a token's index in the returned array
-    function findTokenIndex(
-        address[] memory tokens,
-        address token
-    ) internal pure returns (uint256) {
+    function findTokenIndex(address[] memory tokens, address token) internal pure returns (uint256) {
         for (uint256 i = 0; i < tokens.length; i++) {
             if (tokens[i] == token) {
                 return i;

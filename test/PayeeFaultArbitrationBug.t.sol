@@ -31,25 +31,17 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
     }
 
-
     function testLockupReturnedWithFaultTermination() public {
         uint256 paymentRate = 5 ether;
         uint256 lockupPeriod = 12;
         uint256 fixedLockup = 10 ether;
-        
+
         uint256 railId = helper.setupRailWithParameters(
-            USER1,
-            USER2,
-            OPERATOR,
-            paymentRate,
-            lockupPeriod,
-            fixedLockup,
-            address(arbiter),
-            SERVICE_FEE_RECIPIENT   
+            USER1, USER2, OPERATOR, paymentRate, lockupPeriod, fixedLockup, address(arbiter), SERVICE_FEE_RECIPIENT
         );
 
         uint256 expectedTotalLockup = fixedLockup + (paymentRate * lockupPeriod);
-        
+
         console.log("\n=== FIXED LOCKUP TEST ===");
         console.log("Fixed lockup:", fixedLockup);
         console.log("Rate-based lockup:", paymentRate * lockupPeriod);
@@ -58,39 +50,31 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
         // SP fails immediately, terminate
         vm.prank(OPERATOR);
         payments.terminateRail(railId);
-        
+
         helper.advanceBlocks(15);
 
         vm.prank(USER1);
         payments.settleRail(railId, block.number);
-        
+
         Payments.Account memory payerFinal = helper.getAccountData(USER1);
-        
+
         console.log("Lockup after:", payerFinal.lockupCurrent);
         console.log("Expected lockup:", expectedTotalLockup);
-
 
         require(payerFinal.lockupCurrent == 0, "Payee fault bug: Fixed lockup not fully returned");
     }
 
-     function testLockupReturnedWithFault() public {
+    function testLockupReturnedWithFault() public {
         uint256 paymentRate = 5 ether;
         uint256 lockupPeriod = 12;
         uint256 fixedLockup = 10 ether;
-        
+
         uint256 railId = helper.setupRailWithParameters(
-            USER1,
-            USER2,
-            OPERATOR,
-            paymentRate,
-            lockupPeriod,
-            fixedLockup,
-            address(arbiter),
-            SERVICE_FEE_RECIPIENT
+            USER1, USER2, OPERATOR, paymentRate, lockupPeriod, fixedLockup, address(arbiter), SERVICE_FEE_RECIPIENT
         );
 
         uint256 expectedTotalLockup = fixedLockup + (paymentRate * lockupPeriod);
-        
+
         console.log("\n=== FIXED LOCKUP TEST ===");
         console.log("Fixed lockup:", fixedLockup);
         console.log("Rate-based lockup:", paymentRate * lockupPeriod);
@@ -101,9 +85,9 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
 
         vm.prank(USER1);
         payments.settleRail(railId, block.number);
-        
+
         Payments.Account memory payerFinal = helper.getAccountData(USER1);
-        
+
         console.log("Lockup after:", payerFinal.lockupCurrent);
         console.log("Expected lockup:", expectedTotalLockup);
 

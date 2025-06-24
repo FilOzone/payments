@@ -17,14 +17,9 @@ contract ERC1967ProxyTest is Test {
         implementation = new Payments();
 
         // Deploy proxy pointing to implementation
-        bytes memory initData = abi.encodeWithSelector(
-            Payments.initialize.selector
-        );
+        bytes memory initData = abi.encodeWithSelector(Payments.initialize.selector);
 
-        ERC1967Proxy proxyContract = new ERC1967Proxy(
-            address(implementation),
-            initData
-        );
+        ERC1967Proxy proxyContract = new ERC1967Proxy(address(implementation), initData);
 
         // Get Payments interface on proxy address
         proxy = Payments(address(proxyContract));
@@ -36,12 +31,7 @@ contract ERC1967ProxyTest is Test {
 
     function assertImplementationEquals(address checkImpl) public view {
         bytes32 implementationSlot = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
-        assertEq(
-            address(
-                uint160(uint256(vm.load(address(proxy), implementationSlot)))
-            ),
-            address(checkImpl)
-        );
+        assertEq(address(uint160(uint256(vm.load(address(proxy), implementationSlot)))), address(checkImpl));
     }
 
     function testUpgradeImplementation() public {
@@ -64,12 +54,7 @@ contract ERC1967ProxyTest is Test {
         vm.stopPrank();
         vm.startPrank(address(0xdead));
 
-        vm.expectRevert(
-            abi.encodeWithSignature(
-                "OwnableUnauthorizedAccount(address)",
-                address(0xdead)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", address(0xdead)));
         proxy.upgradeToAndCall(address(newImplementation), "");
         assertEq(proxy.owner(), owner); // Owner is preserved
     }
@@ -97,12 +82,7 @@ contract ERC1967ProxyTest is Test {
         address newOwner = address(0x456);
 
         // Attempt transfer should fail
-        vm.expectRevert(
-            abi.encodeWithSignature(
-                "OwnableUnauthorizedAccount(address)",
-                address(0xdead)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", address(0xdead)));
         proxy.transferOwnership(newOwner);
 
         // Verify owner unchanged

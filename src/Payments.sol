@@ -1624,7 +1624,12 @@ contract Payments is
         accumulatedFees[token] = currentFees - amount;
 
         // Perform the transfer
-        IERC20(token).safeTransfer(to, amount);
+        if (token == address(0)) {
+            (bool success, ) = payable(to).call{value: amount}("");
+            require(success, "FIL transfer failed");
+        } else {
+            IERC20(token).safeTransfer(to, amount);
+        }
     }
 
     /// @notice Returns information about all accumulated fees

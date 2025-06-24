@@ -37,14 +37,7 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
         uint256 fixedLockup = 10 ether;
 
         uint256 railId = helper.setupRailWithParameters(
-            USER1,
-            USER2,
-            OPERATOR,
-            paymentRate,
-            lockupPeriod,
-            fixedLockup,
-            address(validator),
-            SERVICE_FEE_RECIPIENT   
+            USER1, USER2, OPERATOR, paymentRate, lockupPeriod, fixedLockup, address(validator), SERVICE_FEE_RECIPIENT
         );
 
         uint256 expectedTotalLockup = fixedLockup + (paymentRate * lockupPeriod);
@@ -77,14 +70,7 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
         uint256 fixedLockup = 10 ether;
 
         uint256 railId = helper.setupRailWithParameters(
-            USER1,
-            USER2,
-            OPERATOR,
-            paymentRate,
-            lockupPeriod,
-            fixedLockup,
-            address(validator),
-            SERVICE_FEE_RECIPIENT
+            USER1, USER2, OPERATOR, paymentRate, lockupPeriod, fixedLockup, address(validator), SERVICE_FEE_RECIPIENT
         );
 
         uint256 expectedTotalLockup = fixedLockup + (paymentRate * lockupPeriod);

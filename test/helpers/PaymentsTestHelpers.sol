@@ -295,13 +295,10 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         );
     }
 
-    function createRail(
-        address from,
-        address to,
-        address railOperator,
-        address validator,
-        address serviceFeeRecipient
-    ) public returns (uint256) {
+    function createRail(address from, address to, address railOperator, address validator, address serviceFeeRecipient)
+        public
+        returns (uint256)
+    {
         vm.startPrank(railOperator);
         uint256 railId = payments.createRail(
             address(testToken),
@@ -357,7 +354,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             vm.stopPrank();
         }
 
-        railId = createRail(from, to, railOperator,validator, serviceFeeRecipient);
+        railId = createRail(from, to, railOperator, validator, serviceFeeRecipient);
 
         // Get operator usage before modifications
         (,,, uint256 rateUsageBefore, uint256 lockupUsageBefore,) =

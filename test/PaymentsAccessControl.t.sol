@@ -123,9 +123,7 @@ contract AccessControlTest is Test, BaseTestHelper {
         vm.stopPrank();
     }
 
-    function testSettleTerminatedRailWithoutValidation_RevertsWhenCalledByOperator()
-        public
-    {
+    function testSettleTerminatedRailWithoutValidation_RevertsWhenCalledByOperator() public {
         // 2. Add more funds
         helper.makeDeposit(
             USER1,

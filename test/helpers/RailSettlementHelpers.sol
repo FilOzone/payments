@@ -40,10 +40,7 @@ contract RailSettlementHelpers is Test {
         uint256 maxLokkupPeriod,
         address serviceFeeRecipient
     ) public returns (uint256) {
-        require(
-            validator != address(0),
-            "RailSettlementHelpers: validator cannot be zero address"
-        );
+        require(validator != address(0), "RailSettlementHelpers: validator cannot be zero address");
 
         // Setup operator approval with sufficient allowances
         uint256 maxRate = 0;
@@ -114,9 +111,7 @@ contract RailSettlementHelpers is Test {
         return railId;
     }
 
-    function deployMockValidator(
-        MockValidator.ValidatorMode mode
-    ) public returns (MockValidator) {
+    function deployMockValidator(MockValidator.ValidatorMode mode) public returns (MockValidator) {
         return new MockValidator(mode);
     }
 

@@ -178,20 +178,11 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedAmount = rate * 5; // 5 blocks * 5 ether
 
         // Settle with validation
-        RailSettlementHelpers.SettlementResult memory result = settlementHelper
-            .settleRailAndVerify(
-                railId,
-                block.number,
-                expectedAmount,
-                block.number
-            );
+        RailSettlementHelpers.SettlementResult memory result =
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
 
         // Verify validaton note
-        assertEq(
-            result.note,
-            "Standard approved payment",
-            "Validator note should match"
-        );
+        assertEq(result.note, "Standard approved payment", "Validator note should match");
     }
 
     function testValidationWithMultipleRateChanges() public {
@@ -231,27 +222,16 @@ contract RailSettlementTest is Test, BaseTestHelper {
         vm.stopPrank();
 
         // Settle with validation
-        RailSettlementHelpers.SettlementResult memory result = settlementHelper
-            .settleRailAndVerify(
-                railId,
-                block.number,
-                expectedAmount,
-                block.number
-            );
+        RailSettlementHelpers.SettlementResult memory result =
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
 
         // Verify validator note
-        assertEq(
-            result.note,
-            "Standard approved payment",
-            "Validator note should match"
-        );
+        assertEq(result.note, "Standard approved payment", "Validator note should match");
     }
 
     function testValidationWithReducedAmount() public {
         // Deploy an validator that reduces payment amounts
-        MockValidator validator = new MockValidator(
-            MockValidator.ValidatorMode.REDUCE_AMOUNT
-        );
+        MockValidator validator = new MockValidator(MockValidator.ValidatorMode.REDUCE_AMOUNT);
         validator.configure(80); // 80% of the original amount
 
         // Create a rail with the validator
@@ -274,21 +254,15 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedAmount = (rate * 5 * 80) / 100; // 5 blocks * 10 ether * 80%
 
         // Calculate expected contract fee (1% of the validated amount)
-        uint256 paymentFee = (expectedAmount * payments.PAYMENT_FEE_BPS()) /
-            payments.COMMISSION_MAX_BPS();
+        uint256 paymentFee = (expectedAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
         uint256 netPayeeAmount = expectedAmount - paymentFee;
 
         // Capture fee balance before settlement
         uint256 feesBefore = payments.accumulatedFees(address(token));
 
         // Settle with validation - verify against NET payee amount
-        RailSettlementHelpers.SettlementResult memory result = settlementHelper
-            .settleRailAndVerify(
-                railId,
-                block.number,
-                expectedAmount,
-                block.number
-            );
+        RailSettlementHelpers.SettlementResult memory result =
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
 
         // Verify accumulated fees increased correctly
         uint256 feesAfter = payments.accumulatedFees(address(token));
@@ -298,18 +272,12 @@ contract RailSettlementTest is Test, BaseTestHelper {
         assertEq(result.operatorCommission, 0, "Operator commission incorrect");
 
         // Verify validator note
-        assertEq(
-            result.note,
-            "Validator reduced payment amount",
-            "Validator note should match"
-        );
+        assertEq(result.note, "Validator reduced payment amount", "Validator note should match");
     }
 
     function testValidationWithReducedDuration() public {
         // Deploy an validator that reduces settlement duration
-        MockValidator validator = new MockValidator(
-            MockValidator.ValidatorMode.REDUCE_DURATION
-        );
+        MockValidator validator = new MockValidator(MockValidator.ValidatorMode.REDUCE_DURATION);
         validator.configure(60); // 60% of the original duration
 
         // Create a rail with the validator
@@ -335,27 +303,16 @@ contract RailSettlementTest is Test, BaseTestHelper {
         uint256 expectedAmount = rate * expectedDuration; // expectedDuration blocks * 10 ether
 
         // Settle with validation
-        RailSettlementHelpers.SettlementResult memory result = settlementHelper
-            .settleRailAndVerify(
-                railId,
-                block.number,
-                expectedAmount,
-                expectedSettledUpto
-            );
+        RailSettlementHelpers.SettlementResult memory result =
+            settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, expectedSettledUpto);
 
         // Verify validator note
-        assertEq(
-            result.note,
-            "Validator reduced settlement duration",
-            "Validator note should match"
-        );
+        assertEq(result.note, "Validator reduced settlement duration", "Validator note should match");
     }
 
     function testMaliciousValidatorHandling() public {
         // Deploy a malicious validator
-        MockValidator validator = new MockValidator(
-            MockValidator.ValidatorMode.MALICIOUS
-        );
+        MockValidator validator = new MockValidator(MockValidator.ValidatorMode.MALICIOUS);
 
         // Create a rail with the validator
         uint256 rate = 5 ether;
@@ -382,17 +339,11 @@ contract RailSettlementTest is Test, BaseTestHelper {
         validator.setMode(MockValidator.ValidatorMode.CUSTOM_RETURN);
         uint256 proposedAmount = rate * 5; // 5 blocks * 5 ether
         uint256 invalidAmount = proposedAmount * 2; // Double the correct amount
-        validator.setCustomValues(
-            invalidAmount,
-            block.number,
-            "Attempting excessive payment"
-        );
+        validator.setCustomValues(invalidAmount, block.number, "Attempting excessive payment");
 
         // Attempt settlement with excessive amount - should also revert
         vm.prank(USER1);
-        vm.expectRevert(
-            "validator modified amount exceeds maximum for settled duration"
-        );
+        vm.expectRevert("validator modified amount exceeds maximum for settled duration");
         payments.settleRail(railId, block.number);
     }
 

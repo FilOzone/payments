@@ -42,27 +42,25 @@ contract MockValidator is IValidator {
     }
 
     function validatePayment(
-        uint256 /* railId */,
+        uint256, /* railId */
         uint256 proposedAmount,
         uint256 fromEpoch,
         uint256 toEpoch,
         uint256 /* rate */
     ) external view override returns (ValidationResult memory result) {
         if (mode == ValidatorMode.STANDARD) {
-            return
-                ValidationResult({
-                    modifiedAmount: proposedAmount,
-                    settleUpto: toEpoch,
-                    note: "Standard approved payment"
-                });
+            return ValidationResult({
+                modifiedAmount: proposedAmount,
+                settleUpto: toEpoch,
+                note: "Standard approved payment"
+            });
         } else if (mode == ValidatorMode.REDUCE_AMOUNT) {
             uint256 reducedAmount = (proposedAmount * modificationFactor) / 100;
-            return
-                ValidationResult({
-                    modifiedAmount: reducedAmount,
-                    settleUpto: toEpoch,
-                    note: "Validator reduced payment amount"
-                });
+            return ValidationResult({
+                modifiedAmount: reducedAmount,
+                settleUpto: toEpoch,
+                note: "Validator reduced payment amount"
+            });
         } else if (mode == ValidatorMode.REDUCE_DURATION) {
             uint256 totalEpochs = toEpoch - fromEpoch;
             uint256 reducedEpochs = (totalEpochs * modificationFactor) / 100;
@@ -71,27 +69,20 @@ contract MockValidator is IValidator {
             // Calculate reduced amount proportionally
             uint256 reducedAmount = (proposedAmount * reducedEpochs) / totalEpochs;
 
-            return
-                ValidationResult({
-                    modifiedAmount: reducedAmount,
-                    settleUpto: reducedEndEpoch,
-                    note: "Validator reduced settlement duration"
-                });
+            return ValidationResult({
+                modifiedAmount: reducedAmount,
+                settleUpto: reducedEndEpoch,
+                note: "Validator reduced settlement duration"
+            });
         } else if (mode == ValidatorMode.CUSTOM_RETURN) {
-            return
-                ValidationResult({
-                    modifiedAmount: customAmount,
-                    settleUpto: customUpto,
-                    note: customNote
-                });
+            return ValidationResult({modifiedAmount: customAmount, settleUpto: customUpto, note: customNote});
         } else {
             // Malicious mode attempts to return invalid values
-            return
-                ValidationResult({
-                    modifiedAmount: proposedAmount * 2, // Try to double the payment
-                    settleUpto: toEpoch + 10, // Try to settle beyond the requested range
-                    note: "Malicious validator attempting to manipulate payment"
-                });
+            return ValidationResult({
+                modifiedAmount: proposedAmount * 2, // Try to double the payment
+                settleUpto: toEpoch + 10, // Try to settle beyond the requested range
+                note: "Malicious validator attempting to manipulate payment"
+            });
         }
     }
 }

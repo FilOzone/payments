@@ -70,6 +70,7 @@ contract Payments is
         uint256 endEpoch; // Final epoch up to which the rail can be settled (0 if not terminated)
         // Operator commission rate in basis points (e.g., 100 BPS = 1%)
         uint256 commissionRateBps;
+        address serviceFeeRecipient; // address to collect operator comission
     }
 
     struct OperatorApproval {
@@ -104,6 +105,7 @@ contract Payments is
         uint256 endEpoch;
         // Operator commission rate in basis points (e.g., 100 BPS = 1%)
         uint256 commissionRateBps;
+        address serviceFeeRecipient; // address to collect operator commission
     }
 
     // token => client => operator => Approval
@@ -142,7 +144,7 @@ contract Payments is
     }
 
     // Events
-    event DepositWithPermit(address indexed token, address indexed from, address indexed to, uint256 amount);
+    event DepositWithPermit(address indexed token, address indexed account, uint256 amount);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -306,7 +308,8 @@ contract Payments is
                 lockupFixed: rail.lockupFixed,
                 settledUpTo: rail.settledUpTo,
                 endEpoch: rail.endEpoch,
-                commissionRateBps: rail.commissionRateBps
+                commissionRateBps: rail.commissionRateBps,
+                serviceFeeRecipient: rail.serviceFeeRecipient
             });
     }
 
@@ -323,7 +326,7 @@ contract Payments is
         bool approved,
         uint256 rateAllowance,
         uint256 lockupAllowance,
-         uint256 maxLockupPeriod
+        uint256 maxLockupPeriod
     ) external nonReentrant validateNonZeroAddress(operator, "operator") {
         OperatorApproval storage approval = operatorApprovals[token][
             msg.sender
@@ -419,7 +422,7 @@ contract Payments is
     /**
     * @notice Deposits tokens using permit (EIP-2612) approval in a single transaction.
     * @param token The ERC20 token address to deposit.
-    * @param to The address whose account will be credited.
+    * @param to The address whose account will be credited (must be the permit signer).
     * @param amount The amount of tokens to deposit.
     * @param deadline Permit deadline (timestamp).
     * @param v,r,s Permit signature.
@@ -441,15 +444,16 @@ contract Payments is
         // Revert if token is address(0) as permit is not supported for native tokens
         require(token != address(0), "depositWithPermit: native token not supported");
 
-        // Approve this contract to spend tokens on behalf of msg.sender using permit
-        IERC20Permit(token).permit(msg.sender, address(this), amount, deadline, v, r, s);
+        // Use 'to' as the owner in permit call (the address that signed the permit)
+        IERC20Permit(token).permit(to, address(this), amount, deadline, v, r, s);
 
         Account storage account = accounts[token][to];
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        IERC20(token).safeTransferFrom(to, address(this), amount);
         account.funds += amount;
 
-        emit DepositWithPermit(token, msg.sender, to, amount);
+        emit DepositWithPermit(token, to, amount);
     }
+
 
     /// @notice Withdraws tokens from the caller's account to the caller's account, up to the amount of currently available tokens (the tokens not currently locked in rails).
     /// @param token The ERC20 token address to withdraw.
@@ -510,6 +514,7 @@ contract Payments is
     /// @param to The recipient address for payments on this rail.
     /// @param validator Optional address of an validator contract (can be address(0) for no validation).
     /// @param commissionRateBps Optional operator commission in basis points (0-10000).
+    /// @param serviceFeeRecipient Address to receive operator commission
     /// @return The ID of the newly created rail.
     /// @custom:constraint Caller must be approved as an operator by the client (from address).
     function createRail(
@@ -517,7 +522,8 @@ contract Payments is
         address from,
         address to,
         address validator,
-        uint256 commissionRateBps
+        uint256 commissionRateBps,
+        address serviceFeeRecipient
     )
         external
         nonReentrant
@@ -538,6 +544,11 @@ contract Payments is
             commissionRateBps <= COMMISSION_MAX_BPS,
             "commission rate exceeds maximum"
         );
+        
+        require(
+            commissionRateBps == 0 || serviceFeeRecipient != address(0),
+            "non-zero commission requires service fee recipient"
+        );
 
         uint256 railId = _nextRailId++;
 
@@ -550,6 +561,7 @@ contract Payments is
         rail.settledUpTo = block.number;
         rail.endEpoch = 0;
         rail.commissionRateBps = commissionRateBps;
+        rail.serviceFeeRecipient = serviceFeeRecipient;
 
         // Record this rail in the payee's and payer's lists
         payeeRails[token][to].push(railId);
@@ -672,7 +684,6 @@ contract Payments is
         // amount, we'll revert in the post-condition.
         payer.lockupCurrent = payer.lockupCurrent - oldLockup + newLockup;
 
-       
         updateOperatorLockupUsage(operatorApproval, oldLockup, newLockup);
 
         // Update rail lockup parameters
@@ -825,6 +836,12 @@ contract Payments is
             return;
         }
 
+        // Skip putting a 0-rate entry on an empty queue
+        if (oldRate == 0 && rail.rateChangeQueue.isEmpty()) {
+            rail.settledUpTo = block.number;
+            return;
+            }
+
         // Only queue the previous rate once per epoch
         if (
             rail.rateChangeQueue.isEmpty() ||
@@ -840,7 +857,7 @@ contract Payments is
     function calculateAndPayFees(
         uint256 amount,
         address token,
-        address operator,
+        address serviceFeeRecipient,
         uint256 commissionRateBps
     )
         internal
@@ -872,8 +889,8 @@ contract Payments is
 
         // Credit operator (if commission exists)
         if (operatorCommission > 0) {
-            Account storage operatorAccount = accounts[token][operator];
-            operatorAccount.funds += operatorCommission;
+            Account storage serviceFeeRecipientAccount = accounts[token][serviceFeeRecipient];
+            serviceFeeRecipientAccount.funds += operatorCommission;
         }
 
         // Track platform fee
@@ -907,7 +924,7 @@ contract Payments is
             (uint256 netPayeeAmount, , ) = calculateAndPayFees(
                 oneTimePayment,
                 rail.token,
-                rail.operator,
+                rail.serviceFeeRecipient,
                 rail.commissionRateBps
             );
 
@@ -1165,8 +1182,11 @@ contract Payments is
         OperatorApproval storage operatorApproval = operatorApprovals[
             rail.token
         ][rail.from][rail.operator];
+        // Calculate current (old) lockup.
+        uint256 oldLockup = rail.lockupFixed +
+            (rail.paymentRate * rail.lockupPeriod);
 
-        updateOperatorLockupUsage(operatorApproval, rail.lockupFixed, 0);
+        updateOperatorLockupUsage(operatorApproval, oldLockup, 0);
 
         // Zero out the rail to mark it as inactive
         _zeroOutRail(rail);
@@ -1212,16 +1232,18 @@ contract Payments is
                     targetEpoch
                 );
 
-            // if current rate is zero, there's nothing left to do and we've finished settlement
+            // if current segment rate is zero, advance settlement to end of this segment and continue
             if (segmentRate == 0) {
-                rail.settledUpTo = targetEpoch;
-                return (
-                    state.totalSettledAmount,
-                    state.totalNetPayeeAmount,
-                    state.totalPaymentFee,
-                    state.totalOperatorCommission,
-                    "Zero rate payment rail"
-                );
+                rail.settledUpTo = segmentEndBoundary;
+                state.processedEpoch = segmentEndBoundary;
+
+                // Remove the processed rate change from the queue if it exists
+                if (!rateQueue.isEmpty()) {
+                    rateQueue.dequeue();
+                }
+
+                // Continue to next segment
+                continue;
             }
 
             // Settle the current segment with potentially validated outcomes
@@ -1340,7 +1362,8 @@ contract Payments is
 
         // Calculate the default settlement values (without validation)
         uint256 duration = epochEnd - epochStart;
-        uint256 settledAmount = rate * duration;
+        uint256 expectedSettledAmount = rate * duration;
+        uint256 settledAmount = expectedSettledAmount;
         uint256 settledUntilEpoch = epochEnd;
         note = "";
 
@@ -1397,15 +1420,15 @@ contract Payments is
         (netPayeeAmount, paymentFee, operatorCommission) = calculateAndPayFees(
             settledAmount,
             rail.token,
-            rail.operator,
+            rail.serviceFeeRecipient,
             rail.commissionRateBps
         );
 
         // Credit payee
         payee.funds += netPayeeAmount;
 
-        // Reduce the lockup by the total settled amount
-        payer.lockupCurrent -= settledAmount;
+        // Reduce the lockup by the expected settled amount previously added to the current lockup
+        payer.lockupCurrent -= expectedSettledAmount;
 
         // Update the rail's settled epoch
         rail.settledUpTo = settledUntilEpoch;
@@ -1703,6 +1726,81 @@ contract Payments is
         }
 
         return result;
+    }
+
+    
+    /// @notice Number of pending rate-change entries for a rail
+    function getRateChangeQueueSize(uint256 railId) external view returns (uint256) {
+      return rails[railId].rateChangeQueue.size();
+    }
+
+
+    /**
+     * @notice Gets information about an account - when it would go into debt, total balance, available balance, and lockup rate.
+     * @param token The token address to get account info for.
+     * @param owner The address of the account owner.
+     * @return fundedUntilEpoch The epoch at which the account would go into debt given current lockup rate and balance.
+     * @return currentFunds The current funds in the account.
+     * @return availableFunds The funds available after accounting for simulated lockup.
+     * @return currentLockupRate The current lockup rate per epoch.
+     */
+    function getAccountInfoIfSettled(
+        address token,
+        address owner
+    ) external view returns (
+        uint256 fundedUntilEpoch,
+        uint256 currentFunds,
+        uint256 availableFunds,
+        uint256 currentLockupRate
+    ) {
+        Account storage account = accounts[token][owner];
+        
+        currentFunds = account.funds;
+        currentLockupRate = account.lockupRate;
+
+        uint256 currentEpoch = block.number;
+        uint256 elapsedTime = currentEpoch - account.lockupLastSettledAt;
+        uint256 simulatedLockupCurrent = account.lockupCurrent;
+
+        // Early return for simple cases: no elapsed time or no lockup rate
+        if (elapsedTime <= 0 || account.lockupRate == 0) {
+            availableFunds = account.funds > simulatedLockupCurrent ? 
+                account.funds - simulatedLockupCurrent : 0;
+            
+            // If no lockup rate, account never goes into debt
+            fundedUntilEpoch = account.lockupRate == 0 ? type(uint256).max : availableFunds == 0 ? account.lockupLastSettledAt : currentEpoch + (availableFunds / account.lockupRate);
+            
+            return (fundedUntilEpoch, currentFunds, availableFunds, currentLockupRate);
+        }
+
+        // Handle case where we need to calculate additional lockup
+        uint256 additionalLockup = account.lockupRate * elapsedTime;
+        
+        // If we have sufficient funds to cover the additional lockup
+        if (account.funds >= account.lockupCurrent + additionalLockup) {
+            simulatedLockupCurrent = account.lockupCurrent + additionalLockup;
+        } else {
+            // Calculate partial settlement
+            uint256 availableForLockup = account.funds - account.lockupCurrent;
+            if (availableForLockup > 0) {
+                // Calculate how many epochs we can fund with available funds
+                uint256 fractionalEpochs = availableForLockup / account.lockupRate;
+                simulatedLockupCurrent = account.lockupCurrent + (account.lockupRate * fractionalEpochs);
+            }
+        }
+
+        // Calculate available balance and fundedUntilEpoch
+        availableFunds = account.funds > simulatedLockupCurrent ? 
+            account.funds - simulatedLockupCurrent : 0;
+
+        if (availableFunds == 0) {
+            // Calculate when debt started based on how many epochs we could fund
+            uint256 fractionalEpochs = (simulatedLockupCurrent - account.lockupCurrent) / account.lockupRate;
+            fundedUntilEpoch = account.lockupLastSettledAt + fractionalEpochs;
+        } else {
+            uint256 epochsUntilDebt = availableFunds / account.lockupRate;
+            fundedUntilEpoch = currentEpoch + epochsUntilDebt;
+        }
     }
 }
 

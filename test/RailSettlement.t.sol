@@ -49,7 +49,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No validator
+            address(0), // No validator
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance a few blocks
@@ -76,7 +77,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             3, // lockupPeriod - total locked: 150 ether (3 * 50)
             0, // No fixed lockup
-            address(0)
+            address(0),
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance 7 blocks
@@ -128,7 +130,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // Standard validator
+            address(0), // Standard validator
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
         uint256 newRate1 = 6 ether;
         uint256 newRate2 = 7 ether;
@@ -195,7 +198,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(validator) // Standard validator
+            address(validator), // Standard validator
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance several blocks
@@ -244,7 +248,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(validator) // Standard validator
+            address(validator), // Standard validator
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         vm.startPrank(OPERATOR);
@@ -289,7 +294,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(validator) // Reduced amount validator
+            address(validator), // Reduced amount validator
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance several blocks
@@ -354,7 +360,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(validator) // Reduced duration validator
+            address(validator), // Reduced duration validator
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance several blocks
@@ -400,7 +407,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(validator) // Malicious validator
+            address(validator), // Malicious validator
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance several blocks
@@ -443,7 +451,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             lockupPeriod, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No validator
+            address(0), // No validator
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Advance several blocks
@@ -540,7 +549,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No validator
+            address(0), // No validator
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Settle immediately without advancing blocks - should be a no-op
@@ -579,7 +589,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             lockupPeriod, 
             0, // No fixed lockup
-            address(validator)
+            address(validator),
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Simulate 5 blocks passing (blocks 1-5)
@@ -594,8 +605,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             ,
             ,
         ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
-        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,
-        MAX_LOCKUP_PERIOD);
+        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,MAX_LOCKUP_PERIOD);
 
         // Operator doubles the payment rate from 5 ETH to 10 ETH per block
         // This creates a rate change in the queue
@@ -639,7 +649,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             rate,
             lockupPeriod,
             0, // No fixed lockup
-            address(validator)
+            address(validator),
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Simulate 5 blocks passing (blocks 1-5)
@@ -663,8 +674,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
             ,
             ,
         ) = helper.getOperatorAllowanceAndUsage(USER1, OPERATOR);
-        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,
-        MAX_LOCKUP_PERIOD);
+        helper.setupOperatorApproval(USER1, OPERATOR, rateAllowance  * 2, lockupAllowance + 10 * rate,MAX_LOCKUP_PERIOD);
 
         // Operator doubles the payment rate from 5 ETH to 10 ETH per block
         // This creates a rate change in the queue
@@ -694,6 +704,53 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         console.log("result.note", result.note);
     }
+    
+    function testModifyRailPayment_SkipsZeroRateEnqueue() public {
+        uint256 initialRate = 0;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            initialRate,
+            10,            // lockupPeriod
+            0,             // fixed lockup
+            address(0),     // no arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
+            );
+            
+            // give the operator enough allowance to change the rate
+            helper.setupOperatorApproval(
+                USER1,
+                OPERATOR,
+                10 ether,
+                100 ether,
+                MAX_LOCKUP_PERIOD
+                );
+                
+                // advance a few blocks so there is “history” to mark as settled
+                helper.advanceBlocks(4);
+                uint256 beforeBlock = block.number;
+                
+                // change rate: 0 → 5 ether
+                vm.prank(OPERATOR);
+                payments.modifyRailPayment(railId, 5 ether, 0);
+                vm.stopPrank();
+                
+                // queue must still be empty
+                assertEq(
+                    payments.getRateChangeQueueSize(railId),
+                    0,
+                    "queue should stay empty"
+                    );
+                    
+                    // settledUpTo must equal the block where modification occurred
+                    Payments.RailView memory rv = payments.getRail(railId);
+                    assertEq(
+                        rv.settledUpTo,
+                        beforeBlock,
+                        "settledUpTo should equal current block"
+                        );
+                        }
 
     //--------------------------------
     // Helper Functions
@@ -726,7 +783,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
             USER1,
             USER2,
             address(0), // no validator
-            operatorCommissionBps
+            operatorCommissionBps,
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
         vm.stopPrank();
 
@@ -748,6 +806,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
         Payments.Account memory operatorBefore = helper.getAccountData(
             OPERATOR
         );
+        Payments.Account memory serviceFeeRecipientBefore = helper
+            .getAccountData(SERVICE_FEE_RECIPIENT);
         uint256 feesBefore = payments.accumulatedFees(address(token));
 
         // --- Settle Rail ---
@@ -802,6 +862,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
         Payments.Account memory payerAfter = helper.getAccountData(USER1);
         Payments.Account memory payeeAfter = helper.getAccountData(USER2);
         Payments.Account memory operatorAfter = helper.getAccountData(OPERATOR);
+        Payments.Account memory serviceFeeRecipientAfter = helper
+            .getAccountData(SERVICE_FEE_RECIPIENT);
         uint256 feesAfter = payments.accumulatedFees(address(token));
 
         assertEq(
@@ -816,13 +878,18 @@ contract RailSettlementTest is Test, BaseTestHelper {
         );
         assertEq(
             operatorAfter.funds,
-            operatorBefore.funds + expectedOperatorCommission,
+            operatorBefore.funds,
             "Operator funds mismatch"
         );
         assertEq(
             feesAfter,
             feesBefore + expectedPaymentFee,
             "Accumulated fees mismatch"
+        );
+        assertEq(
+            serviceFeeRecipientAfter.funds,
+            serviceFeeRecipientBefore.funds + expectedOperatorCommission,
+            "Service fee recipient funds mismatch"
         );
 
         // --- Test Fees Withdrawal and Subsequent Fee Accumulation ---
@@ -918,5 +985,132 @@ contract RailSettlementTest is Test, BaseTestHelper {
             expectedNewFee,
             "Accumulated fees incorrect after resettlement"
         );
+    }
+
+    function testSettleRailWithNonZeroZeroNonZeroRateSequence() public {
+        // Setup operator approval for rate modifications
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            25 ether, // rate allowance
+            200 ether, // lockup allowance
+            MAX_LOCKUP_PERIOD
+        );
+
+        // Create a rail with initial rate
+        uint256 initialRate = 5 ether;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            initialRate,
+            10, // lockupPeriod
+            0, // No fixed lockup
+            address(0), // No arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
+        );
+
+        // Advance 3 blocks at initial rate (5 ether/block)
+        helper.advanceBlocks(3);
+
+        // Change rate to zero
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, 0, 0);
+        vm.stopPrank();
+
+        // Advance 4 blocks at zero rate (no payment)
+        helper.advanceBlocks(4);
+
+        // Change rate to new non-zero rate
+        uint256 finalRate = 8 ether;
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, finalRate, 0);
+        vm.stopPrank();
+
+        // Advance 5 blocks at final rate (8 ether/block)
+        helper.advanceBlocks(5);
+
+        // Calculate expected settlement:
+        // Phase 1 (blocks 1-3): 3 blocks at 5 ether/block = 15 ether
+        // Phase 2 (blocks 4-7): 4 blocks at 0 ether/block = 0 ether
+        // Phase 3 (blocks 8-12): 5 blocks at 8 ether/block = 40 ether
+        // Total expected: 15 + 0 + 40 = 55 ether
+        uint256 expectedAmount = (initialRate * 3) + (0 * 4) + (finalRate * 5);
+
+        // Settle and verify
+        RailSettlementHelpers.SettlementResult memory result = settlementHelper
+            .settleRailAndVerify(
+                railId,
+                block.number,
+                expectedAmount,
+                block.number
+            );
+
+        console.log(
+            "Non-zero -> Zero -> Non-zero settlement note:",
+            result.note
+        );
+    }
+
+    function testSettleRailWithZeroNonZeroZeroRateSequence() public {
+        // Setup operator approval for rate modifications
+        helper.setupOperatorApproval(
+            USER1,
+            OPERATOR,
+            15 ether, // rate allowance
+            150 ether, // lockup allowance
+            MAX_LOCKUP_PERIOD
+        );
+
+        // Create a rail starting with zero rate
+        uint256 initialRate = 0;
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            initialRate,
+            10, // lockupPeriod
+            0, // No fixed lockup
+            address(0), // No arbiter
+            SERVICE_FEE_RECIPIENT // operator commision receiver
+        );
+
+        // Advance 2 blocks at zero rate (no payment)
+        helper.advanceBlocks(2);
+
+        // Change rate to non-zero
+        uint256 middleRate = 6 ether;
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, middleRate, 0);
+        vm.stopPrank();
+
+        // Advance 4 blocks at middle rate (6 ether/block)
+        helper.advanceBlocks(4);
+
+        // Change rate back to zero
+        vm.prank(OPERATOR);
+        payments.modifyRailPayment(railId, 0, 0);
+        vm.stopPrank();
+
+        // Advance 3 blocks at zero rate again (no payment)
+        helper.advanceBlocks(3);
+
+        // Calculate expected settlement:
+        // Phase 1 (blocks 1-2): 2 blocks at 0 ether/block = 0 ether
+        // Phase 2 (blocks 3-6): 4 blocks at 6 ether/block = 24 ether
+        // Phase 3 (blocks 7-9): 3 blocks at 0 ether/block = 0 ether
+        // Total expected: 0 + 24 + 0 = 24 ether
+        uint256 expectedAmount = (0 * 2) + (middleRate * 4) + (0 * 3);
+
+        // Settle and verify
+        RailSettlementHelpers.SettlementResult memory result = settlementHelper
+            .settleRailAndVerify(
+                railId,
+                block.number,
+                expectedAmount,
+                block.number
+            );
+
+        console.log("Zero -> Non-zero -> Zero settlement note:", result.note);
     }
 }

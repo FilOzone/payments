@@ -117,7 +117,9 @@ contract FeesTest is Test, BaseTestHelper {
             RAIL1_RATE,
             10, // lockupPeriod
             0, // No fixed lockup
-            address(0) // No validator
+            address(0), // No validator
+            SERVICE_FEE_RECIPIENT // operator commision receiver
+
         );
 
         // Create a rail with token2
@@ -127,7 +129,9 @@ contract FeesTest is Test, BaseTestHelper {
             USER1, // from
             USER2, // to
             address(0), // no validator
-            0 // no commission
+            0, // no commission
+            SERVICE_FEE_RECIPIENT // operator commision receiver
+
         );
 
         // Set rail2 parameters
@@ -140,7 +144,8 @@ contract FeesTest is Test, BaseTestHelper {
             USER1, // from
             USER2, // to
             address(0), // no validator
-            0 // no commission
+            0, // no commission
+            SERVICE_FEE_RECIPIENT // operator commision receiver
         );
 
         // Set rail3 parameters

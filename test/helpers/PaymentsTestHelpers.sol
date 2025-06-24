@@ -405,7 +405,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         address from,
         address to,
         address railOperator,
-        address validator
+        address validator,
+        address serviceFeeRecipient
     ) public returns (uint256) {
         vm.startPrank(railOperator);
         uint256 railId = payments.createRail(
@@ -413,7 +414,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             from,
             to,
             validator,
-            0 // commissionRateBps
+            0, // commissionRateBps
+            serviceFeeRecipient // serviceFeeRecipient
         );
         vm.stopPrank();
 
@@ -424,6 +426,11 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         assertEq(rail.to, to, "Rail recipient address mismatch");
         assertEq(rail.validator, validator, "Rail validator address mismatch");
         assertEq(rail.operator, railOperator, "Rail operator address mismatch");
+        assertEq(
+            rail.serviceFeeRecipient,
+            serviceFeeRecipient,
+            "Rail service fee recipient address mismatch"
+        );
 
         return railId;
     }
@@ -435,7 +442,8 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         uint256 paymentRate,
         uint256 lockupPeriod,
         uint256 lockupFixed,
-        address validator
+        address validator,
+        address serviceFeeRecipient
     ) public returns (uint256 railId) {
         // Calculate required allowances for the rail
         uint256 requiredRateAllowance = paymentRate;
@@ -473,7 +481,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
             vm.stopPrank();
         }
 
-        railId = createRail(from, to, railOperator, validator);
+        railId = createRail(from, to, railOperator,validator, serviceFeeRecipient);
 
         // Get operator usage before modifications
         (, , , uint256 rateUsageBefore, uint256 lockupUsageBefore,) = payments

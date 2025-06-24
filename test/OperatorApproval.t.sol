@@ -119,7 +119,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create a rail
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         // Verify no allowance consumed yet
         helper.verifyOperatorAllowances(
@@ -188,7 +188,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // 4. Create second rail and set rate
-        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         uint256 rate2 = 15 ether;
         vm.startPrank(OPERATOR);
@@ -220,7 +220,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         // Set rate to exactly the limit
         vm.startPrank(OPERATOR);
@@ -247,7 +247,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         // Set payment rate
         uint256 paymentRate = 10 ether;
@@ -336,7 +336,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         // Set payment rate
         uint256 paymentRate = 10 ether;
@@ -365,7 +365,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         // Use exactly the available rate allowance
         vm.startPrank(OPERATOR);
@@ -393,7 +393,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         helper.setupOperatorApproval(USER1, OPERATOR, 0, 0,MAX_LOCKUP_PERIOD);
 
         // Create rail with zero allowances
-        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         // Attempt to set non-zero rate (should fail)
         vm.startPrank(OPERATOR);
@@ -418,7 +418,8 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
                 USER1,
                 USER2,
                 address(0),
-                0
+                0,
+                SERVICE_FEE_RECIPIENT // operator commision receiver
             )
         returns (uint256) {
             // If we get here, the function did not revert
@@ -447,7 +448,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
             MAX_LOCKUP_PERIOD
         );
 
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         // 3. Test non-operator rail modification
         vm.startPrank(USER1);
@@ -475,7 +476,8 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
                 USER1,
                 USER2,
                 address(0),
-                0
+                0,
+                SERVICE_FEE_RECIPIENT // operator commision receiver
             )
         returns (uint256) {
             // If we get here, the function did not revert
@@ -535,7 +537,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail with fixed lockup
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         uint256 paymentRate = 10 ether;
         uint256 fixedLockup = 100 ether;
@@ -578,7 +580,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0), SERVICE_FEE_RECIPIENT);
 
         uint256 paymentRate = 10 ether;
         uint256 fixedLockup = 800 ether;
@@ -646,7 +648,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         helper.setupOperatorApproval(USER1, OPERATOR, 90 ether, 30 ether,MAX_LOCKUP_PERIOD);
 
         // Operator creates a rail using 50 rate/20 lockup
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         vm.startPrank(OPERATOR);
         payments.modifyRailPayment(railId, 50 ether, 0);
@@ -691,7 +693,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         // they should not be able to create new rail configurations with non-zero rate/lockup
 
         // Create a new rail, which should succeed
-        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         // But attempting to set non-zero rate on the new rail should fail due to insufficient allowance
         vm.startPrank(OPERATOR);
@@ -718,7 +720,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail and set rate
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         vm.startPrank(OPERATOR);
         payments.modifyRailPayment(railId, 50 ether, 0);
@@ -772,7 +774,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // 3. Test reducing lockup allowance below current usage
         // Create a new rail for lockup testing
-        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0), SERVICE_FEE_RECIPIENT);
 
         // Reset approval with high lockup
         helper.setupOperatorApproval(USER1, OPERATOR, 50 ether, 1000 ether,MAX_LOCKUP_PERIOD);
@@ -820,9 +822,9 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create two rails with different parameters
-        uint256 railId1 = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId1 = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
-        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         // Set parameters for first rail
         uint256 rate1 = 10 ether;
@@ -900,7 +902,8 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
                 USER1,
                 USER2,
                 address(0),
-                0
+                0,
+                SERVICE_FEE_RECIPIENT // operator commision receiver
             )
         returns (uint256) {
             // If we get here, the function did not revert
@@ -933,7 +936,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         vm.stopPrank();
 
         // Operator should be able to create a new rail
-        uint256 railId3 = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId3 = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         // But should not be able to exceed the new allowance
         vm.startPrank(OPERATOR);
@@ -954,7 +957,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
 
         // Create rail
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
 
         // Set payment rate
         uint256 paymentRate = 10 ether;
@@ -986,7 +989,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
             initialMaxLockupPeriod
         );
         // Create rail
-        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0));
+        uint256 railId = helper.createRail(USER1, USER2, OPERATOR, address(0),SERVICE_FEE_RECIPIENT);
         // Set payment rate and high lockup period
         uint256 paymentRate = 10 ether;
         vm.startPrank(OPERATOR);

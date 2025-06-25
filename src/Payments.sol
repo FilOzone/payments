@@ -1130,6 +1130,8 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Verify payer has sufficient lockup for the settlement
         require(payer.lockupCurrent >= settledAmount, "failed to settle: insufficient lockup to cover settlement");
+        uint256 actualSettledDuration = settledUntilEpoch - epochStart;
+        uint256 requiredLockup = rate * actualSettledDuration;
 
         // Transfer funds from payer (always pays full settled amount)
         payer.funds -= settledAmount;
@@ -1141,8 +1143,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Credit payee
         payee.funds += netPayeeAmount;
 
-        // Reduce the lockup by the expected settled amount previously added to the current lockup
-        payer.lockupCurrent -= expectedSettledAmount;
+        // Reduce lockup based on actual settled duration, not requested duration
+        // so that if the validator only settles for a partial duration, we only reduce the client lockup by the actual locked amount
+        // for that reduced duration.
+        payer.lockupCurrent -= requiredLockup;
 
         // Update the rail's settled epoch
         rail.settledUpTo = settledUntilEpoch;
@@ -1304,7 +1308,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Perform the transfer
         if (token == address(0)) {
-            (bool success, ) = payable(to).call{value: amount}("");
+            (bool success,) = payable(to).call{value: amount}("");
             require(success, "FIL transfer failed");
         } else {
             IERC20(token).safeTransfer(to, amount);

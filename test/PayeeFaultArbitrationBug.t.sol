@@ -93,4 +93,39 @@ contract PayeeFaultArbitrationBugTest is Test, BaseTestHelper {
 
         require(payerFinal.lockupCurrent == expectedTotalLockup, "Payee fault bug: Fixed lockup not fully returned");
     }
+
+    function testLockupReturnedWithFaultReducedDuration() public {
+        uint256 paymentRate = 5 ether;
+        uint256 lockupPeriod = 12;
+        uint256 fixedLockup = 10 ether;
+
+        MockValidator dv = new MockValidator(MockValidator.ValidatorMode.REDUCE_DURATION);
+        dv.configure(20); // Only approve 20% of requested duration
+
+        uint256 railId = helper.setupRailWithParameters(
+            USER1, USER2, OPERATOR, paymentRate, lockupPeriod, fixedLockup, address(dv), SERVICE_FEE_RECIPIENT
+        );
+
+        //  we will try to settle for 15 epochs, but the validator will only approve 20% of the duration i.e. 3 epochs
+        // this means that funds for the remaining 12 epochs will still be locked up.
+        uint256 expectedTotalLockup = fixedLockup + (paymentRate * lockupPeriod) + (12 * paymentRate);
+
+        console.log("\n=== FIXED LOCKUP TEST ===");
+        console.log("Fixed lockup:", fixedLockup);
+        console.log("Rate-based lockup:", paymentRate * lockupPeriod);
+        console.log("Expected total lockup:", expectedTotalLockup);
+
+        vm.prank(OPERATOR);
+        helper.advanceBlocks(15);
+
+        vm.prank(USER1);
+        payments.settleRail(railId, block.number);
+
+        Payments.Account memory payerFinal = helper.getAccountData(USER1);
+
+        console.log("Lockup after:", payerFinal.lockupCurrent);
+        console.log("Expected lockup:", expectedTotalLockup);
+
+        require(payerFinal.lockupCurrent == expectedTotalLockup, "Payee fault bug: Fixed lockup not fully returned");
+    }
 }

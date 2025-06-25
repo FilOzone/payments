@@ -240,9 +240,9 @@ Payments.modifyRailPayment(
 - Urgent payments outside regular settlement cycles
 - Termination fees when canceling services
 
-#### Operator One-Time Payment Window
+### Operator One-Time Payment Window
 
-- **Lifecycle:**  
+**Lifecycle:**  
   1. **Rail Active:**  
      While the rail is active, the operator can make one-time payments at any time, provided there is sufficient fixed lockup remaining.
   2. **Rail Termination:**  
@@ -251,34 +251,34 @@ Payments.modifyRailPayment(
   3. **End of Window:**  
      Once the current epoch surpasses `(rail termination epoch + rail lockup period)`, the one-time payment window closes. At this point, any unused fixed lockup is automatically refunded to the client, and no further one-time payments can be made.
 
-- **Example Timeline:**  
+**Example Timeline:**  
   - Rail is created at epoch 100, with a lockup period of 20 epochs.
   - At epoch 150, the operator calls `terminateRail`, but the payer's lockup is only settled up to epoch 120.
   - The rail's termination epoch is set to 120 (the last settled lockup epoch).
   - The operator can make one-time payments from the fixed lockup until epoch 140 (`120 + 20`).
   - After epoch 140, any remaining fixed lockup is refunded to the client.
 
-- **Note:**  
-  The one-time payment window after termination is **not** always the epoch at which `terminateRail` is called plus the lockup period. It depends on how far the payer's account lockup has been settled at the time of termination. If the account is not fully settled, the window will be shorter.
+**Note:**  
+  - The one-time payment window after termination is **not** always the epoch at which `terminateRail` is called plus the lockup period. It depends on how far the payer's account lockup has been settled at the time of termination. If the account is not fully settled, the window will be shorter.
 
-#### Handling Reductions to maxLockupPeriod
+### Handling Reductions to maxLockupPeriod
 
-- A client can reduce the operator's `maxLockupPeriod` or `lockupAllowance` after a deal proposal, which may prevent the operator from setting a meaningful lockup period and thus block one-time payments.
+A client can reduce the operator's `maxLockupPeriod` or `lockupAllowance` after a deal proposal, which may prevent the operator from setting a meaningful lockup period and thus block one-time payments.
 
-- **Edge Case Explanation:**
+**Edge Case Explanation:**
   - If the client reduces the operator's `maxLockupPeriod` or `lockupAllowance` after a deal is proposed but before the operator has set the lockup, the operator may be unable to allocate enough fixed lockup for one-time payments. This can hamper the operator's ability to secure payment for work performed, especially if the lockup period is set to a very low value or zero.
   - This risk exists because the operator's ability to set or increase the lockup is always subject to the current allowances set by the client. If the client reduces these allowances before the operator calls `modifyRailLockup`, the transaction will fail, and the operator cannot secure the funds.
 
-- **Best Practice:**
+**Best Practice:**
   - Before performing any work or incurring costs, the operator should always call `modifyRailLockup` to allocate the required fixed lockup. Only if this call is successful should the operator proceed with the work. This guarantees that the fixed lockup amount is secured for one-time payments, regardless of any future reductions to operator allowances by the client.
 
-- **Practical Scenario:**
+**Practical Scenario:**
   1. Operator and client agree on a deal, and the operator intends to lock 10 tokens for one-time payments.
   2. Before the operator calls `modifyRailLockup`, the client reduces the operator's `maxLockupPeriod` to 0 or lowers the `lockupAllowance` below 10 tokens.
   3. The operator's attempt to set the lockup fails, and they cannot secure the funds for one-time payments.
   4. If the operator had called `modifyRailLockup` and succeeded before the client reduced the allowance, the lockup would be secured, and the operator could draw one-time payments as needed, even if the client later reduces the allowance.
 
-- **Summary:**
+**Summary:**
   - Always secure the fixed lockup before starting work. This is the only way to guarantee access to one-time payments, regardless of changes to operator allowances by the client.
 
 ### Settlement

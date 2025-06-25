@@ -1304,7 +1304,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Perform the transfer
         if (token == address(0)) {
-            (bool success, ) = payable(to).call{value: amount}("");
+            (bool success,) = payable(to).call{value: amount}("");
             require(success, "FIL transfer failed");
         } else {
             IERC20(token).safeTransfer(to, amount);

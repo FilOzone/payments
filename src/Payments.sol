@@ -1097,8 +1097,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Calculate the default settlement values (without validation)
         uint256 duration = epochEnd - epochStart;
-        uint256 expectedSettledAmount = rate * duration;
-        uint256 settledAmount = expectedSettledAmount;
+        uint256 settledAmount = rate * duration;
         uint256 settledUntilEpoch = epochEnd;
         note = "";
 
@@ -1130,6 +1129,8 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Verify payer has sufficient lockup for the settlement
         require(payer.lockupCurrent >= settledAmount, "failed to settle: insufficient lockup to cover settlement");
+        uint256 actualSettledDuration = settledUntilEpoch - epochStart;
+        uint256 requiredLockup = rate * actualSettledDuration;
 
         // Transfer funds from payer (always pays full settled amount)
         payer.funds -= settledAmount;
@@ -1141,8 +1142,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Credit payee
         payee.funds += netPayeeAmount;
 
-        // Reduce the lockup by the expected settled amount previously added to the current lockup
-        payer.lockupCurrent -= expectedSettledAmount;
+        // Reduce lockup based on actual settled duration, not requested duration
+        // so that if the validator only settles for a partial duration, we only reduce the client lockup by the actual locked amount
+        // for that reduced duration.
+        payer.lockupCurrent -= requiredLockup;
 
         // Update the rail's settled epoch
         rail.settledUpTo = settledUntilEpoch;
@@ -1304,7 +1307,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Perform the transfer
         if (token == address(0)) {
-            (bool success, ) = payable(to).call{value: amount}("");
+            (bool success,) = payable(to).call{value: amount}("");
             require(success, "FIL transfer failed");
         } else {
             IERC20(token).safeTransfer(to, amount);
@@ -1422,48 +1425,16 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         currentLockupRate = account.lockupRate;
 
         uint256 currentEpoch = block.number;
-        uint256 elapsedTime = currentEpoch - account.lockupLastSettledAt;
-        uint256 simulatedLockupCurrent = account.lockupCurrent;
 
-        // Early return for simple cases: no elapsed time or no lockup rate
-        if (elapsedTime <= 0 || account.lockupRate == 0) {
-            availableFunds = account.funds > simulatedLockupCurrent ? account.funds - simulatedLockupCurrent : 0;
+        fundedUntilEpoch = account.lockupRate == 0
+            ? type(uint256).max
+            : account.lockupLastSettledAt + (account.funds - account.lockupCurrent) / account.lockupRate;
+        uint256 simulatedSettledAt = fundedUntilEpoch >= currentEpoch ? currentEpoch : fundedUntilEpoch;
+        uint256 simulatedLockupCurrent =
+            account.lockupCurrent + account.lockupRate * (simulatedSettledAt - account.lockupLastSettledAt);
+        availableFunds = account.funds - simulatedLockupCurrent;
 
-            // If no lockup rate, account never goes into debt
-            fundedUntilEpoch = account.lockupRate == 0
-                ? type(uint256).max
-                : availableFunds == 0 ? account.lockupLastSettledAt : currentEpoch + (availableFunds / account.lockupRate);
-
-            return (fundedUntilEpoch, currentFunds, availableFunds, currentLockupRate);
-        }
-
-        // Handle case where we need to calculate additional lockup
-        uint256 additionalLockup = account.lockupRate * elapsedTime;
-
-        // If we have sufficient funds to cover the additional lockup
-        if (account.funds >= account.lockupCurrent + additionalLockup) {
-            simulatedLockupCurrent = account.lockupCurrent + additionalLockup;
-        } else {
-            // Calculate partial settlement
-            uint256 availableForLockup = account.funds - account.lockupCurrent;
-            if (availableForLockup > 0) {
-                // Calculate how many epochs we can fund with available funds
-                uint256 fractionalEpochs = availableForLockup / account.lockupRate;
-                simulatedLockupCurrent = account.lockupCurrent + (account.lockupRate * fractionalEpochs);
-            }
-        }
-
-        // Calculate available balance and fundedUntilEpoch
-        availableFunds = account.funds > simulatedLockupCurrent ? account.funds - simulatedLockupCurrent : 0;
-
-        if (availableFunds == 0) {
-            // Calculate when debt started based on how many epochs we could fund
-            uint256 fractionalEpochs = (simulatedLockupCurrent - account.lockupCurrent) / account.lockupRate;
-            fundedUntilEpoch = account.lockupLastSettledAt + fractionalEpochs;
-        } else {
-            uint256 epochsUntilDebt = availableFunds / account.lockupRate;
-            fundedUntilEpoch = currentEpoch + epochsUntilDebt;
-        }
+        return (fundedUntilEpoch, currentFunds, availableFunds, currentLockupRate);
     }
 }
 

@@ -880,24 +880,24 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
     function testWithdrawFeesWithNativeToken() public {
         // Setup: Create a rail that uses native token (address(0))
-        
+
         // First, deposit native tokens for USER1
         uint256 nativeDepositAmount = 100 ether;
         vm.deal(USER1, nativeDepositAmount);
         vm.prank(USER1);
         payments.deposit{value: nativeDepositAmount}(address(0), USER1, nativeDepositAmount);
-        
+
         // Setup operator approval for native token
         vm.prank(USER1);
         payments.setOperatorApproval(
             address(0), // native token
             OPERATOR,
             true,
-            10 ether,  // rate allowance
+            10 ether, // rate allowance
             100 ether, // lockup allowance
             MAX_LOCKUP_PERIOD
         );
-        
+
         // Create rail with native token
         uint256 railId;
         vm.startPrank(OPERATOR);
@@ -909,41 +909,41 @@ contract RailSettlementTest is Test, BaseTestHelper {
             0, // no operator commission for simplicity
             address(0) // no service fee recipient needed
         );
-        
+
         // Set rail parameters
         uint256 rate = 5 ether;
         uint256 lockupPeriod = 10;
         payments.modifyRailPayment(railId, rate, 0);
         payments.modifyRailLockup(railId, lockupPeriod, 0);
         vm.stopPrank();
-        
+
         // Advance blocks and settle to generate fees
         helper.advanceBlocks(5);
-        
+
         // Get initial accumulated fees (should be 0)
         uint256 feesBefore = payments.accumulatedFees(address(0));
         assertEq(feesBefore, 0, "Initial native token fees should be 0");
-        
+
         // Settle the rail
         vm.prank(USER1);
-        (uint256 settledAmount, , uint256 paymentFee, , , ) = payments.settleRail(railId, block.number);
-        
+        (uint256 settledAmount,, uint256 paymentFee,,,) = payments.settleRail(railId, block.number);
+
         // Verify payment fee was collected
         uint256 expectedPaymentFee = (settledAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
         assertEq(paymentFee, expectedPaymentFee, "Payment fee calculation incorrect");
-        
+
         // Verify accumulated fees
         uint256 feesAfterSettle = payments.accumulatedFees(address(0));
         assertEq(feesAfterSettle, expectedPaymentFee, "Native token fees not accumulated correctly");
-        
+
         // Test fee withdrawal
         address feeRecipient = address(0x1234);
         uint256 recipientBalanceBefore = feeRecipient.balance;
-        
+
         // Withdraw native token fees
         vm.prank(OWNER);
         payments.withdrawFees(address(0), feeRecipient, feesAfterSettle);
-        
+
         // Verify recipient received the fees
         uint256 recipientBalanceAfter = feeRecipient.balance;
         assertEq(
@@ -951,33 +951,33 @@ contract RailSettlementTest is Test, BaseTestHelper {
             feesAfterSettle,
             "Native token fees not transferred correctly"
         );
-        
+
         // Verify accumulated fees are now zero
         uint256 feesAfterWithdrawal = payments.accumulatedFees(address(0));
         assertEq(feesAfterWithdrawal, 0, "Native token fees should be zero after withdrawal");
-        
+
         // Verify the fee token is tracked in getAllAccumulatedFees
         (address[] memory tokens, uint256[] memory amounts, uint256 count) = payments.getAllAccumulatedFees();
         assertEq(count, 1, "Should have 1 fee token");
         assertEq(tokens[0], address(0), "Fee token should be native token");
         assertEq(amounts[0], 0, "Native token fee amount should be 0 after withdrawal");
-        
+
         // Test partial withdrawal
         // Generate more fees
         helper.advanceBlocks(10);
         vm.prank(USER1);
         payments.settleRail(railId, block.number);
-        
+
         uint256 newFees = payments.accumulatedFees(address(0));
         assertTrue(newFees > 0, "Should have new fees after second settlement");
-        
+
         // Withdraw only half of the fees
         uint256 partialWithdrawAmount = newFees / 2;
         uint256 recipientBalanceBeforePartial = feeRecipient.balance;
-        
+
         vm.prank(OWNER);
         payments.withdrawFees(address(0), feeRecipient, partialWithdrawAmount);
-        
+
         // Verify partial withdrawal
         assertEq(
             feeRecipient.balance - recipientBalanceBeforePartial,

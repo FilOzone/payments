@@ -600,7 +600,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Validate rate changes based on rail state and account lockup
         if (isTerminated) {
             if (block.number >= maxSettlementEpochForTerminatedRail(rail)) {
-                return modifyPaymentForTerminatedRailBeyondLastEpoch(rail, newRate, oneTimePayment);
+                revert("cannot modify terminated rail beyond it's end epoch");
             }
 
             require(newRate <= oldRate, "failed to modify rail: cannot change rate on terminated rail");
@@ -652,25 +652,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // --- Process the One-Time Payment ---
         processOneTimePayment(payer, payee, rail, oneTimePayment);
-    }
-
-    function modifyPaymentForTerminatedRailBeyondLastEpoch(Rail storage rail, uint256 newRate, uint256 oneTimePayment)
-        internal
-    {
-        uint256 endEpoch = maxSettlementEpochForTerminatedRail(rail);
-        require(
-            newRate == 0 && oneTimePayment == 0,
-            "for terminated rails beyond last settlement epoch, both new rate and one-time payment must be 0"
-        );
-
-        // Check if we need to record the current rate in the queue (should only do this once for the last epoch)
-        if (rail.rateChangeQueue.isEmpty() || rail.rateChangeQueue.peekTail().untilEpoch < endEpoch) {
-            // Queue the current rate up to the max settlement epoch
-            rail.rateChangeQueue.enqueue(rail.paymentRate, endEpoch);
-        }
-
-        // Set payment rate to 0 as the rail is past its last settlement epoch
-        rail.paymentRate = 0;
     }
 
     function enqueueRateChange(Rail storage rail, uint256 oldRate, uint256 newRate) internal {

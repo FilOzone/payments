@@ -42,6 +42,62 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
     uint256 public constant PAYMENT_FEE_BPS = 10; //(0.1 % fee)
 
+    // Events
+    event AccountLockupSettled(
+        address indexed token,
+        address indexed owner,
+        uint256 lockupCurrent,
+        uint256 lockupRate,
+        uint256 lockupLastSettledAt
+    );
+    event OperatorApprovalUpdated(
+        address indexed token,
+        address indexed client,
+        address indexed operator,
+        bool approved,
+        uint256 rateAllowance,
+        uint256 lockupAllowance,
+        uint256 maxLockupPeriod
+    );
+
+    event RailCreated(
+        uint256 indexed railId,
+        address indexed payer,
+        address indexed payee,
+        address token,
+        address operator,
+        address validator,
+        address serviceFeeRecipient,
+        uint256 commissionRateBps
+    );
+    event RailLockupModified(
+        uint256 indexed railId,
+        uint256 oldLockupPeriod,
+        uint256 newLockupPeriod,
+        uint256 oldLockupFixed,
+        uint256 newLockupFixed
+    );
+    event RailOneTimePaymentProcessed(
+        uint256 indexed railId, uint256 netPayeeAmount, uint256 paymentFee, uint256 operatorCommission
+    );
+    event RailRateModified(uint256 indexed railId, uint256 oldRate, uint256 newRate);
+    event RailSettled(
+        uint256 indexed railId,
+        uint256 totalSettledAmount,
+        uint256 totalNetPayeeAmount,
+        uint256 paymentFee,
+        uint256 operatorCommission,
+        uint256 settledUpTo
+    );
+    event RailTerminated(uint256 indexed railId, address indexed by, uint256 endEpoch);
+    event RailFinalized(uint256 indexed railId);
+
+    event DepositRecorded(
+        address indexed token, address indexed from, address indexed to, uint256 amount, bool usedPermit
+    );
+    event WithdrawRecorded(address indexed token, address indexed from, address indexed to, uint256 amount);
+    event FeesWithdrawn(address indexed token, address indexed account, uint256 amount);
+
     struct Account {
         uint256 funds;
         uint256 lockupCurrent;
@@ -137,9 +193,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         string note;
     }
 
-    // Events
-    event DepositWithPermit(address indexed token, address indexed account, uint256 amount);
-
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -198,12 +251,12 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         Account storage payer = accounts[token][owner];
 
         // Before function execution
-        performSettlementCheck(payer, settleFull, true);
+        performSettlementCheck(token, owner, payer, settleFull, true);
 
         _;
 
         // After function execution
-        performSettlementCheck(payer, settleFull, false);
+        performSettlementCheck(token, owner, payer, settleFull, false);
     }
 
     modifier settleAccountLockupBeforeAndAfterForRail(uint256 railId, bool settleFull, uint256 oneTimePayment) {
@@ -215,17 +268,19 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         require(rail.lockupFixed >= oneTimePayment, "one time payment cannot be greater than rail lockupFixed");
 
         // Before function execution
-        performSettlementCheck(payer, settleFull, true);
+        performSettlementCheck(rail.token, rail.from, payer, settleFull, true);
 
         // ---- EXECUTE FUNCTION
         _;
         // ---- FUNCTION EXECUTION COMPLETE
 
         // After function execution
-        performSettlementCheck(payer, settleFull, false);
+        performSettlementCheck(rail.token, rail.from, payer, settleFull, false);
     }
 
-    function performSettlementCheck(Account storage payer, bool settleFull, bool isBefore) internal {
+    function performSettlementCheck(address token, address owner, Account storage payer, bool settleFull, bool isBefore)
+        internal
+    {
         require(
             payer.funds >= payer.lockupCurrent,
             isBefore
@@ -233,7 +288,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
                 : "invariant failure: insufficient funds to cover lockup after function execution"
         );
 
-        settleAccountLockup(payer);
+        settleAccountLockup(token, owner, payer);
 
         // Verify full settlement if required
         // TODO: give the user feedback on what they need to deposit in their account to complete the operation.
@@ -295,6 +350,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         approval.rateAllowance = rateAllowance;
         approval.lockupAllowance = lockupAllowance;
         approval.maxLockupPeriod = maxLockupPeriod;
+
+        emit OperatorApprovalUpdated(
+            token, msg.sender, operator, approved, rateAllowance, lockupAllowance, maxLockupPeriod
+        );
     }
 
     /// @notice Terminates a payment rail, preventing further payments after the rail's lockup period. After calling this method, the lockup period cannot be changed, and the rail's rate and fixed lockup may only be reduced.
@@ -320,6 +379,8 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         );
 
         rail.endEpoch = payer.lockupLastSettledAt + rail.lockupPeriod;
+
+        emit RailTerminated(railId, msg.sender, rail.endEpoch);
 
         // Remove the rail rate from account lockup rate but don't set rail rate to zero yet.
         // The rail rate will be used to settle the rail and so we can't zero it yet.
@@ -360,6 +421,8 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Update account balance
         account.funds += amount;
+
+        emit DepositRecorded(token, msg.sender, to, amount, false);
     }
 
     /**
@@ -389,7 +452,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         IERC20(token).safeTransferFrom(to, address(this), amount);
         account.funds += amount;
 
-        emit DepositWithPermit(token, to, amount);
+        emit DepositRecorded(token, to, to, amount, true);
     }
 
     /// @notice Withdraws tokens from the caller's account to the caller's account, up to the amount of currently available tokens (the tokens not currently locked in rails).
@@ -427,6 +490,8 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         } else {
             IERC20(token).safeTransfer(to, amount);
         }
+
+        emit WithdrawRecorded(token, msg.sender, to, amount);
     }
 
     /// @notice Create a new rail from `from` to `to`, operated by the caller.
@@ -477,6 +542,8 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         payeeRails[token][to].push(railId);
         payerRails[token][from].push(railId);
 
+        emit RailCreated(railId, from, to, token, operator, validator, serviceFeeRecipient, commissionRateBps);
+
         return railId;
     }
 
@@ -498,11 +565,16 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         Rail storage rail = rails[railId];
         bool isTerminated = isRailTerminated(rail);
 
+        uint256 oldLockupPeriod = rail.lockupPeriod;
+        uint256 oldLockupFixed = rail.lockupFixed;
+
         if (isTerminated) {
             modifyTerminatedRailLockup(rail, period, lockupFixed);
         } else {
             modifyNonTerminatedRailLockup(rail, period, lockupFixed);
         }
+
+        emit RailLockupModified(railId, oldLockupPeriod, period, oldLockupFixed, lockupFixed);
     }
 
     function modifyTerminatedRailLockup(Rail storage rail, uint256 period, uint256 lockupFixed) internal {
@@ -650,8 +722,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Update operator allowance for one-time payment
         updateOperatorAllowanceForOneTimePayment(operatorApproval, oneTimePayment);
 
+        emit RailRateModified(railId, oldRate, newRate);
+
         // --- Process the One-Time Payment ---
-        processOneTimePayment(payer, payee, rail, oneTimePayment);
+        processOneTimePayment(railId, payer, payee, rail, oneTimePayment);
     }
 
     function modifyPaymentForTerminatedRailBeyondLastEpoch(Rail storage rail, uint256 newRate, uint256 oneTimePayment)
@@ -735,6 +809,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     function processOneTimePayment(
+        uint256 railId,
         Account storage payer,
         Account storage payee,
         Rail storage rail,
@@ -747,11 +822,13 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             payer.funds -= oneTimePayment;
 
             // Calculate fees, pay operator commission and track platform fees
-            (uint256 netPayeeAmount,,) =
+            (uint256 netPayeeAmount, uint256 paymentFee, uint256 operatorCommission) =
                 calculateAndPayFees(oneTimePayment, rail.token, rail.serviceFeeRecipient, rail.commissionRateBps);
 
             // Credit payee (net amount after fees)
             payee.funds += netPayeeAmount;
+
+            emit RailOneTimePaymentProcessed(railId, netPayeeAmount, paymentFee, operatorCommission);
         }
     }
 
@@ -834,7 +911,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Handle terminated and fully settled rails that are still not finalised
         if (isRailTerminated(rail) && rail.settledUpTo >= rail.endEpoch) {
-            finalizeTerminatedRail(rail, payer);
+            finalizeTerminatedRail(railId, rail, payer);
             return (0, 0, 0, 0, rail.settledUpTo, "rail fully settled and finalized");
         }
 
@@ -859,53 +936,47 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             );
         }
 
+        // Declare variables for settlement results
+        uint256 amount;
+        uint256 netPayeeAmount;
+        uint256 paymentFee;
+        uint256 operatorCommission;
+        string memory segmentNote;
+
         // Process settlement depending on whether rate changes exist
         if (rail.rateChangeQueue.isEmpty()) {
-            (
-                uint256 amount,
-                uint256 netPayeeAmount,
-                uint256 paymentFee,
-                uint256 operatorCommission,
-                string memory segmentNote
-            ) = _settleSegment(railId, startEpoch, maxSettlementEpoch, rail.paymentRate, skipValidation);
+            (amount, netPayeeAmount, paymentFee, operatorCommission, segmentNote) =
+                _settleSegment(railId, startEpoch, maxSettlementEpoch, rail.paymentRate, skipValidation);
 
             require(rail.settledUpTo > startEpoch, "No progress in settlement");
-
-            return checkAndFinalizeTerminatedRail(
-                rail,
-                payer,
-                amount,
-                netPayeeAmount,
-                paymentFee,
-                operatorCommission,
-                rail.settledUpTo,
-                segmentNote,
-                string.concat(segmentNote, "terminated rail fully settled and finalized.")
-            );
         } else {
-            (
-                uint256 settledAmount,
-                uint256 netPayeeAmount,
-                uint256 paymentFee,
-                uint256 operatorCommission,
-                string memory settledNote
-            ) = _settleWithRateChanges(railId, rail.paymentRate, startEpoch, maxSettlementEpoch, skipValidation);
-
-            return checkAndFinalizeTerminatedRail(
-                rail,
-                payer,
-                settledAmount,
-                netPayeeAmount,
-                paymentFee,
-                operatorCommission,
-                rail.settledUpTo,
-                settledNote,
-                string.concat(settledNote, "terminated rail fully settled and finalized.")
-            );
+            (amount, netPayeeAmount, paymentFee, operatorCommission, segmentNote) =
+                _settleWithRateChanges(railId, rail.paymentRate, startEpoch, maxSettlementEpoch, skipValidation);
         }
+        (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalSettledEpoch, note) =
+        checkAndFinalizeTerminatedRail(
+            railId,
+            rail,
+            payer,
+            amount,
+            netPayeeAmount,
+            paymentFee,
+            operatorCommission,
+            rail.settledUpTo,
+            segmentNote,
+            string.concat(segmentNote, "terminated rail fully settled and finalized.")
+        );
+
+        emit RailSettled(
+            railId, totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalSettledEpoch
+        );
+
+        return
+            (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalSettledEpoch, note);
     }
 
     function checkAndFinalizeTerminatedRail(
+        uint256 railId,
         Rail storage rail,
         Account storage payer,
         uint256 totalSettledAmount,
@@ -918,7 +989,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     ) internal returns (uint256, uint256, uint256, uint256, uint256, string memory) {
         // Check if rail is a terminated rail that's now fully settled
         if (isRailTerminated(rail) && rail.settledUpTo >= maxSettlementEpochForTerminatedRail(rail)) {
-            finalizeTerminatedRail(rail, payer);
+            finalizeTerminatedRail(railId, rail, payer);
             return (
                 totalSettledAmount,
                 totalNetPayeeAmount,
@@ -933,7 +1004,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalEpoch, regularNote);
     }
 
-    function finalizeTerminatedRail(Rail storage rail, Account storage payer) internal {
+    function finalizeTerminatedRail(uint256 railId, Rail storage rail, Account storage payer) internal {
         // Reduce the lockup by the fixed amount
         require(payer.lockupCurrent >= rail.lockupFixed, "lockup inconsistency during rail finalization");
         payer.lockupCurrent -= rail.lockupFixed;
@@ -947,6 +1018,8 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Zero out the rail to mark it as inactive
         _zeroOutRail(rail);
+
+        emit RailFinalized(railId);
     }
 
     function _settleWithRateChanges(
@@ -1165,7 +1238,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
     // attempts to settle account lockup up to and including the current epoch
     // returns the actual epoch upto and including which the lockup was settled
-    function settleAccountLockup(Account storage account) internal returns (uint256) {
+    function settleAccountLockup(address token, address owner, Account storage account) internal returns (uint256) {
         uint256 currentEpoch = block.number;
         uint256 elapsedTime = currentEpoch - account.lockupLastSettledAt;
 
@@ -1175,6 +1248,11 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         if (account.lockupRate == 0) {
             account.lockupLastSettledAt = currentEpoch;
+
+            // Emit event for zero rate case
+            emit AccountLockupSettled(
+                token, owner, account.lockupCurrent, account.lockupRate, account.lockupLastSettledAt
+            );
             return currentEpoch;
         }
 
@@ -1184,26 +1262,29 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         if (account.funds >= account.lockupCurrent + additionalLockup) {
             account.lockupCurrent += additionalLockup;
             account.lockupLastSettledAt = currentEpoch;
-            return currentEpoch;
+        } else {
+            require(
+                account.funds >= account.lockupCurrent,
+                "failed to settle: invariant violation: insufficient funds to cover lockup"
+            );
+
+            // If insufficient, calculate the fractional epoch where funds became insufficient
+            uint256 availableFunds = account.funds - account.lockupCurrent;
+
+            if (availableFunds == 0) {
+                return account.lockupLastSettledAt;
+            }
+
+            // Round down to the nearest whole epoch
+            uint256 fractionalEpochs = availableFunds / account.lockupRate;
+
+            // Apply lockup up to this point
+            account.lockupCurrent += account.lockupRate * fractionalEpochs;
+            account.lockupLastSettledAt = account.lockupLastSettledAt + fractionalEpochs;
         }
 
-        require(
-            account.funds >= account.lockupCurrent,
-            "failed to settle: invariant violation: insufficient funds to cover lockup"
-        );
-        // If insufficient, calculate the fractional epoch where funds became insufficient
-        uint256 availableFunds = account.funds - account.lockupCurrent;
-
-        if (availableFunds == 0) {
-            return account.lockupLastSettledAt;
-        }
-
-        // Round down to the nearest whole epoch
-        uint256 fractionalEpochs = availableFunds / account.lockupRate;
-
-        // Apply lockup up to this point
-        account.lockupCurrent += account.lockupRate * fractionalEpochs;
-        account.lockupLastSettledAt = account.lockupLastSettledAt + fractionalEpochs;
+        // event emission for all other cases where state changed
+        emit AccountLockupSettled(token, owner, account.lockupCurrent, account.lockupRate, account.lockupLastSettledAt);
         return account.lockupLastSettledAt;
     }
 
@@ -1312,6 +1393,8 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         } else {
             IERC20(token).safeTransfer(to, amount);
         }
+
+        emit FeesWithdrawn(token, to, amount);
     }
 
     /// @notice Returns information about all accumulated fees

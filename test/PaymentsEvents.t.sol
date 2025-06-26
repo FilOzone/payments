@@ -173,7 +173,9 @@ contract PaymentsEventsTest is Test, BaseTestHelper {
 
         // expect the event to be emitted
         vm.expectEmit(true, false, false, true);
-        emit Payments.RailOneTimePaymentProcessed(railId, expectedNetPayeeAmount, expectedPaymentFee, expectedOperatorCommission);
+        emit Payments.RailOneTimePaymentProcessed(
+            railId, expectedNetPayeeAmount, expectedPaymentFee, expectedOperatorCommission
+        );
 
         // Execute one-time payment by calling modifyRailPayment with the current rate and a one-time payment amount
 

@@ -990,4 +990,61 @@ contract RailSettlementTest is Test, BaseTestHelper {
             "Remaining fees incorrect after partial withdrawal"
         );
     }
+
+    function testModifyTerminatedRailBeyondEndEpoch() public {
+        // Create a rail with standard parameters including fixed lockup
+        uint256 rate = 10 ether;
+        uint256 lockupPeriod = 5;
+        uint256 fixedLockup = 10 ether; // Add fixed lockup for one-time payment tests
+        uint256 railId = helper.setupRailWithParameters(
+            USER1,
+            USER2,
+            OPERATOR,
+            rate,
+            lockupPeriod,
+            fixedLockup,
+            address(0), // No validator
+            SERVICE_FEE_RECIPIENT
+        );
+
+        // Advance and settle to ensure the rail is active
+        helper.advanceBlocks(3);
+        vm.prank(USER1);
+        payments.settleRail(railId, block.number);
+
+        // Terminate the rail
+        vm.prank(OPERATOR);
+        payments.terminateRail(railId);
+
+        // Get the rail's end epoch
+        Payments.RailView memory rail = payments.getRail(railId);
+        uint256 endEpoch = rail.endEpoch;
+
+        // Advance blocks to reach the end epoch
+        uint256 blocksToAdvance = endEpoch - block.number;
+        helper.advanceBlocks(blocksToAdvance);
+
+        // Now we're at the end epoch - try to modify rate
+        vm.prank(OPERATOR);
+        vm.expectRevert("cannot modify terminated rail beyond it's end epoch");
+        payments.modifyRailPayment(railId, 5 ether, 0);
+
+        // Also try to make a one-time payment
+        vm.prank(OPERATOR);
+        vm.expectRevert("cannot modify terminated rail beyond it's end epoch");
+        payments.modifyRailPayment(railId, rate, 1 ether);
+
+        // Advance one more block to go beyond the end epoch
+        helper.advanceBlocks(1);
+
+        // Try to modify rate again - should still revert
+        vm.prank(OPERATOR);
+        vm.expectRevert("cannot modify terminated rail beyond it's end epoch");
+        payments.modifyRailPayment(railId, 5 ether, 0);
+
+        // Try to make both rate change and one-time payment
+        vm.prank(OPERATOR);
+        vm.expectRevert("cannot modify terminated rail beyond it's end epoch");
+        payments.modifyRailPayment(railId, 5 ether, 1 ether);
+    }
 }

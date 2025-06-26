@@ -10,6 +10,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./RateChangeQueue.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {console} from "forge-std/console.sol";
 
 interface IValidator {
     struct ValidationResult {
@@ -41,6 +42,8 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     uint256 public constant COMMISSION_MAX_BPS = 10000;
 
     uint256 public constant PAYMENT_FEE_BPS = 10; //(0.1 % fee)
+
+    uint256 public constant NETWORK_FEE = 1300000 gwei; // equivalent to 130000 nFIL
 
     // Events
     event AccountLockupSettled(
@@ -225,6 +228,8 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     modifier onlyRailParticipant(uint256 railId) {
+        console.log("msg.sender", msg.sender, "rails[railId].from", rails[railId].from);
+        console.log("rails[railId].operator", rails[railId].operator, "rails[railId].to", rails[railId].to);
         require(
             rails[railId].from == msg.sender || rails[railId].operator == msg.sender || rails[railId].to == msg.sender,
             "failed to authorize: caller is not a rail participant"
@@ -550,7 +555,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         require(amount <= available, "insufficient unlocked funds for withdrawal");
         account.funds -= amount;
         if (token == address(0)) {
-            (bool success, bytes memory data) = payable(to).call{value: amount}("");
+            (bool success,) = payable(to).call{value: amount}("");
             require(success, "receiving contract rejected funds");
         } else {
             IERC20(token).safeTransfer(to, amount);
@@ -912,7 +917,17 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         return settleRailInternal(railId, maxSettleEpoch, true);
     }
 
+    function burn(uint256 _amount) internal {
+        require(msg.value >= _amount, "insufficient transfer of native token to burn");
+        // f099 burn address
+        (bool success,) = address(0xff00000000000000000000000000000000000063).call{value: _amount}("");
+        require(success, "native token burn failed");
+
+        // TODO(Kubuxu): maybe refund? but also re-entrancy
+    }
+
     /// @notice Settles payments for a rail up to the specified epoch. Settlement may fail to reach the target epoch if either the client lacks the funds to pay up to the current epoch or the validator refuses to settle the entire requested range.
+    /// @notice In the call to this function, the caller must include NETWORK_FEE amount of native token as a fee.
     /// @param railId The ID of the rail to settle.
     /// @param untilEpoch The epoch up to which to settle (must not exceed current block number).
     /// @return totalSettledAmount The total amount settled and transferred.
@@ -923,6 +938,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     /// @return note Additional information about the settlement (especially from validation).
     function settleRail(uint256 railId, uint256 untilEpoch)
         public
+        payable
         nonReentrant
         validateRailActive(railId)
         onlyRailParticipant(railId)
@@ -936,6 +952,9 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             string memory note
         )
     {
+        if (NETWORK_FEE > 0) {
+            burn(NETWORK_FEE);
+        }
         return settleRailInternal(railId, untilEpoch, false);
     }
 

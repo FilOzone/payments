@@ -141,9 +141,10 @@ contract RailSettlementHelpers is Test {
         uint256 settledUpto;
         string memory note;
 
+        uint256 networkFee = payments.NETWORK_FEE();
         vm.startPrank(payer);
         (settlementAmount, netPayeeAmount, paymentFee, operatorCommission, settledUpto, note) =
-            payments.settleRail(railId, untilEpoch);
+            payments.settleRail{value: networkFee}(railId, untilEpoch);
         vm.stopPrank();
 
         console.log("settlementAmount", settlementAmount);

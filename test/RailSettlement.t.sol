@@ -748,7 +748,8 @@ contract RailSettlementTest is Test, BaseTestHelper {
         helper.advanceBlocks(5);
 
         vm.prank(USER1);
-        (uint256 newSettledAmount,, uint256 newPaymentFee,,,) = payments.settleRail{value: networkFee}(railId, block.number);
+        (uint256 newSettledAmount,, uint256 newPaymentFee,,,) =
+            payments.settleRail{value: networkFee}(railId, block.number);
 
         uint256 expectedNewFee = (newSettledAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
         assertEq(newPaymentFee, expectedNewFee, "New payment fee incorrect");

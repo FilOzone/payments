@@ -1097,8 +1097,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Calculate the default settlement values (without validation)
         uint256 duration = epochEnd - epochStart;
-        uint256 expectedSettledAmount = rate * duration;
-        uint256 settledAmount = expectedSettledAmount;
+        uint256 settledAmount = rate * duration;
         uint256 settledUntilEpoch = epochEnd;
         note = "";
 

@@ -243,6 +243,7 @@ contract PayeeRailsTest is Test, BaseTestHelper {
     }
 
     function testRailsBeyondEndEpoch() public {
+        uint256 networkFee = payments.NETWORK_FEE();
         // Get the initial rails when Rail 3 is terminated but not beyond its end epoch
         Payments.RailInfo[] memory initialPayeeRails = payments.getRailsForPayeeAndToken(USER2, address(token));
         Payments.RailInfo[] memory initialPayerRails = payments.getRailsForPayerAndToken(USER1, address(token));
@@ -268,7 +269,7 @@ contract PayeeRailsTest is Test, BaseTestHelper {
         // IMPORTANT: Settle the rail now that we're beyond its end epoch
         // This will finalize the rail (set rail.from = address(0))
         vm.prank(USER1); // Settle as the client
-        payments.settleRail(rail3Id, endEpoch);
+        payments.settleRail{value: networkFee}(rail3Id, endEpoch);
 
         // Get rails again for both payee and payer
         Payments.RailInfo[] memory finalPayeeRails = payments.getRailsForPayeeAndToken(USER2, address(token));

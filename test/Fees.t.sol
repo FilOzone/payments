@@ -153,6 +153,7 @@ contract FeesTest is Test, BaseTestHelper {
     }
 
     function testGetAllAccumulatedFees() public {
+        uint256 networkFee = payments.NETWORK_FEE();
         // First, verify there are no fees initially
         (address[] memory initialTokens, uint256[] memory initialAmounts, uint256 initialCount) =
             payments.getAllAccumulatedFees();
@@ -173,11 +174,11 @@ contract FeesTest is Test, BaseTestHelper {
 
         // Settle rail2 (token2)
         vm.prank(USER1);
-        (uint256 settledAmount2,,,,,) = payments.settleRail(rail2Id, block.number);
+        (uint256 settledAmount2,,,,,) = payments.settleRail{value: networkFee}(rail2Id, block.number);
 
         // Settle rail3 (token3)
         vm.prank(USER1);
-        (uint256 settledAmount3,,,,,) = payments.settleRail(rail3Id, block.number);
+        (uint256 settledAmount3,,,,,) = payments.settleRail{value: networkFee}(rail3Id, block.number);
 
         // Calculate expected fees based on actual settled amounts (0.1% of settled amounts)
         uint256 rail1FirstFee = (rail1FirstExpectedAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
@@ -213,11 +214,11 @@ contract FeesTest is Test, BaseTestHelper {
 
         // Settle rail2 (token2) again
         vm.prank(USER1);
-        (uint256 secondSettledAmount2,,,,,) = payments.settleRail(rail2Id, block.number);
+        (uint256 secondSettledAmount2,,,,,) = payments.settleRail{value: networkFee}(rail2Id, block.number);
 
         // Settle rail3 (token3) again
         vm.prank(USER1);
-        (uint256 secondSettledAmount3,,,,,) = payments.settleRail(rail3Id, block.number);
+        (uint256 secondSettledAmount3,,,,,) = payments.settleRail{value: networkFee}(rail3Id, block.number);
 
         // Calculate expected fees for second round - use actual settled amounts
         uint256 rail1SecondFee =

@@ -492,7 +492,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         require(amount <= available, "insufficient unlocked funds for withdrawal");
         account.funds -= amount;
         if (token == address(0)) {
-            (bool success, bytes memory data) = payable(to).call{value: amount}("");
+            (bool success,) = payable(to).call{value: amount}("");
             require(success, "receiving contract rejected funds");
         } else {
             IERC20(token).safeTransfer(to, amount);

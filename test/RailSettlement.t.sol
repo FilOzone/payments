@@ -998,6 +998,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
     }
 
     function testModifyTerminatedRailBeyondEndEpoch() public {
+        uint256 networkFee = payments.NETWORK_FEE();
         // Create a rail with standard parameters including fixed lockup
         uint256 rate = 10 ether;
         uint256 lockupPeriod = 5;
@@ -1016,7 +1017,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Advance and settle to ensure the rail is active
         helper.advanceBlocks(3);
         vm.prank(USER1);
-        payments.settleRail(railId, block.number);
+        payments.settleRail{value: networkFee}(railId, block.number);
 
         // Terminate the rail
         vm.prank(OPERATOR);

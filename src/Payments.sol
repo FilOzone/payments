@@ -841,7 +841,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     function burn(uint256 _amount) internal {
-        require(msg.value >= _amount, "not enough native token to burn");
+        require(msg.value >= _amount, "insufficient transfer of native token to burn");
         // f099 burn address
         (bool success,) = address(0xff00000000000000000000000000000000000063).call{value: _amount}("");
         require(success, "native token burn failed");
@@ -850,6 +850,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     /// @notice Settles payments for a rail up to the specified epoch. Settlement may fail to reach the target epoch if either the client lacks the funds to pay up to the current epoch or the validator refuses to settle the entire requested range.
+    /// @notice In the call to this function, the caller must include NETWORK_FEE amount of native token as a fee.
     /// @param railId The ID of the rail to settle.
     /// @param untilEpoch The epoch up to which to settle (must not exceed current block number).
     /// @return totalSettledAmount The total amount settled and transferred.
@@ -874,7 +875,9 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             string memory note
         )
     {
-        burn(NETWORK_FEE);
+        if (NETWORK_FEE > 0) {
+            burn(NETWORK_FEE);
+        }
         return settleRailInternal(railId, untilEpoch, false);
     }
 

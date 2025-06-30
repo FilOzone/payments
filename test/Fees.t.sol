@@ -170,7 +170,7 @@ contract FeesTest is Test, BaseTestHelper {
         startBalance = USER1.balance;
         vm.prank(USER1);
         payments.settleRail{value: networkFee + 100}(rail3Id, block.number);
-        assertEq(startBalance - networkFee - 100, USER1.balance, "extra amount is not returned");
+        assertEq(startBalance - networkFee, USER1.balance, "extra amount is returned");
     }
 
     function testGetAllAccumulatedFees() public {

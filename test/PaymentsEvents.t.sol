@@ -207,6 +207,7 @@ contract PaymentsEventsTest is Test, BaseTestHelper {
      * @dev Test for RailSettled event
      */
     function testRailSettledEvent() public {
+        uint256 networkFee = payments.NETWORK_FEE();
         // Create and set up a rail
         railId = helper.createRail(USER1, USER2, OPERATOR, address(0), SERVICE_FEE_RECIPIENT);
 
@@ -236,7 +237,7 @@ contract PaymentsEventsTest is Test, BaseTestHelper {
         );
 
         // Settle rail
-        payments.settleRail(railId, block.number);
+        payments.settleRail{value: networkFee}(railId, block.number);
 
         vm.stopPrank();
     }

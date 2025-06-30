@@ -23,7 +23,6 @@ contract RailSettlementHelpers is Test {
     struct SettlementResult {
         uint256 totalAmount;
         uint256 netPayeeAmount;
-        uint256 paymentFee;
         uint256 operatorCommission;
         uint256 settledUpto;
         string note;
@@ -136,20 +135,18 @@ contract RailSettlementHelpers is Test {
 
         uint256 settlementAmount;
         uint256 netPayeeAmount;
-        uint256 paymentFee;
         uint256 operatorCommission;
         uint256 settledUpto;
         string memory note;
 
         uint256 networkFee = payments.NETWORK_FEE();
         vm.startPrank(payer);
-        (settlementAmount, netPayeeAmount, paymentFee, operatorCommission, settledUpto, note) =
+        (settlementAmount, netPayeeAmount, operatorCommission, settledUpto, note) =
             payments.settleRail{value: networkFee}(railId, untilEpoch);
         vm.stopPrank();
 
         console.log("settlementAmount", settlementAmount);
         console.log("netPayeeAmount", netPayeeAmount);
-        console.log("paymentFee", paymentFee);
         console.log("operatorCommission", operatorCommission);
         console.log("settledUpto", settledUpto);
         console.log("note", note);
@@ -178,7 +175,7 @@ contract RailSettlementHelpers is Test {
         rail = payments.getRail(railId);
         assertEq(rail.settledUpTo, expectedUpto, "Rail settled upto incorrect");
 
-        return SettlementResult(settlementAmount, netPayeeAmount, paymentFee, operatorCommission, settledUpto, note);
+        return SettlementResult(settlementAmount, netPayeeAmount, operatorCommission, settledUpto, note);
     }
 
     function terminateAndSettleRail(uint256 railId, uint256 expectedAmount, uint256 expectedUpto)

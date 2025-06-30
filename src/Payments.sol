@@ -40,8 +40,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     // Maximum commission rate in basis points (100% = 10000 BPS)
     uint256 public constant COMMISSION_MAX_BPS = 10000;
 
-    uint256 public constant PAYMENT_FEE_BPS = 0; // zero till we decide to take a percentage of payment settlement instead of a flat fee
-
     uint256 public constant NETWORK_FEE = 1300000 gwei; // equivalent to 130000 nFIL
 
     // Events
@@ -79,9 +77,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         uint256 oldLockupFixed,
         uint256 newLockupFixed
     );
-    event RailOneTimePaymentProcessed(
-        uint256 indexed railId, uint256 netPayeeAmount, uint256 paymentFee, uint256 operatorCommission
-    );
+    event RailOneTimePaymentProcessed(uint256 indexed railId, uint256 netPayeeAmount, uint256 operatorCommission);
     event RailRateModified(uint256 indexed railId, uint256 oldRate, uint256 newRate);
     event RailSettled(
         uint256 indexed railId,
@@ -162,12 +158,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     // token => client => operator => Approval
     mapping(address => mapping(address => mapping(address => OperatorApproval))) public operatorApprovals;
 
-    // token => amount of accumulated fees owned by the contract owner
-    mapping(address => uint256) public accumulatedFees;
-
-    // Array to track all tokens that have ever accumulated fees
-    address[] private feeTokens;
-
     // Define a struct for rails by payee information
     struct RailInfo {
         uint256 railId; // The rail ID
@@ -187,7 +177,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     struct SettlementState {
         uint256 totalSettledAmount;
         uint256 totalNetPayeeAmount;
-        uint256 totalPaymentFee;
         uint256 totalOperatorCommission;
         uint256 processedEpoch;
         string note;
@@ -816,25 +805,16 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
     function calculateAndPayFees(uint256 amount, address token, address serviceFeeRecipient, uint256 commissionRateBps)
         internal
-        returns (uint256 netPayeeAmount, uint256 paymentFee, uint256 operatorCommission)
+        returns (uint256 netPayeeAmount, uint256 operatorCommission)
     {
-        // Calculate payment contract fee (if any) based on full amount
-        paymentFee = 0;
-        if (PAYMENT_FEE_BPS > 0) {
-            paymentFee = (amount * PAYMENT_FEE_BPS) / COMMISSION_MAX_BPS;
-        }
-
-        // Calculate amount remaining after contract fee
-        uint256 amountAfterPaymentFee = amount - paymentFee;
-
         // Calculate operator commission (if any) based on remaining amount
         operatorCommission = 0;
         if (commissionRateBps > 0) {
-            operatorCommission = (amountAfterPaymentFee * commissionRateBps) / COMMISSION_MAX_BPS;
+            operatorCommission = (amount * commissionRateBps) / COMMISSION_MAX_BPS;
         }
 
         // Calculate net amount for payee
-        netPayeeAmount = amountAfterPaymentFee - operatorCommission;
+        netPayeeAmount = amount - operatorCommission;
 
         // Credit operator (if commission exists)
         if (operatorCommission > 0) {
@@ -842,16 +822,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             serviceFeeRecipientAccount.funds += operatorCommission;
         }
 
-        // Track platform fee
-        if (paymentFee > 0) {
-            if (!hasCollectedFees[token]) {
-                hasCollectedFees[token] = true;
-                feeTokens.push(token);
-            }
-            accumulatedFees[token] += paymentFee;
-        }
-
-        return (netPayeeAmount, paymentFee, operatorCommission);
+        return (netPayeeAmount, operatorCommission);
     }
 
     function processOneTimePayment(
@@ -868,13 +839,13 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             payer.funds -= oneTimePayment;
 
             // Calculate fees, pay operator commission and track platform fees
-            (uint256 netPayeeAmount, uint256 paymentFee, uint256 operatorCommission) =
+            (uint256 netPayeeAmount, uint256 operatorCommission) =
                 calculateAndPayFees(oneTimePayment, rail.token, rail.serviceFeeRecipient, rail.commissionRateBps);
 
             // Credit payee (net amount after fees)
             payee.funds += netPayeeAmount;
 
-            emit RailOneTimePaymentProcessed(railId, netPayeeAmount, paymentFee, operatorCommission);
+            emit RailOneTimePaymentProcessed(railId, netPayeeAmount, operatorCommission);
         }
     }
 
@@ -882,7 +853,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     /// @param railId The ID of the rail to settle.
     /// @return totalSettledAmount The total amount settled and transferred.
     /// @return totalNetPayeeAmount The net amount credited to the payee after fees.
-    /// @return totalPaymentFee The fee retained by the payment contract.
     /// @return totalOperatorCommission The commission credited to the operator.
     /// @return finalSettledEpoch The epoch up to which settlement was actually completed.
     /// @return note Additional information about the settlement.
@@ -896,7 +866,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         returns (
             uint256 totalSettledAmount,
             uint256 totalNetPayeeAmount,
-            uint256 totalPaymentFee,
             uint256 totalOperatorCommission,
             uint256 finalSettledEpoch,
             string memory note
@@ -930,7 +899,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     /// @param untilEpoch The epoch up to which to settle (must not exceed current block number).
     /// @return totalSettledAmount The total amount settled and transferred.
     /// @return totalNetPayeeAmount The net amount credited to the payee after fees.
-    /// @return totalPaymentFee The fee retained by the payment contract.
     /// @return totalOperatorCommission The commission credited to the operator.
     /// @return finalSettledEpoch The epoch up to which settlement was actually completed.
     /// @return note Additional information about the settlement (especially from validation).
@@ -944,7 +912,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         returns (
             uint256 totalSettledAmount,
             uint256 totalNetPayeeAmount,
-            uint256 totalPaymentFee,
             uint256 totalOperatorCommission,
             uint256 finalSettledEpoch,
             string memory note
@@ -961,7 +928,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         returns (
             uint256 totalSettledAmount,
             uint256 totalNetPayeeAmount,
-            uint256 totalPaymentFee,
             uint256 totalOperatorCommission,
             uint256 finalSettledEpoch,
             string memory note
@@ -975,7 +941,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Handle terminated and fully settled rails that are still not finalised
         if (isRailTerminated(rail) && rail.settledUpTo >= rail.endEpoch) {
             finalizeTerminatedRail(railId, rail, payer);
-            return (0, 0, 0, 0, rail.settledUpTo, "rail fully settled and finalized");
+            return (0, 0, 0, rail.settledUpTo, "rail fully settled and finalized");
         }
 
         // Calculate the maximum settlement epoch based on account lockup
@@ -990,40 +956,33 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Nothing to settle (already settled or zero-duration)
         if (startEpoch >= maxSettlementEpoch) {
             return (
-                0,
-                0,
-                0,
-                0,
-                startEpoch,
-                string.concat("already settled up to epoch ", Strings.toString(maxSettlementEpoch))
+                0, 0, 0, startEpoch, string.concat("already settled up to epoch ", Strings.toString(maxSettlementEpoch))
             );
         }
 
         // Declare variables for settlement results
         uint256 amount;
         uint256 netPayeeAmount;
-        uint256 paymentFee;
         uint256 operatorCommission;
         string memory segmentNote;
 
         // Process settlement depending on whether rate changes exist
         if (rail.rateChangeQueue.isEmpty()) {
-            (amount, netPayeeAmount, paymentFee, operatorCommission, segmentNote) =
+            (amount, netPayeeAmount, operatorCommission, segmentNote) =
                 _settleSegment(railId, startEpoch, maxSettlementEpoch, rail.paymentRate, skipValidation);
 
             require(rail.settledUpTo > startEpoch, "No progress in settlement");
         } else {
-            (amount, netPayeeAmount, paymentFee, operatorCommission, segmentNote) =
+            (amount, netPayeeAmount, operatorCommission, segmentNote) =
                 _settleWithRateChanges(railId, rail.paymentRate, startEpoch, maxSettlementEpoch, skipValidation);
         }
-        (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalSettledEpoch, note) =
+        (totalSettledAmount, totalNetPayeeAmount, totalOperatorCommission, finalSettledEpoch, note) =
         checkAndFinalizeTerminatedRail(
             railId,
             rail,
             payer,
             amount,
             netPayeeAmount,
-            paymentFee,
             operatorCommission,
             rail.settledUpTo,
             segmentNote,
@@ -1032,8 +991,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         emit RailSettled(railId, totalSettledAmount, totalNetPayeeAmount, totalOperatorCommission, finalSettledEpoch);
 
-        return
-            (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalSettledEpoch, note);
+        return (totalSettledAmount, totalNetPayeeAmount, totalOperatorCommission, finalSettledEpoch, note);
     }
 
     function checkAndFinalizeTerminatedRail(
@@ -1042,27 +1000,18 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         Account storage payer,
         uint256 totalSettledAmount,
         uint256 totalNetPayeeAmount,
-        uint256 totalPaymentFee,
         uint256 totalOperatorCommission,
         uint256 finalEpoch,
         string memory regularNote,
         string memory finalizedNote
-    ) internal returns (uint256, uint256, uint256, uint256, uint256, string memory) {
+    ) internal returns (uint256, uint256, uint256, uint256, string memory) {
         // Check if rail is a terminated rail that's now fully settled
         if (isRailTerminated(rail) && rail.settledUpTo >= maxSettlementEpochForTerminatedRail(rail)) {
             finalizeTerminatedRail(railId, rail, payer);
-            return (
-                totalSettledAmount,
-                totalNetPayeeAmount,
-                totalPaymentFee,
-                totalOperatorCommission,
-                finalEpoch,
-                finalizedNote
-            );
+            return (totalSettledAmount, totalNetPayeeAmount, totalOperatorCommission, finalEpoch, finalizedNote);
         }
 
-        return
-            (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalEpoch, regularNote);
+        return (totalSettledAmount, totalNetPayeeAmount, totalOperatorCommission, finalEpoch, regularNote);
     }
 
     function finalizeTerminatedRail(uint256 railId, Rail storage rail, Account storage payer) internal {
@@ -1094,7 +1043,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         returns (
             uint256 totalSettledAmount,
             uint256 totalNetPayeeAmount,
-            uint256 totalPaymentFee,
             uint256 totalOperatorCommission,
             string memory note
         )
@@ -1105,7 +1053,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         SettlementState memory state = SettlementState({
             totalSettledAmount: 0,
             totalNetPayeeAmount: 0,
-            totalPaymentFee: 0,
             totalOperatorCommission: 0,
             processedEpoch: startEpoch,
             note: ""
@@ -1134,37 +1081,25 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             (
                 uint256 segmentSettledAmount,
                 uint256 segmentNetPayeeAmount,
-                uint256 segmentPaymentFee,
                 uint256 segmentOperatorCommission,
                 string memory validationNote
             ) = _settleSegment(railId, state.processedEpoch, segmentEndBoundary, segmentRate, skipValidation);
 
             // If validator returned no progress, exit early without updating state
             if (rail.settledUpTo <= state.processedEpoch) {
-                return (
-                    state.totalSettledAmount,
-                    state.totalNetPayeeAmount,
-                    state.totalPaymentFee,
-                    state.totalOperatorCommission,
-                    validationNote
-                );
+                return
+                    (state.totalSettledAmount, state.totalNetPayeeAmount, state.totalOperatorCommission, validationNote);
             }
 
             // Add the settled amounts to our running totals
             state.totalSettledAmount += segmentSettledAmount;
             state.totalNetPayeeAmount += segmentNetPayeeAmount;
-            state.totalPaymentFee += segmentPaymentFee;
             state.totalOperatorCommission += segmentOperatorCommission;
 
             // If validator partially settled the segment, exit early
             if (rail.settledUpTo < segmentEndBoundary) {
-                return (
-                    state.totalSettledAmount,
-                    state.totalNetPayeeAmount,
-                    state.totalPaymentFee,
-                    state.totalOperatorCommission,
-                    validationNote
-                );
+                return
+                    (state.totalSettledAmount, state.totalNetPayeeAmount, state.totalOperatorCommission, validationNote);
             }
 
             // Successfully settled full segment, update tracking values
@@ -1178,13 +1113,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         }
 
         // We've successfully settled up to the target epoch
-        return (
-            state.totalSettledAmount,
-            state.totalNetPayeeAmount,
-            state.totalPaymentFee,
-            state.totalOperatorCommission,
-            state.note
-        );
+        return (state.totalSettledAmount, state.totalNetPayeeAmount, state.totalOperatorCommission, state.note);
     }
 
     function _getNextSegmentBoundary(
@@ -1212,13 +1141,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
     function _settleSegment(uint256 railId, uint256 epochStart, uint256 epochEnd, uint256 rate, bool skipValidation)
         internal
-        returns (
-            uint256 totalSettledAmount,
-            uint256 netPayeeAmount,
-            uint256 paymentFee,
-            uint256 operatorCommission,
-            string memory note
-        )
+        returns (uint256 totalSettledAmount, uint256 netPayeeAmount, uint256 operatorCommission, string memory note)
     {
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
@@ -1226,7 +1149,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         if (rate == 0) {
             rail.settledUpTo = epochEnd;
-            return (0, 0, 0, 0, "Zero rate payment rail");
+            return (0, 0, 0, "Zero rate payment rail");
         }
 
         // Calculate the default settlement values (without validation)
@@ -1270,7 +1193,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         payer.funds -= settledAmount;
 
         // Calculate fees, pay operator commission and track platform fees
-        (netPayeeAmount, paymentFee, operatorCommission) =
+        (netPayeeAmount, operatorCommission) =
             calculateAndPayFees(settledAmount, rail.token, rail.serviceFeeRecipient, rail.commissionRateBps);
 
         // Credit payee
@@ -1290,7 +1213,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             "failed to settle: invariant violation: insufficient funds to cover lockup after settlement"
         );
 
-        return (settledAmount, netPayeeAmount, paymentFee, operatorCommission, note);
+        return (settledAmount, netPayeeAmount, operatorCommission, note);
     }
 
     function isAccountLockupFullySettled(Account storage account) internal view returns (bool) {
@@ -1429,27 +1352,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Reduce lockup allowance
         approval.lockupAllowance =
             oneTimePayment > approval.lockupAllowance ? 0 : approval.lockupAllowance - oneTimePayment;
-    }
-
-    /// @notice Returns information about all accumulated fees
-    /// @return tokens Array of token addresses that have accumulated fees
-    /// @return amounts Array of fee amounts corresponding to each token
-    /// @return count Total number of tokens with accumulated fees
-    function getAllAccumulatedFees()
-        external
-        view
-        returns (address[] memory tokens, uint256[] memory amounts, uint256 count)
-    {
-        count = feeTokens.length;
-        tokens = new address[](count);
-        amounts = new uint256[](count);
-        for (uint256 i = 0; i < count; i++) {
-            address token = feeTokens[i];
-            tokens[i] = token;
-            amounts[i] = accumulatedFees[token];
-        }
-
-        return (tokens, amounts, count);
     }
 
     /**

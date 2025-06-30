@@ -253,22 +253,11 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Verify reduced amount (80% of original)
         uint256 expectedAmount = (rate * 5 * 80) / 100; // 5 blocks * 10 ether * 80%
 
-        // Calculate expected contract fee (1% of the validated amount)
-        uint256 paymentFee = (expectedAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
-        uint256 netPayeeAmount = expectedAmount - paymentFee;
-
-        // Capture fee balance before settlement
-        uint256 feesBefore = payments.accumulatedFees(address(token));
-
         // Settle with validation - verify against NET payee amount
         RailSettlementHelpers.SettlementResult memory result =
             settlementHelper.settleRailAndVerify(railId, block.number, expectedAmount, block.number);
 
-        // Verify accumulated fees increased correctly
-        uint256 feesAfter = payments.accumulatedFees(address(token));
-        assertEq(feesAfter, feesBefore + paymentFee, "Accumulated fees did not increase correctly");
-        assertEq(result.netPayeeAmount, netPayeeAmount, "Net payee amount incorrect");
-        assertEq(result.paymentFee, paymentFee, "Payment fee incorrect");
+        assertEq(result.netPayeeAmount, expectedAmount, "Net payee amount incorrect");
         assertEq(result.operatorCommission, 0, "Operator commission incorrect");
 
         // Verify validator note
@@ -400,18 +389,11 @@ contract RailSettlementTest is Test, BaseTestHelper {
         // Final settlement after termination
         vm.prank(USER1);
 
-        (
-            uint256 settledAmount,
-            uint256 netPayeeAmount,
-            uint256 paymentFee,
-            uint256 totalOperatorCommission,
-            uint256 settledUpto,
-        ) = payments.settleRail{value: networkFee}(railId, block.number);
+        (uint256 settledAmount, uint256 netPayeeAmount, uint256 totalOperatorCommission, uint256 settledUpto,) =
+            payments.settleRail{value: networkFee}(railId, block.number);
 
-        // Verify that total settled amount is equal to the sum of net payee amount, payment fee, and operator commission
-        assertEq(
-            settledAmount, netPayeeAmount + paymentFee + totalOperatorCommission, "Mismatch in settled amount breakdown"
-        );
+        // Verify that total settled amount is equal to the sum of net payee amount and operator commission
+        assertEq(settledAmount, netPayeeAmount + totalOperatorCommission, "Mismatch in settled amount breakdown");
 
         // Should settle up to endEpoch, which is lockupPeriod blocks after the last settlement
         uint256 expectedAmount2 = rate * lockupPeriod; // lockupPeriod = 5 blocks
@@ -668,34 +650,24 @@ contract RailSettlementTest is Test, BaseTestHelper {
         Payments.Account memory payeeBefore = helper.getAccountData(USER2);
         Payments.Account memory operatorBefore = helper.getAccountData(OPERATOR);
         Payments.Account memory serviceFeeRecipientBefore = helper.getAccountData(SERVICE_FEE_RECIPIENT);
-        uint256 feesBefore = payments.accumulatedFees(address(token));
 
         // --- Settle Rail ---
         vm.startPrank(USER1); // Any participant can settle
-        (
-            uint256 settledAmount,
-            uint256 netPayeeAmount,
-            uint256 paymentFee,
-            uint256 operatorCommission,
-            uint256 settledUpto,
-        ) = payments.settleRail{value: networkFee}(railId, block.number);
+        (uint256 settledAmount, uint256 netPayeeAmount, uint256 operatorCommission, uint256 settledUpto,) =
+            payments.settleRail{value: networkFee}(railId, block.number);
         vm.stopPrank();
 
         // --- Expected Calculations ---
         uint256 expectedSettledAmount = rate * elapsedBlocks;
-        uint256 expectedPaymentFee =
-            (expectedSettledAmount * payments.PAYMENT_FEE_BPS()) / payments.COMMISSION_MAX_BPS();
-        uint256 amountAfterPaymentFee = expectedSettledAmount - expectedPaymentFee;
         uint256 expectedOperatorCommission =
-            (amountAfterPaymentFee * operatorCommissionBps) / payments.COMMISSION_MAX_BPS();
-        uint256 expectedNetPayeeAmount = amountAfterPaymentFee - expectedOperatorCommission;
+            (expectedSettledAmount * operatorCommissionBps) / payments.COMMISSION_MAX_BPS();
+        uint256 expectedNetPayeeAmount = expectedSettledAmount - expectedOperatorCommission;
 
         // --- Verification ---
 
         // 1. Return values from settleRail
         assertEq(settledAmount, expectedSettledAmount, "Returned settledAmount incorrect");
         assertEq(netPayeeAmount, expectedNetPayeeAmount, "Returned netPayeeAmount incorrect");
-        assertEq(paymentFee, expectedPaymentFee, "Returned paymentFee incorrect");
         assertEq(operatorCommission, expectedOperatorCommission, "Returned operatorCommission incorrect");
         assertEq(settledUpto, block.number, "Returned settledUpto incorrect");
 
@@ -704,12 +676,10 @@ contract RailSettlementTest is Test, BaseTestHelper {
         Payments.Account memory payeeAfter = helper.getAccountData(USER2);
         Payments.Account memory operatorAfter = helper.getAccountData(OPERATOR);
         Payments.Account memory serviceFeeRecipientAfter = helper.getAccountData(SERVICE_FEE_RECIPIENT);
-        uint256 feesAfter = payments.accumulatedFees(address(token));
 
         assertEq(payerAfter.funds, payerBefore.funds - expectedSettledAmount, "Payer funds mismatch");
         assertEq(payeeAfter.funds, payeeBefore.funds + expectedNetPayeeAmount, "Payee funds mismatch");
         assertEq(operatorAfter.funds, operatorBefore.funds, "Operator funds mismatch");
-        assertEq(feesAfter, feesBefore + expectedPaymentFee, "Accumulated fees mismatch");
         assertEq(
             serviceFeeRecipientAfter.funds,
             serviceFeeRecipientBefore.funds + expectedOperatorCommission,

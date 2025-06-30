@@ -230,13 +230,14 @@ contract PaymentsEventsTest is Test, BaseTestHelper {
         uint256 totalNetPayeeAmount = totalAmountAfterPaymentFee - totalOperatorCommission;
 
         // Expect the event to be emitted
-        vm.expectEmit(true, false, false, true);
+        vm.expectEmit(true, true, false, true);
         emit Payments.RailSettled(
-            railId, totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, block.number
+            railId, totalSettledAmount, totalNetPayeeAmount, totalOperatorCommission, block.number
         );
 
         // Settle rail
-        payments.settleRail(railId, block.number);
+        uint256 networkFee = payments.NETWORK_FEE();
+        payments.settleRail{value: networkFee + 100}(railId, block.number);
 
         vm.stopPrank();
     }
@@ -366,42 +367,6 @@ contract PaymentsEventsTest is Test, BaseTestHelper {
 
         // Withdraw tokens
         payments.withdraw(address(testToken), 5 ether);
-
-        vm.stopPrank();
-    }
-
-    /**
-     * @dev Test for FeesWithdrawn event
-     */
-    function testFeesWithdrawnEvent() public {
-        // Create and set up a rail
-        railId = helper.createRail(USER1, USER2, OPERATOR, address(0), SERVICE_FEE_RECIPIENT);
-
-        vm.startPrank(OPERATOR);
-        payments.modifyRailPayment(railId, 1 ether, 0);
-        payments.modifyRailLockup(railId, 10, 10 ether);
-
-        // Execute a one-time payment to generate fees
-        // The error was because only the operator can modify the rail payment
-        payments.modifyRailPayment(railId, 1 ether, 5 ether);
-        vm.stopPrank();
-
-        // Check if there are any accumulated fees
-        uint256 accumulatedFees = payments.accumulatedFees(address(testToken));
-        if (accumulatedFees == 0) {
-            // Skip this test if no fees accumulated
-            return;
-        }
-
-        // Owner withdraws fees
-        vm.startPrank(OWNER);
-
-        // expect the event to be emitted
-        vm.expectEmit(true, true, true, true);
-        emit Payments.FeesWithdrawn(address(testToken), OWNER, accumulatedFees);
-
-        // Withdraw fees
-        payments.withdrawFees(address(testToken), OWNER, accumulatedFees);
 
         vm.stopPrank();
     }

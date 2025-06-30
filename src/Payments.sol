@@ -41,7 +41,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     // Maximum commission rate in basis points (100% = 10000 BPS)
     uint256 public constant COMMISSION_MAX_BPS = 10000;
 
-    uint256 public constant PAYMENT_FEE_BPS = 10; //(0.1 % fee)
+    uint256 public constant PAYMENT_FEE_BPS = 0; // zero till we decide to take a percentage of payment settlement instead of a flat fee
 
     uint256 public constant NETWORK_FEE = 1300000 gwei; // equivalent to 130000 nFIL
 
@@ -88,7 +88,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         uint256 indexed railId,
         uint256 totalSettledAmount,
         uint256 totalNetPayeeAmount,
-        uint256 paymentFee,
         uint256 operatorCommission,
         uint256 settledUpTo
     );
@@ -99,8 +98,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         address indexed token, address indexed from, address indexed to, uint256 amount, bool usedPermit
     );
     event WithdrawRecorded(address indexed token, address indexed from, address indexed to, uint256 amount);
-    event FeesWithdrawn(address indexed token, address indexed account, uint256 amount);
-
 
     struct Account {
         uint256 funds;
@@ -1033,9 +1030,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             string.concat(segmentNote, "terminated rail fully settled and finalized.")
         );
 
-        emit RailSettled(
-            railId, totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalSettledEpoch
-        );
+        emit RailSettled(railId, totalSettledAmount, totalNetPayeeAmount, totalOperatorCommission, finalSettledEpoch);
 
         return
             (totalSettledAmount, totalNetPayeeAmount, totalPaymentFee, totalOperatorCommission, finalSettledEpoch, note);
@@ -1434,33 +1429,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Reduce lockup allowance
         approval.lockupAllowance =
             oneTimePayment > approval.lockupAllowance ? 0 : approval.lockupAllowance - oneTimePayment;
-    }
-
-    /// @notice Allows the contract owner to withdraw accumulated payment fees.
-    /// @param token The ERC20 token address of the fees to withdraw.
-    /// @param to The address to send the withdrawn fees to.
-    /// @param amount The amount of fees to withdraw.
-    function withdrawFees(address token, address to, uint256 amount)
-        external
-        onlyOwner
-        nonReentrant
-        validateNonZeroAddress(to, "to")
-    {
-        uint256 currentFees = accumulatedFees[token];
-        require(amount <= currentFees, "amount exceeds accumulated fees");
-
-        // Decrease tracked fees first to prevent reentrancy issues
-        accumulatedFees[token] = currentFees - amount;
-
-        // Perform the transfer
-        if (token == address(0)) {
-            (bool success,) = payable(to).call{value: amount}("");
-            require(success, "FIL transfer failed");
-        } else {
-            IERC20(token).safeTransfer(to, amount);
-        }
-
-        emit FeesWithdrawn(token, to, amount);
     }
 
     /// @notice Returns information about all accumulated fees

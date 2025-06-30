@@ -10,7 +10,6 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./RateChangeQueue.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
-import {console} from "forge-std/console.sol";
 
 interface IValidator {
     struct ValidationResult {
@@ -226,8 +225,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     modifier onlyRailParticipant(uint256 railId) {
-        console.log("msg.sender", msg.sender, "rails[railId].from", rails[railId].from);
-        console.log("rails[railId].operator", rails[railId].operator, "rails[railId].to", rails[railId].to);
         require(
             rails[railId].from == msg.sender || rails[railId].operator == msg.sender || rails[railId].to == msg.sender,
             "failed to authorize: caller is not a rail participant"

@@ -170,16 +170,6 @@ contract FeesTest is Test, BaseTestHelper {
         startBalance = USER1.balance;
         vm.prank(USER1);
         payments.settleRail{value: networkFee + 100}(rail3Id, block.number);
-        assertEq(startBalance - networkFee - 100, USER1.balance, "extra amount is not returned");
-    }
-
-    // Helper function to find a token's index in the returned array
-    function findTokenIndex(address[] memory tokens, address token) internal pure returns (uint256) {
-        for (uint256 i = 0; i < tokens.length; i++) {
-            if (tokens[i] == token) {
-                return i;
-            }
-        }
-        revert("Token not found in array");
+        assertEq(startBalance - networkFee, USER1.balance, "extra amount is returned");
     }
 }

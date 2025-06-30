@@ -915,13 +915,16 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         return settleRailInternal(railId, maxSettleEpoch, true);
     }
 
-    function burn(uint256 _amount) internal {
+    function burnAndRefundRest(uint256 _amount) internal {
         require(msg.value >= _amount, "insufficient transfer of native token to burn");
         // f099 burn address
         (bool success,) = address(0xff00000000000000000000000000000000000063).call{value: _amount}("");
         require(success, "native token burn failed");
 
-        // TODO(Kubuxu): maybe refund? but also re-entrancy
+        if (msg.value > _amount) {
+            (success,) = msg.sender.call{value: msg.value - _amount}("");
+            require(success, "refund failed");
+        }
     }
 
     /// @notice Settles payments for a rail up to the specified epoch. Settlement may fail to reach the target epoch if either the client lacks the funds to pay up to the current epoch or the validator refuses to settle the entire requested range.
@@ -951,7 +954,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         )
     {
         if (NETWORK_FEE > 0) {
-            burn(NETWORK_FEE);
+            burnAndRefundRest(NETWORK_FEE);
         }
         return settleRailInternal(railId, untilEpoch, false);
     }

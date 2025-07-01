@@ -1,0 +1,60 @@
+specVersion: 1.2.0
+description: Subgraph Indexer for MACI contract
+repository: https://github.com/privacy-scaling-explorations/maci
+indexerHints:
+  prune: auto
+schema:
+  file: ./schema.graphql
+features:
+  - ipfsOnEthereumContracts
+dataSources:
+  - kind: ethereum
+    name: Payments
+    network: "{{ network }}"
+    source:
+      abi: Payments
+      address: "{{ paymentsContractAddress }}"
+      startBlock: {{ paymentsContractStartBlock }}
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Rail
+        - OperatorApproval
+        - Settlement
+        - RateChangeQueue
+        - UserToken
+        - Token
+        - Account
+        - Operator
+        - Payments
+      abis:
+        - name: Payments
+          file: ./config/Payments-abi.json
+        - name: erc20
+          file: ./config/erc20-abi.json
+      eventHandlers:
+        - event: RailCreated(indexed uint256,indexed address,indexed address,address,address,address,address,uint256)
+          handler: handleRailCreated
+        - event: OperatorApprovalUpdated(indexed address,indexed address,indexed address,bool,uint256,uint256,uint256)
+          handler: handleOperatorApprovalUpdated
+        - event: RailTerminated(indexed uint256,indexed address,uint256)
+          handler: handleRailTerminated
+        - event: RailLockupModified(indexed uint256,uint256,uint256,uint256,uint256)
+          handler: handleRailLockupModified
+        - event: RailRateModified(indexed uint256,uint256,uint256)
+          handler: handleRailRateModified
+        - event: RailOneTimePaymentProcessed(indexed uint256,uint256,uint256)
+          handler: handleRailOneTimePaymentProcessed
+        - event: RailFinalized(indexed uint256)
+          handler: handleRailFinalized
+        - event: RailSettled(indexed uint256,uint256,uint256,uint256,uint256)
+          handler: handleRailSettled
+        - event: DepositRecorded(indexed address,indexed address,indexed address,uint256,bool)
+          handler: handleDepositRecorded
+        - event: WithdrawRecorded(indexed address,indexed address,indexed address,uint256)
+          handler: handleWithdrawRecorded
+        - event: AccountLockupSettled(indexed address,indexed address,uint256,uint256,uint256)
+          handler: handleAccountLockupSettled
+      file: ./src/payments.ts

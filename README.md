@@ -35,7 +35,7 @@ Tracks the funds, lockup, obligations, etc. associated with a single “owner”
 
 A rail along which payments flow from a client to an SP. Rails track lockup, maximum payment rates, and obligations between a client and an SP. Client-SP pairs can have multiple payment rails between them but they can also reuse the same rail across multiple deals. Importantly, rails:
     - Specify the maximum rate at which the client will pay the SP, the actual amount paid for any given period is subject to validation by the **validator** described below.
-    - Specify the period in advanced the client is required to lock funds (the **lockup period**). There’s no way to force clients to lock funds in advanced, but we can prevent them from *withdrawing* them and make it easy for SPs to tell if their clients haven’t met their lockup minimums, giving them time to settle their accounts.
+    - Specify the period in advance the client is required to lock funds (the **lockup period**). There’s no way to force clients to lock funds in advance, but we can prevent them from *withdrawing* them and make it easy for SPs to tell if their clients haven’t met their lockup minimums, giving them time to settle their accounts.
 
 ### **Validator**
 
@@ -54,6 +54,7 @@ An operator is a smart contract (likely the service contract) that manages rails
     - The sum of payment rates across all rails operated by this contract for a specific client must be at most the maximum per-operator spend rate specified by the client.
     - The sum of the lockup across all rails operated by this contract for a specific client must be at most the maximum per-operator lockup specified by the client.
 - Specify/change the payment rail validator of payment rails created by this operator.
+- Terminate payment rails
 
 ## Core Functions
 
@@ -121,6 +122,19 @@ Withdraws available tokens from caller's account to a specified address.
   - `amount`: Token amount to withdraw
 - **Requirements**:
   - Amount must not exceed unlocked funds
+
+#### `getAccountInfoIfSettled(address token, address owner)`
+
+Displays information about account's current solvency assuming settlement of all active rails
+
+- **Parameters**:
+  - `token`: ERC20 token contract address
+  - `owner`: Account address being queried
+- **Returns**:
+  - `fundedUntilEpoch`: epoch until which account is fully funded
+  - `currentFunds`: currently available funds before settline
+  - `availableFunds`: funds available if settlement were to happen now, clamped at 0
+  - `currentLockupRate`: the current lockup rate per epoch
 
 ### Operator Management
 

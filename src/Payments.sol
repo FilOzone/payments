@@ -425,7 +425,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             uint256 balanceAfter = IERC20(token).balanceOf(address(this));
             
             actualAmount = balanceAfter - balanceBefore;
-            // Allow zero deposits (e.g., for testing or certain protocols)
         }
 
         account.funds += actualAmount;
@@ -476,7 +475,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         uint256 balanceAfter = IERC20(token).balanceOf(address(this));
         
         uint256 actualAmount = balanceAfter - balanceBefore;
-        // Allow zero deposits (e.g., for testing or certain protocols)
         
         account.funds += actualAmount;
 

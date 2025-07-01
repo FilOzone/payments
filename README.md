@@ -1,6 +1,6 @@
 # FWS Payments Contract
 
-The FWS Payments contract enables ERC20 token payment flows through "rails" - automated payment channels between clients and recipients. The contract supports continuous payments, one-time transfers, and payment arbitration.
+The FWS Payments contract enables ERC20 token payment flows through "rails" - automated payment channels between clients and recipients. The contract supports continuous payments, one-time transfers, and payment validation/arbitration.
 
 - [Deployment Info](#deployment-info)
 - [Key Concepts](#key-concepts)
@@ -9,7 +9,7 @@ The FWS Payments contract enables ERC20 token payment flows through "rails" - au
   - [Operator Management](#operator-management)
   - [Rail Management](#rail-management)
   - [Settlement](#settlement)
-  - [Arbitration](#arbitration)
+  - [Validation](#validation)
 - [Worked Example](#worked-example)
 - [Emergency Scenarios](#emergency-scenarios)
 
@@ -21,7 +21,7 @@ The FWS Payments contract enables ERC20 token payment flows through "rails" - au
 
 - **Account**: Represents a user's token balance and locked funds
 - **Rail**: A payment channel between a client and recipient with configurable terms
-- **Arbiter**: An optional contract that can mediate payment disputes
+- **Validator**: An optional contract that validates and, if necessary, mediates payment disputes
 - **Operator**: An authorized third party who can manage rails on behalf of clients
 
 ### Account
@@ -34,12 +34,12 @@ Tracks the funds, lockup, obligations, etc. associated with a single “owner”
 ### Rail
 
 A rail along which payments flow from a client to an SP. Rails track lockup, maximum payment rates, and obligations between a client and an SP. Client-SP pairs can have multiple payment rails between them but they can also reuse the same rail across multiple deals. Importantly, rails:
-    - Specify the maximum rate at which the client will pay the SP, the actual amount paid for any given period is subject to arbitration by the **arbiter** described below.
+    - Specify the maximum rate at which the client will pay the SP, the actual amount paid for any given period is subject to validation by the **validator** described below.
     - Specify the period in advanced the client is required to lock funds (the **lockup period**). There’s no way to force clients to lock funds in advanced, but we can prevent them from *withdrawing* them and make it easy for SPs to tell if their clients haven’t met their lockup minimums, giving them time to settle their accounts.
 
-### **Arbiter**
+### **Validator**
 
-An arbiter is an (optional) smart contract that can arbitrate payments associated with a single rail. For example, a payment rail used for PDP will specify the PDP service as its arbiter An arbiter can:
+An validator is an (optional) smart contract that can validate/arbitrate payments associated with a single rail. For example, a payment rail used for PDP will specify the PDP service as its validator. A validator can:
 
 - Prevent settlement of a payment rail entirely.
 - Refuse to settle a payment rail past some epoch.
@@ -53,7 +53,7 @@ An operator is a smart contract (likely the service contract) that manages rails
 - Changes payment rates, lockups, etc. of payment rails created by this operator.
     - The sum of payment rates across all rails operated by this contract for a specific client must be at most the maximum per-operator spend rate specified by the client.
     - The sum of the lockup across all rails operated by this contract for a specific client must be at most the maximum per-operator lockup specified by the client.
-- Specify/change the payment rail arbiter of payment rails created by this operator.
+- Specify/change the payment rail validator of payment rails created by this operator.
 
 ## Core Functions
 
@@ -138,7 +138,7 @@ Configures an operator's permissions to manage rails on behalf of the caller.
 
 ### Rail Management
 
-#### `createRail(address token, address from, address to, address arbiter)`
+#### `createRail(address token, address from, address to, address validator)`
 
 Creates a new payment rail between two parties.
 
@@ -146,7 +146,7 @@ Creates a new payment rail between two parties.
   - `token`: ERC20 token contract address
   - `from`: Client (payer) address
   - `to`: Recipient address
-  - `arbiter`: Optional arbitration contract address (0x0 for none)
+  - `validator`: Optional validation contract address (0x0 for none)
 - **Returns**: Unique rail ID
 - **Requirements**:
   - Caller must be approved as an operator by the client
@@ -331,9 +331,9 @@ Settles payments for a rail up to a specified epoch.
   - Client's account must be fully funded _or_ the rail must be terminated
   - Cannot settle future epochs
 
-#### `settleTerminatedRailWithoutArbitration(uint256 railId)`
+#### `settleTerminatedRailWithoutValidation(uint256 railId)`
 
-Emergency settlement method for terminated rails with stuck arbitration.
+Emergency settlement method for terminated rails with stuck validation.
 
 - **Parameters**:
   - `railId`: Rail identifier
@@ -346,12 +346,12 @@ Emergency settlement method for terminated rails with stuck arbitration.
   - Rail must be terminated
   - Current epoch must be past the rail's maximum settlement epoch
 
-### Arbitration
+### Validation
 
-The contract supports optional payment arbitration through the `IArbiter` interface. When a rail has an arbiter:
+The contract supports optional payment validation through the `IValidator` interface. When a rail has a validator:
 
-1. During settlement, the arbiter contract is called
-2. The arbiter can adjust payment amounts or partially settle epochs
+1. During settlement, the validator contract is called
+2. The validator can adjust payment amounts or partially settle epochs
 3. This provides dispute resolution capabilities for complex payment arrangements
 
 ## Worked Example
@@ -408,7 +408,7 @@ uint256 railId = Payments(paymentsContractAddress).createRail(
     tokenAddress,     // Token used for payments
     clientAddress,    // Payer (client)
     serviceProvider,  // Payee (service provider)
-    arbiterAddress    // Optional arbiter (can be address(0) for no arbitration)
+    validatorAddress    // Optional validator (can be address(0) for no validation/arbitration)
 );
 
 // Set up initial lockup for onboarding costs - for example, 10 tokens as fixed lockup
@@ -461,7 +461,7 @@ This settlement:
 
 - Calculates amount owed based on rail's rate and time elapsed
 - Transfers tokens from client's account to service provider's account
-- If an arbiter is specified, it may modify the payment amount or limit settlement epochs
+- If a validator is specified, it may modify the payment amount or limit settlement epochs
 - Records the epoch up to which the rail has been settled
 
 A rail may only be settled if either (a) the client's account is fully funded or (b) the rail is terminated (in which case the rail may be settled up to the rail's "end epoch").
@@ -519,7 +519,7 @@ Payments(paymentsContractAddress).withdraw(
 
 ## Emergency Scenarios
 
-If some component in the system (operator, arbiter, client, SP) misbehaves, all parties have escape hatches that allow them to walk away with predictable losses.
+If some component in the system (operator, validator, client, SP) misbehaves, all parties have escape hatches that allow them to walk away with predictable losses.
 
 ### Reducing Operator Allowance
 
@@ -544,13 +544,13 @@ Termination:
 
 At any time, even if the client's account isn't fully funded, the operator can terminate a rail. This will allow the recipient to settle any funds available in the rail to receive partial payment.
 
-### Rail Settlement Without Arbitration
+### Rail Settlement Without Validation
 
-If an arbiter contract is malfunctioning, the _client_ may forcibly settle the rail the rail "in full" (skipping arbitration) to prevent the funds from getting stuck in the rail pending final arbitration. This can only be done after the rail has been terminated (either by the client or by the operator), and should be used as a last resort.
+If a validator contract is malfunctioning, the _client_ may forcibly settle the rail the rail "in full" (skipping validation) to prevent the funds from getting stuck in the rail pending final validation. This can only be done after the rail has been terminated (either by the client or by the operator), and should be used as a last resort.
 
 ```solidity
-// Emergency settlement for terminated rails with stuck arbitration
-(uint256 amount, uint256 settledEpoch, string memory note) = Payments(paymentsContractAddress).settleTerminatedRailWithoutArbitration(railId);
+// Emergency settlement for terminated rails with stuck validation
+(uint256 amount, uint256 settledEpoch, string memory note) = Payments(paymentsContractAddress).settleTerminatedRailWithoutValidation(railId);
 ```
 
 ### Client Reducing Operator Allowance After Deal Proposal

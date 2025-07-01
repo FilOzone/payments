@@ -411,11 +411,11 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         Account storage account = accounts[token][to];
 
         uint256 actualAmount;
-        
+
         // Transfer tokens from sender to contract
         if (token == address(0)) {
             require(msg.value == amount, "must send an equal amount of native tokens");
-            actualAmount = amount; 
+            actualAmount = amount;
         } else {
             require(msg.value == 0, "must not send native tokens");
 
@@ -423,7 +423,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             uint256 balanceBefore = IERC20(token).balanceOf(address(this));
             IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
             uint256 balanceAfter = IERC20(token).balanceOf(address(this));
-            
+
             actualAmount = balanceAfter - balanceBefore;
         }
 
@@ -468,14 +468,14 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         IERC20Permit(token).permit(to, address(this), amount, deadline, v, r, s);
 
         Account storage account = accounts[token][to];
-        
+
         // Use balance-before/balance-after accounting for fee-on-transfer tokens
         uint256 balanceBefore = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransferFrom(to, address(this), amount);
         uint256 balanceAfter = IERC20(token).balanceOf(address(this));
-        
+
         uint256 actualAmount = balanceAfter - balanceBefore;
-        
+
         account.funds += actualAmount;
 
         emit DepositRecorded(token, to, to, actualAmount, true);

@@ -55,6 +55,78 @@ An operator is a smart contract (likely the service contract) that manages rails
     - The sum of the lockup across all rails operated by this contract for a specific client must be at most the maximum per-operator lockup specified by the client.
 - Specify/change the payment rail arbiter of payment rails created by this operator.
 
+### Per-Rail Lockup: Streaming and Fixed Buckets
+
+Each payment rail requires the user to manage two lockup components:
+- **Payment Stream lockup:** `paymentRate × lockupPeriod` (covers future payment streams)
+- **Fixed lockup:** `lockupFixed` (covers one-time payments)
+
+The contract always enforces that the sum of these two values is locked for each rail:
+```
+Total Lockup Required = (paymentRate × lockupPeriod) + lockupFixed
+```
+- You must ensure both components are sufficiently funded.
+- One-time payments are deducted from `lockupFixed`.
+- Streaming payments are covered by the streaming lockup.
+
+#### How Each Lockup Bucket Works
+
+**Streaming Lockup (`paymentRate × lockupPeriod`)**
+- *Purpose:* Ensures there are always enough funds locked to cover ongoing, periodic payments for a set period into the future.
+- *How it works:* The contract calculates the streaming lockup as `paymentRate × lockupPeriod`. This amount is "reserved" and cannot be withdrawn by the client as long as the rail is active. It guarantees the service provider that, for the next `lockupPeriod` epochs, the client cannot run out of funds for the agreed streaming rate.
+- *Use case:* A client subscribes to a service for 10 epochs at a rate of 2 tokens per epoch. The contract locks 20 tokens (`2 × 10`) to guarantee these future payments.
+
+**Fixed Lockup (`lockupFixed`)**
+- *Purpose:* Provides a pool of funds for immediate, one-time payments that are not part of the regular payment stream.
+- *How it works:* The contract allows the operator to make one-time payments (e.g., onboarding fees, bonuses, penalties) directly from this bucket. These payments are deducted from `lockupFixed`. The client must ensure there is enough in `lockupFixed` to cover any planned or potential one-time payments.
+- *Use case:* A client agrees to pay a 5-token onboarding fee to the service provider at the start of the contract. This is set aside in `lockupFixed` and can be paid out immediately, independent of the payment stream.
+
+#### How They Work Together
+- **Total Lockup Required:** The contract enforces that the sum of both buckets is always locked:
+  `Total Lockup = (paymentRate × lockupPeriod) + lockupFixed`
+- One-time payments reduce `lockupFixed`.
+- Periodic payments are covered by the `paymentRate × lockupPeriod` and are settled periodically.
+- If you want to increase the payment rate or lockup period, or make a one-time payment, you may need to increase the total lockup to maintain the required minimum.
+
+#### Detailed Example
+Suppose you set:
+- `paymentRate = 3 tokens/epoch`
+- `lockupPeriod = 8 epochs`
+- `lockupFixed = 7 tokens`
+
+**Total lockup required:**
+`3 × 8 + 7 = 31 tokens`
+
+**Scenario 1: Making a One-Time Payment**
+- The operator makes a one-time payment of 4 tokens.
+- `lockupFixed` drops to 3.
+- New total lockup required: `3 × 8 + 3 = 27 tokens`.
+
+**Scenario 2: Increasing the Streaming Rate**
+- The client wants to increase the rate to 4 tokens/epoch.
+- New streaming lockup: `4 × 8 = 32 tokens`.
+- With `lockupFixed = 3`, total required: `32 + 3 = 35 tokens`.
+- The client must top up the account by 8 tokens before this change is allowed.
+
+**Scenario 3: Reducing the Lockup Period**
+- The client reduces the lockup period to 5 epochs.
+- Streaming lockup: `3 × 5 = 15 tokens`.
+- With `lockupFixed = 3`, total required: `15 + 3 = 18 tokens`.
+- The contract now allows the client to withdraw any excess above 18 tokens.
+
+#### Summary Table
+| Lockup Type      | What it Covers                | Example Use Cases                |
+|------------------|------------------------------|----------------------------------|
+| Streaming        | Future periodic payments      | Subscriptions, ongoing services  |
+| Fixed            | Immediate one-time payments   | Onboarding fees, bonuses, penalties, termination fees |
+
+#### Best Practices
+- **Plan ahead:** Estimate both your ongoing (streaming) and one-time payment needs and fund both buckets accordingly.
+- **Monitor balances:** Before making a one-time payment or increasing the streaming rate/period, check that your account is sufficiently funded.
+- **Use cases:** Use streaming lockup for predictable, recurring payments. Use fixed lockup for immediate payments.
+
+This model gives flexibility: this can guarantee ongoing service payments while also handling special, immediate payments as needed—all with clear, enforced separation and safety for both parties.
+
 ## Core Functions
 
 ### Account Management

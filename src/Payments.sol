@@ -415,7 +415,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Transfer tokens from sender to contract
         if (token == address(0)) {
             require(msg.value == amount, "must send an equal amount of native tokens");
-            actualAmount = amount; // Native tokens don't have transfer fees
+            actualAmount = amount; 
         } else {
             require(msg.value == 0, "must not send native tokens");
 
@@ -428,7 +428,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             // Allow zero deposits (e.g., for testing or certain protocols)
         }
 
-        // Update account balance with actual received amount
         account.funds += actualAmount;
 
         emit DepositRecorded(token, msg.sender, to, actualAmount, false);
@@ -479,7 +478,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         uint256 actualAmount = balanceAfter - balanceBefore;
         // Allow zero deposits (e.g., for testing or certain protocols)
         
-        // Update account balance with actual received amount
         account.funds += actualAmount;
 
         emit DepositRecorded(token, to, to, actualAmount, true);

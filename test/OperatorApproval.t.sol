@@ -291,7 +291,9 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // Attempt to set non-zero rate (should fail)
         vm.startPrank(OPERATOR);
-        vm.expectRevert(abi.encodeWithSelector(Errors.OperatorRateAllowanceExceeded.selector, 0, exactRateAllowance + 1));
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.OperatorRateAllowanceExceeded.selector, 0, exactRateAllowance + 1)
+        );
         payments.modifyRailPayment(railId2, 1, 0);
         vm.stopPrank();
 

@@ -9,6 +9,7 @@ import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {RailSettlementHelpers} from "./helpers/RailSettlementHelpers.sol";
 import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
 import {console} from "forge-std/console.sol";
+import {Errors} from "../src/Errors.sol";
 
 contract FeesTest is Test, BaseTestHelper {
     PaymentsTestHelpers helper;
@@ -158,7 +159,9 @@ contract FeesTest is Test, BaseTestHelper {
 
         uint256 startBalance = USER1.balance;
         vm.prank(USER1);
-        vm.expectRevert("insufficient transfer of native token to burn");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.InsufficientNativeTokenForBurn.selector, networkFee, networkFee - 1)
+        );
         payments.settleRail{value: networkFee - 1}(rail1Id, block.number);
         assertEq(startBalance, USER1.balance, "no fee should be taken on revert");
 

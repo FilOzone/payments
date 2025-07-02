@@ -239,7 +239,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         if (!isRailTerminated(rails[railId])) {
             revert Errors.RailNotTerminated();
         }
-        // require(isRailTerminated(rails[railId]), "can only be used on terminated rails");
         _;
     }
 
@@ -268,7 +267,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         if (rail.from == address(0)) {
             revert Errors.RailInactive(railId);
         }
-        // require(rails[railId].from != address(0), "rail is inactive");
 
         Account storage payer = accounts[rail.token][rail.from];
 
@@ -486,7 +484,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         bytes32 s
     ) internal {
         // Revert if token is address(0) as permit is not supported for native tokens
-        // require(token != address(0), "depositWithPermit: native token not supported");
         if (token == address(0)) {
             revert Errors.NativeTokenNotSupported();
         }
@@ -740,7 +737,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Calculate new lockup amount with new parameters
         uint256 newLockup = lockupFixed + (rail.paymentRate * period);
 
-        // require(payer.lockupCurrent >= oldLockup, "payer's current lockup cannot be less than old lockup");
         if (payer.lockupCurrent < oldLockup) {
             revert Errors.CurrentLockupLessThanOldLockup(rail.token, rail.from, oldLockup, payer.lockupCurrent);
         }
@@ -822,7 +818,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Update payer's lockup rate - only if the rail is not terminated
         // for terminated rails, the payer's lockup rate is already updated during rail termination
         if (!isTerminated) {
-            // require(payer.lockupRate >= oldRate, "payer lockup rate cannot be less than old rate");
             if (payer.lockupRate < oldRate) {
                 revert Errors.LockupRateLessThanOldRate(railId, rail.from, oldRate, payer.lockupRate);
             }
@@ -948,14 +943,21 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     function burnAndRefundRest(uint256 _amount) internal {
-        require(msg.value >= _amount, "insufficient transfer of native token to burn");
+        if (msg.value < _amount) {
+            revert Errors.InsufficientNativeTokenForBurn(_amount, msg.value);
+        }
         // f099 burn address
         (bool success,) = address(0xff00000000000000000000000000000000000063).call{value: _amount}("");
-        require(success, "native token burn failed");
+        if (!success) {
+            revert Errors.NativeTransferFailed(address(0xff00000000000000000000000000000000000063), _amount);
+        }
 
         if (msg.value > _amount) {
-            (success,) = msg.sender.call{value: msg.value - _amount}("");
-            require(success, "refund failed");
+            uint256 refund = msg.value - _amount;
+            (success,) = msg.sender.call{value: refund}("");
+            if (!success) {
+                revert Errors.NativeTransferFailed(msg.sender, refund);
+            }
         }
     }
 
@@ -1039,7 +1041,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             (amount, netPayeeAmount, operatorCommission, segmentNote) =
                 _settleSegment(railId, startEpoch, maxSettlementEpoch, rail.paymentRate, skipValidation);
 
-            // require(rail.settledUpTo > startEpoch, "No progress in settlement");
             if (rail.settledUpTo <= startEpoch) {
                 revert Errors.NoProgressInSettlement(railId, startEpoch + 1, rail.settledUpTo);
             }
@@ -1355,7 +1356,6 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     function remainingEpochsForTerminatedRail(Rail storage rail) internal view returns (uint256) {
-        // require(isRailTerminated(rail), "rail is not terminated");
         if (!isRailTerminated(rail)) {
             revert Errors.RailNotTerminated();
         }

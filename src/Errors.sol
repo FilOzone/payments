@@ -287,4 +287,9 @@ library Errors {
     /// @param to The recipient address
     /// @param amount The amount attempted to send
     error FeeWithdrawalNativeTransferFailed(address to, uint256 amount);
+
+    /// @notice Not enough native token sent for the burn operation
+    /// @param required The minimum required native token amount
+    /// @param sent The amount of native token sent with the transaction
+    error InsufficientNativeTokenForBurn(uint256 required, uint256 sent);
 }

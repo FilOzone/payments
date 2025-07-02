@@ -248,7 +248,7 @@ Retrieves the current state of a payment rail.
 
 #### `terminateRail(uint256 railId)`
 
-Normal termination of payment that enters the rail into its final lockup period before finalizing completion of the payment flow. This can be called by the operator or a client in good standing.
+Normal termination of a payment rail. This can be called by the operator or a client in good standing. After this call the rail is still active for a number of epochs equal to `rail.lockupPeriod`.
 
 - **Parameters**:
   - `railId`: Rail identifier

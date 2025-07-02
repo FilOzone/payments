@@ -9,6 +9,7 @@ import {BaseTestHelper} from "./BaseTestHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {console} from "forge-std/console.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {Errors} from "../../src/Errors.sol";
 
 contract PaymentsTestHelpers is Test, BaseTestHelper {
     // Common constants
@@ -244,10 +245,10 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         );
     }
 
-    function expectWithdrawalToFail(address from, uint256 amount, bytes memory expectedError) public {
+    function expectWithdrawalToFail(address from, uint256 available, uint256 requested) public {
         vm.startPrank(from);
-        vm.expectRevert(expectedError);
-        payments.withdraw(address(testToken), amount);
+        vm.expectRevert(abi.encodeWithSelector(Errors.InsufficientUnlockedFunds.selector, available, requested));
+        payments.withdraw(address(testToken), requested);
         vm.stopPrank();
     }
 
@@ -675,6 +676,19 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         );
     }
 
+    function expectcreateRailToRevertWithoutOperatorApproval() public {
+        vm.startPrank(OPERATOR);
+        vm.expectRevert(abi.encodeWithSelector(Errors.OperatorNotApproved.selector, USER1, OPERATOR));
+        payments.createRail(
+            address(testToken),
+            USER1,
+            USER2,
+            address(0),
+            0,
+            SERVICE_FEE_RECIPIENT // operator commision receiver
+        );
+    }
+
     function expectExpiredPermitToRevert(uint256 senderSk, address to, uint256 amount) public {
         address from = vm.addr(senderSk);
         uint256 futureDeadline = block.timestamp + 1 hours;
@@ -690,7 +704,7 @@ contract PaymentsTestHelpers is Test, BaseTestHelper {
         uint256 deadline = block.timestamp + 1 hours;
         address from = vm.addr(senderSk);
         vm.startPrank(from);
-        vm.expectRevert("depositWithPermit: native token not supported");
+        vm.expectRevert(Errors.NativeTokenNotSupported.selector);
         payments.depositWithPermit(
             address(0), // Native token is not allowed
             to,

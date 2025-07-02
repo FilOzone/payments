@@ -7,6 +7,7 @@ import {ERC1967Proxy} from "../src/ERC1967Proxy.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
+import {Errors} from "../src/Errors.sol";
 
 contract AccessControlTest is Test, BaseTestHelper {
     Payments payments;
@@ -57,14 +58,18 @@ contract AccessControlTest is Test, BaseTestHelper {
 
     function testTerminateRail_RevertsWhenCalledByRecipient() public {
         vm.startPrank(USER2);
-        vm.expectRevert("caller is not authorized: must be operator or client with settled lockup");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.NotAuthorizedToTerminateRail.selector, railId, USER1, OPERATOR, USER2)
+        );
         payments.terminateRail(railId);
         vm.stopPrank();
     }
 
     function testTerminateRail_RevertsWhenCalledByUnauthorized() public {
         vm.startPrank(address(0x99));
-        vm.expectRevert("caller is not authorized: must be operator or client with settled lockup");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.NotAuthorizedToTerminateRail.selector, railId, USER1, OPERATOR, address(0x99))
+        );
         payments.terminateRail(railId);
         vm.stopPrank();
     }
@@ -77,21 +82,21 @@ contract AccessControlTest is Test, BaseTestHelper {
 
     function testModifyRailLockup_RevertsWhenCalledByClient() public {
         vm.startPrank(USER1);
-        vm.expectRevert("only the rail operator can perform this action");
+        vm.expectRevert(abi.encodeWithSelector(Errors.OnlyRailOperatorAllowed.selector, OPERATOR, USER1));
         payments.modifyRailLockup(railId, 20, 20 ether);
         vm.stopPrank();
     }
 
     function testModifyRailLockup_RevertsWhenCalledByRecipient() public {
         vm.startPrank(USER2);
-        vm.expectRevert("only the rail operator can perform this action");
+        vm.expectRevert(abi.encodeWithSelector(Errors.OnlyRailOperatorAllowed.selector, OPERATOR, USER2));
         payments.modifyRailLockup(railId, 20, 20 ether);
         vm.stopPrank();
     }
 
     function testModifyRailLockup_RevertsWhenCalledByUnauthorized() public {
         vm.startPrank(address(0x99));
-        vm.expectRevert("only the rail operator can perform this action");
+        vm.expectRevert(abi.encodeWithSelector(Errors.OnlyRailOperatorAllowed.selector, OPERATOR, address(0x99)));
         payments.modifyRailLockup(railId, 20, 20 ether);
         vm.stopPrank();
     }
@@ -104,21 +109,21 @@ contract AccessControlTest is Test, BaseTestHelper {
 
     function testModifyRailPayment_RevertsWhenCalledByClient() public {
         vm.startPrank(USER1);
-        vm.expectRevert("only the rail operator can perform this action");
+        vm.expectRevert(abi.encodeWithSelector(Errors.OnlyRailOperatorAllowed.selector, OPERATOR, USER1));
         payments.modifyRailPayment(railId, 2 ether, 0);
         vm.stopPrank();
     }
 
     function testModifyRailPayment_RevertsWhenCalledByRecipient() public {
         vm.startPrank(USER2);
-        vm.expectRevert("only the rail operator can perform this action");
+        vm.expectRevert(abi.encodeWithSelector(Errors.OnlyRailOperatorAllowed.selector, OPERATOR, USER2));
         payments.modifyRailPayment(railId, 2 ether, 0);
         vm.stopPrank();
     }
 
     function testModifyRailPayment_RevertsWhenCalledByUnauthorized() public {
         vm.startPrank(address(0x99));
-        vm.expectRevert("only the rail operator can perform this action");
+        vm.expectRevert(abi.encodeWithSelector(Errors.OnlyRailOperatorAllowed.selector, OPERATOR, address(0x99)));
         payments.modifyRailPayment(railId, 2 ether, 0);
         vm.stopPrank();
     }
@@ -138,7 +143,7 @@ contract AccessControlTest is Test, BaseTestHelper {
 
         // Attempt to settle from operator account
         vm.startPrank(OPERATOR);
-        vm.expectRevert("only the rail client can perform this action");
+        vm.expectRevert(abi.encodeWithSelector(Errors.OnlyRailClientAllowed.selector, USER1, OPERATOR));
         payments.settleTerminatedRailWithoutValidation(railId);
         vm.stopPrank();
     }
@@ -149,7 +154,9 @@ contract AccessControlTest is Test, BaseTestHelper {
 
         // Client should not be able to terminate because lockup is not fully settled
         vm.startPrank(USER1);
-        vm.expectRevert("caller is not authorized: must be operator or client with settled lockup");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.NotAuthorizedToTerminateRail.selector, railId, USER1, OPERATOR, USER1)
+        );
         payments.terminateRail(railId);
         vm.stopPrank();
 

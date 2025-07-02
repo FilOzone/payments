@@ -261,7 +261,7 @@ contract AccountLockupSettlementTest is Test, BaseTestHelper {
         // Available for withdrawal at creation: 200 ether - 60 ether = 140 ether
 
         // Try to withdraw more than available (should fail)
-        helper.expectWithdrawalToFail(USER1, 150 ether, bytes("insufficient unlocked funds for withdrawal"));
+        helper.expectWithdrawalToFail(USER1, 140 ether, 150 ether);
 
         // Withdraw exactly the available amount (should succeed and also settle account lockup)
         helper.makeWithdrawal(USER1, 140 ether);

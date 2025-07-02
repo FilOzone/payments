@@ -8,6 +8,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
 import {console} from "forge-std/console.sol";
+import {Errors} from "../src/Errors.sol";
 
 contract OperatorApprovalTest is Test, BaseTestHelper {
     MockERC20 secondToken;
@@ -37,7 +38,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
     function testInvalidAddresses() public {
         // Test zero operator address
         vm.startPrank(USER1);
-        vm.expectRevert("operator address cannot be zero");
+        vm.expectRevert(abi.encodeWithSelector(Errors.ZeroAddressNotAllowed.selector, "operator"));
         payments.setOperatorApproval(
             address(0x1), address(0), true, RATE_ALLOWANCE, LOCKUP_ALLOWANCE, MAX_LOCKUP_PERIOD
         );
@@ -140,7 +141,11 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // Now try to exceed the limit - should revert
         vm.startPrank(OPERATOR);
-        vm.expectRevert("operation exceeds operator rate allowance");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.OperatorRateAllowanceExceeded.selector, limitedRateAllowance, limitedRateAllowance + 1 ether
+            )
+        );
         payments.modifyRailPayment(railId, limitedRateAllowance + 1 ether, 0);
         vm.stopPrank();
     }
@@ -235,8 +240,14 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // Try to set fixed lockup that exceeds allowance
         uint256 excessiveLockup = 110 ether;
+        (,,,, uint256 currentLockupUsage,) = payments.operatorApprovals(address(helper.testToken()), USER1, OPERATOR);
+        uint256 attemptedUsage = currentLockupUsage + excessiveLockup;
         vm.startPrank(OPERATOR);
-        vm.expectRevert("operation exceeds operator lockup allowance");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.OperatorLockupAllowanceExceeded.selector, limitedLockupAllowance, attemptedUsage
+            )
+        );
         payments.modifyRailLockup(railId, 0, excessiveLockup);
         vm.stopPrank();
     }
@@ -280,39 +291,25 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // Attempt to set non-zero rate (should fail)
         vm.startPrank(OPERATOR);
-        vm.expectRevert("operation exceeds operator rate allowance");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.OperatorRateAllowanceExceeded.selector, 0, exactRateAllowance + 1)
+        );
         payments.modifyRailPayment(railId2, 1, 0);
         vm.stopPrank();
 
         // Attempt to set non-zero lockup (should fail)
         vm.startPrank(OPERATOR);
-        vm.expectRevert("operation exceeds operator lockup allowance");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.OperatorLockupAllowanceExceeded.selector, 0, exactLockupAllowance + 1)
+        );
         payments.modifyRailLockup(railId2, 0, 1);
         vm.stopPrank();
     }
 
     function testOperatorAuthorizationBoundaries() public {
         // 1. Test unapproved operator
-        vm.startPrank(OPERATOR);
         // Try to create a rail and expect it to fail
-        try payments.createRail(
-            address(helper.testToken()),
-            USER1,
-            USER2,
-            address(0),
-            0,
-            SERVICE_FEE_RECIPIENT // operator commision receiver
-        ) returns (uint256) {
-            // If we get here, the function did not revert
-            assertTrue(false, "createRail should have reverted with 'operator not approved'");
-        } catch Error(string memory reason) {
-            // If we get here, the function reverted with a reason string
-            assertEq(reason, "operator not approved", "Wrong revert reason");
-        } catch {
-            // If we get here, the function reverted but without a reason string
-            assertTrue(false, "createRail reverted but without the expected reason string");
-        }
-        vm.stopPrank();
+        helper.expectcreateRailToRevertWithoutOperatorApproval();
 
         // 2. Setup approval and create rail
         helper.setupOperatorApproval(USER1, OPERATOR, RATE_ALLOWANCE, LOCKUP_ALLOWANCE, MAX_LOCKUP_PERIOD);
@@ -321,7 +318,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // 3. Test non-operator rail modification
         vm.startPrank(USER1);
-        vm.expectRevert("only the rail operator can perform this action");
+        vm.expectRevert(abi.encodeWithSelector(Errors.OnlyRailOperatorAllowed.selector, OPERATOR, USER1));
         payments.modifyRailPayment(railId, 10 ether, 0);
         vm.stopPrank();
 
@@ -332,26 +329,9 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         );
         vm.stopPrank();
 
-        vm.startPrank(OPERATOR);
+        // Verify operator approval was revoked
         // Try to create a rail and expect it to fail
-        try payments.createRail(
-            address(helper.testToken()),
-            USER1,
-            USER2,
-            address(0),
-            0,
-            SERVICE_FEE_RECIPIENT // operator commision receiver
-        ) returns (uint256) {
-            // If we get here, the function did not revert
-            assertTrue(false, "createRail should have reverted with 'operator not approved'");
-        } catch Error(string memory reason) {
-            // If we get here, the function reverted with a reason string
-            assertEq(reason, "operator not approved", "Wrong revert reason");
-        } catch {
-            // If we get here, the function reverted but without a reason string
-            assertTrue(false, "createRail reverted but without the expected reason string");
-        }
-        vm.stopPrank();
+        helper.expectcreateRailToRevertWithoutOperatorApproval();
 
         // 5. Verify operator can still modify existing rails after approval revocation
         vm.startPrank(OPERATOR);
@@ -400,7 +380,9 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // 3. Test excessive payment reverts
         vm.startPrank(OPERATOR);
-        vm.expectRevert("one time payment cannot be greater than rail lockupFixed");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.OneTimePaymentExceedsLockup.selector, railId, rail.lockupFixed, 1)
+        );
         payments.modifyRailPayment(railId, paymentRate, 1); // Lockup is now 0, so any payment should fail
         vm.stopPrank();
     }
@@ -511,15 +493,30 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         // Create a new rail, which should succeed
         uint256 railId2 = helper.createRail(USER1, USER2, OPERATOR, address(0), SERVICE_FEE_RECIPIENT);
 
+        uint256 attemptedUsage = rateUsage + 11 ether;
+
         // But attempting to set non-zero rate on the new rail should fail due to insufficient allowance
         vm.startPrank(OPERATOR);
-        vm.expectRevert("operation exceeds operator rate allowance");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.OperatorRateAllowanceExceeded.selector, rateAllowance, attemptedUsage)
+        );
         payments.modifyRailPayment(railId2, 11 ether, 0);
         vm.stopPrank();
 
+        (,,,, lockupUsage,) = payments.operatorApprovals(address(helper.testToken()), USER1, OPERATOR);
+        uint256 oldLockupFixed = payments.getRail(railId2).lockupFixed;
+        uint256 newLockupFixed = 6 ether;
+        uint256 lockupIncrease = 0;
+        if (newLockupFixed > oldLockupFixed) {
+            lockupIncrease = newLockupFixed - oldLockupFixed;
+        }
+        attemptedUsage = lockupUsage + lockupIncrease;
+
         // Similarly, attempting to set non-zero lockup on the new rail should fail
         vm.startPrank(OPERATOR);
-        vm.expectRevert("operation exceeds operator lockup allowance");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.OperatorLockupAllowanceExceeded.selector, lockupAllowance, attemptedUsage)
+        );
         payments.modifyRailLockup(railId2, 0, 6 ether);
         vm.stopPrank();
     }
@@ -561,7 +558,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // Operator should not be able to increase rate above current allowance
         vm.startPrank(OPERATOR);
-        vm.expectRevert("operation exceeds operator rate allowance");
+        vm.expectRevert(abi.encodeWithSelector(Errors.OperatorRateAllowanceExceeded.selector, 30 ether, 40 ether));
         payments.modifyRailPayment(railId, 40 ether, 0); // Try to increase above allowance
         vm.stopPrank();
 
@@ -584,7 +581,8 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // Operator should not be able to increase rate at all
         vm.startPrank(OPERATOR);
-        vm.expectRevert("operation exceeds operator rate allowance");
+        // Payments.OperatorApproval approval = payments.operatorApprovals(address(helper.testToken()), USER1, OPERATOR);
+        vm.expectRevert(abi.encodeWithSelector(Errors.OperatorRateAllowanceExceeded.selector, 0, 21 ether));
         payments.modifyRailPayment(railId, 21 ether, 0);
         vm.stopPrank();
 
@@ -620,7 +618,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // Operator should not be able to increase fixed lockup above current allowance
         vm.startPrank(OPERATOR);
-        vm.expectRevert("operation exceeds operator lockup allowance");
+        vm.expectRevert(abi.encodeWithSelector(Errors.OperatorLockupAllowanceExceeded.selector, 300 ether, 400 ether));
         payments.modifyRailLockup(railId2, 0, 400 ether);
         vm.stopPrank();
     }
@@ -692,26 +690,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         vm.stopPrank();
 
         // Testing that operator shouldn't be able to create a new rail using try/catch
-        vm.startPrank(OPERATOR);
-        // Try to create a rail and expect it to fail
-        try payments.createRail(
-            address(helper.testToken()),
-            USER1,
-            USER2,
-            address(0),
-            0,
-            SERVICE_FEE_RECIPIENT // operator commision receiver
-        ) returns (uint256) {
-            // If we get here, the function did not revert
-            assertTrue(false, "createRail should have reverted with 'operator not approved'");
-        } catch Error(string memory reason) {
-            // If we get here, the function reverted with a reason string
-            assertEq(reason, "operator not approved", "Wrong revert reason");
-        } catch {
-            // If we get here, the function reverted but without a reason string
-            assertTrue(false, "createRail reverted but without the expected reason string");
-        }
-        vm.stopPrank();
+        helper.expectcreateRailToRevertWithoutOperatorApproval();
 
         // Reapprove with reduced allowances
         vm.startPrank(USER1);
@@ -730,7 +709,10 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // But should not be able to exceed the new allowance
         vm.startPrank(OPERATOR);
-        vm.expectRevert("operation exceeds operator rate allowance");
+        (, uint256 rateAllowance,, uint256 rateUsage,,) =
+            payments.operatorApprovals(address(helper.testToken()), USER1, OPERATOR);
+        uint256 attempted = rateUsage + 10 ether; // Attempt to set rate above allowance
+        vm.expectRevert(abi.encodeWithSelector(Errors.OperatorRateAllowanceExceeded.selector, rateAllowance, attempted));
         payments.modifyRailPayment(railId3, 10 ether, 0); // Would exceed new rate allowance
         vm.stopPrank();
     }
@@ -756,7 +738,15 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // Now try to exceed the max lockup period - should revert
         vm.startPrank(OPERATOR);
-        vm.expectRevert("requested lockup period exceeds operator's maximum allowed lockup period");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.LockupPeriodExceedsOperatorMaximum.selector,
+                address(helper.testToken()),
+                OPERATOR,
+                limitedMaxLockupPeriod,
+                limitedMaxLockupPeriod + 1
+            )
+        );
         payments.modifyRailLockup(railId, limitedMaxLockupPeriod + 1, 50 ether);
         vm.stopPrank();
     }
@@ -788,7 +778,15 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // But not increase it above the new max, even though it's lower than what it was
         vm.startPrank(OPERATOR);
-        vm.expectRevert("requested lockup period exceeds operator's maximum allowed lockup period");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.LockupPeriodExceedsOperatorMaximum.selector,
+                address(helper.testToken()),
+                OPERATOR,
+                finalMaxLockupPeriod,
+                6
+            )
+        );
         payments.modifyRailLockup(railId, 6, 50 ether); // Try to increase to 6 blocks, which is over the new max of 5
         vm.stopPrank();
     }

@@ -364,7 +364,7 @@ Payments.modifyRailPayment(
   1. **Rail Active:**  
      While the rail is active, the operator can make one-time payments at any time, provided there is sufficient fixed lockup remaining.
   2. **Rail Termination:**  
-     When a rail is terminated (either by the client or operator), the payment stream stops, but the fixed lockup is not immediately released. Instead, the lockup period acts as a grace period, allowing the operator to continue making one-time payments for a limited time after termination.  
+     When a rail is terminated (either by the client or operator), the payment stream stops flowing out of the payer's account. However the payment stream does not stop flowing to the payee.  Instead, the lockup period acts as a grace period with funds flowing to the payee out of the payee's rate based lockup. Additionally the fixed lockup is not released until the end of the lockup period allowing the operator to continue making one-time payments for a limited time after termination. 
      **The end of this window is calculated as the last epoch up to which the payer's account lockup was settled (`lockupLastSettledAt`) plus the rail's lockup period.** If the account was only settled up to an earlier epoch, the window will close sooner than if it was fully up to date at the time of termination.
   3. **End of Window:**  
      Once the current epoch surpasses `(rail termination epoch + rail lockup period)`, the one-time payment window closes. At this point, any unused fixed lockup is automatically refunded to the client, and no further one-time payments can be made.

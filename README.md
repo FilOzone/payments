@@ -248,7 +248,7 @@ Retrieves the current state of a payment rail.
 
 #### `terminateRail(uint256 railId)`
 
-Emergency termination of a payment rail, preventing new payments after the lockup period. This should only be used in exceptional cases where the operator contract is malfunctioning and refusing to cancel deals.
+Normal termination of payment that enters the rail into its final lockup period before finalizing completion of the payment flow. This can be called by the operator or a client in good standing.
 
 - **Parameters**:
   - `railId`: Rail identifier

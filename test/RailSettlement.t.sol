@@ -328,7 +328,7 @@ contract RailSettlementTest is Test, BaseTestHelper {
                 Errors.ValidatorSettledBeyondSegmentEnd.selector, railId, block.number, block.number + 10
             )
         );
-        payments.settleRail(railId, block.number);
+        payments.settleRail{value: networkFee}(railId, block.number);
 
         // Set the validator to return invalid amount but valid settlement duration
         validator.setMode(MockValidator.ValidatorMode.CUSTOM_RETURN);

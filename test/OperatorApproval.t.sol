@@ -291,9 +291,7 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
 
         // Attempt to set non-zero rate (should fail)
         vm.startPrank(OPERATOR);
-        vm.expectRevert(
-            abi.encodeWithSelector(Errors.OperatorRateAllowanceExceeded.selector, 0, exactRateAllowance + 1)
-        );
+        vm.expectRevert(abi.encodeWithSelector(Errors.OperatorRateAllowanceExceeded.selector, 0, exactRateAllowance + 1));
         payments.modifyRailPayment(railId2, 1, 0);
         vm.stopPrank();
 
@@ -556,10 +554,20 @@ contract OperatorApprovalTest is Test, BaseTestHelper {
         payments.modifyRailPayment(railId, 30 ether, 0); // Decrease to allowance
         vm.stopPrank();
 
+        (
+            , // isApproved
+            uint256 rateAllowance,
+            ,
+            ,
+            ,
+        ) = payments.operatorApprovals(address(helper.testToken()), USER1, OPERATOR);
+        uint256 attemptedRateUsage = 40 ether;
         // Operator should not be able to increase rate above current allowance
         vm.startPrank(OPERATOR);
-        vm.expectRevert(abi.encodeWithSelector(Errors.OperatorRateAllowanceExceeded.selector, 30 ether, 40 ether));
-        payments.modifyRailPayment(railId, 40 ether, 0); // Try to increase above allowance
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.OperatorRateAllowanceExceeded.selector, rateAllowance, attemptedRateUsage)
+        );
+        payments.modifyRailPayment(railId, attemptedRateUsage, 0); // Try to increase above allowance
         vm.stopPrank();
 
         // 2. Test zeroing rate allowance after usage

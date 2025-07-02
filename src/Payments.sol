@@ -1296,7 +1296,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         if (payer.lockupCurrent > payer.funds) {
             revert Errors.LockupExceedsFundsInvariant(rail.token, rail.from, payer.lockupCurrent, payer.funds);
         }
-        return (settledAmount, netPayeeAmount, paymentFee, operatorCommission, note);
+        return (settledAmount, netPayeeAmount, operatorCommission, note);
     }
 
     function isAccountLockupFullySettled(Account storage account) internal view returns (bool) {
@@ -1408,7 +1408,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             uint256 rateIncrease = newRate - oldRate;
             if (approval.rateUsage + rateIncrease > approval.rateAllowance) {
                 // If the increase exceeds the allowance, revert
-                revert Errors.OperatorRateAllowanceExceeded(approval.rateUsage, approval.rateAllowance + rateIncrease);
+                revert Errors.OperatorRateAllowanceExceeded(approval.rateAllowance, approval.rateUsage + rateIncrease);
             }
             approval.rateUsage += rateIncrease;
         } else if (oldRate > newRate) {
@@ -1425,7 +1425,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             if (approval.lockupUsage + lockupIncrease > approval.lockupAllowance) {
                 // If the increase exceeds the allowance, revert
                 revert Errors.OperatorLockupAllowanceExceeded(
-                    approval.lockupUsage, approval.lockupAllowance + lockupIncrease
+                    approval.lockupAllowance, approval.lockupUsage + lockupIncrease
                 );
             }
             approval.lockupUsage += lockupIncrease;

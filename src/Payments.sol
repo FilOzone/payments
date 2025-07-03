@@ -265,7 +265,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         Rail storage rail = rails[railId];
 
         if (rail.from == address(0)) {
-            revert Errors.RailInactive(railId);
+            revert Errors.RailInactiveOrSettled(railId);
         }
 
         Account storage payer = accounts[rail.token][rail.from];
@@ -1373,7 +1373,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
     function isRailTerminated(Rail storage rail, uint256 railId) internal view returns (bool) {
         if (rail.from == address(0)) {
-            revert Errors.RailDoesNotExist(railId);
+            revert Errors.RailInactiveOrSettled(railId);
         }
         return rail.endEpoch > 0;
     }

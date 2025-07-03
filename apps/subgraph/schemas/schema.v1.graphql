@@ -1,0 +1,123 @@
+type UserToken @entity(immutable: false) {
+  id: Bytes! # account address,token address
+  funds: BigInt!
+  lockupCurrent: BigInt!
+  lockupRate: BigInt!
+  lockupLastSettledAt: BigInt!
+  account: Account!
+  token: Token!
+}
+
+type Token @entity(immutable: false) {
+  id: Bytes! # address
+  name: String!
+  symbol: String!
+  decimals: BigInt!
+  userFunds: BigInt! # same as sum of all UserToken.funds
+  operatorCommission: BigInt!
+  userTokens: [UserToken!]! @derivedFrom(field: "token")
+}
+
+type Account @entity(immutable: false) {
+  id: Bytes! # address
+  address: Bytes!
+  totalRails: BigInt!
+  totalTokens: BigInt!
+  totalApprovals: BigInt!
+
+  payerRails: [Rail!]! @derivedFrom(field: "payer")
+  payeeRails: [Rail!]! @derivedFrom(field: "payee")
+  operatorApprovals: [OperatorApproval!]! @derivedFrom(field: "client")
+  userTokens: [UserToken!]! @derivedFrom(field: "account")
+}
+
+type OperatorApproval @entity(immutable: false) {
+  id: Bytes! # client address,operator address,token address
+  isApproved: Boolean!
+  maxLockupPeriod: BigInt!
+  lockupAllowance: BigInt!
+  rateAllowance: BigInt!
+  lockupUsage: BigInt!
+  rateUsage: BigInt!
+
+  client: Account!
+  operator: Operator!
+  token: Token!
+}
+
+type Operator @entity(immutable: false) {
+  id: Bytes! # address
+  address: Bytes!
+  totalRails: BigInt!
+  totalCommission: BigInt!
+  totalApprovals: BigInt!
+
+  rails: [Rail!]! @derivedFrom(field: "operator")
+  operatorApprovals: [OperatorApproval!]! @derivedFrom(field: "operator")
+}
+
+enum RailState {
+  ZERORATE
+  ACTIVE
+  TERMINATED
+  FINALIZED
+}
+
+type Rail @entity(immutable: false) {
+  id: Bytes! # railId
+  railId: BigInt!
+  paymentRate: BigInt!
+  lockupFixed: BigInt!
+  lockupPeriod: BigInt!
+  settledUpto: BigInt!
+  state: RailState!
+  endEpoch: BigInt!
+  arbiter: Bytes!
+  commissionRateBps: BigInt!
+  serviceFeeRecipient: Bytes!
+
+  totalSettledAmount: BigInt!
+  totalNetPayeeAmount: BigInt!
+  totalCommission: BigInt!
+  totalSettlements: BigInt!
+  totalRateChanges: BigInt!
+
+  createdAt: BigInt!
+
+  payer: Account!
+  payee: Account!
+  operator: Operator!
+  token: Token!
+
+  settlements: [Settlement!]! @derivedFrom(field: "rail")
+  rateChangeQueue: [RateChangeQueue!]! @derivedFrom(field: "rail")
+}
+
+type RateChangeQueue @entity(immutable: true) {
+  id: Bytes! # railId,startEpoch
+  startEpoch: BigInt!
+  untilEpoch: BigInt!
+  rate: BigInt!
+  rail: Rail!
+}
+
+type Settlement @entity(immutable: true) {
+  id: Bytes! # railId,settledUpto
+  rail: Rail!
+  totalSettledAmount: BigInt!
+  totalNetPayeeAmount: BigInt!
+  paymentFees: BigInt!
+  operatorCommission: BigInt!
+  settledUpto: BigInt!
+}
+
+# Metrics
+
+type PaymentsMetric @entity(immutable: false) {
+  id: Bytes! # payments_network_stats
+  totalRails: BigInt!
+  totalOperators: BigInt!
+  totalTokens: BigInt!
+  totalAccounts: BigInt!
+  totalVolume: BigInt!
+}

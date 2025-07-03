@@ -36,6 +36,19 @@ interface IValidator {
 contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
     using RateChangeQueue for RateChangeQueue.Queue;
+    
+    string public constant VERSION = "0.0.0";
+    
+    event ContractUpgraded(string version, address implementation);
+    
+    function getVersion() public pure returns (string memory) {
+        return VERSION;
+    }
+    
+    function postUpgrade() external {
+        require(msg.sender == address(this), "Only callable via delegatecall from proxy");
+        emit ContractUpgraded(VERSION, address(this));
+    }
 
     // Maximum commission rate in basis points (100% = 10000 BPS)
     uint256 public constant COMMISSION_MAX_BPS = 10000;

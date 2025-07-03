@@ -237,7 +237,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
     modifier validateRailTerminated(uint256 railId) {
         if (!isRailTerminated(rails[railId])) {
-            revert Errors.RailNotTerminated();
+            revert Errors.RailNotTerminated(railId);
         }
         _;
     }
@@ -436,6 +436,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             if (msg.value != amount) {
                 revert Errors.MustSendExactNativeAmount(amount, msg.value);
             }
+            actualAmount = amount;
         } else {
             if (msg.value != 0) {
                 revert Errors.NativeTokenNotAccepted(msg.value);
@@ -777,7 +778,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Validate rate changes based on rail state and account lockup
         if (isTerminated) {
-            uint256 maxSettlementEpoch = maxSettlementEpochForTerminatedRail(rail);
+            uint256 maxSettlementEpoch = maxSettlementEpochForTerminatedRail(rail, railId);
             if (block.number >= maxSettlementEpoch) {
                 revert Errors.CannotModifyTerminatedRailBeyondEndEpoch(railId, maxSettlementEpoch, block.number);
             }
@@ -798,7 +799,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Calculate the effective lockup period
         uint256 effectiveLockupPeriod;
         if (isTerminated) {
-            effectiveLockupPeriod = remainingEpochsForTerminatedRail(rail);
+            effectiveLockupPeriod = remainingEpochsForTerminatedRail(rail, railId);
         } else {
             effectiveLockupPeriod =
                 isAccountLockupFullySettled(payer) ? rail.lockupPeriod - (block.number - payer.lockupLastSettledAt) : 0;
@@ -933,7 +934,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         )
     {
         // Verify the current epoch is greater than the max settlement epoch
-        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(rails[railId]);
+        uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(rails[railId], railId);
         if (block.number <= maxSettleEpoch) {
             // Revert with a specific error if the rail is terminated but not yet past the max settlement epoch
             revert Errors.CannotSettleTerminatedRailBeforeMaxEpoch(railId, maxSettleEpoch + 1, block.number);
@@ -1078,7 +1079,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         string memory finalizedNote
     ) internal returns (uint256, uint256, uint256, uint256, string memory) {
         // Check if rail is a terminated rail that's now fully settled
-        if (isRailTerminated(rail) && rail.settledUpTo >= maxSettlementEpochForTerminatedRail(rail)) {
+        if (isRailTerminated(rail) && rail.settledUpTo >= maxSettlementEpochForTerminatedRail(rail, railId)) {
             finalizeTerminatedRail(railId, rail, payer);
             return (totalSettledAmount, totalNetPayeeAmount, totalOperatorCommission, finalEpoch, finalizedNote);
         }
@@ -1355,11 +1356,12 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         return account.lockupLastSettledAt;
     }
 
-    function remainingEpochsForTerminatedRail(Rail storage rail) internal view returns (uint256) {
-        if (!isRailTerminated(rail)) {
-            revert Errors.RailNotTerminated();
-        }
-
+    function remainingEpochsForTerminatedRail(Rail storage rail, uint256 railId)
+        internal
+        view
+        validateRailTerminated(railId)
+        returns (uint256)
+    {
         // If current block beyond end epoch, return 0
         if (block.number > rail.endEpoch) {
             return 0;
@@ -1377,10 +1379,12 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     // Get the final settlement epoch for a terminated rail
-    function maxSettlementEpochForTerminatedRail(Rail storage rail) internal view returns (uint256) {
-        if (!isRailTerminated(rail)) {
-            revert Errors.RailNotTerminated();
-        }
+    function maxSettlementEpochForTerminatedRail(Rail storage rail, uint256 railId)
+        internal
+        view
+        validateRailTerminated(railId)
+        returns (uint256)
+    {
         return rail.endEpoch;
     }
 

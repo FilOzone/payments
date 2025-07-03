@@ -31,8 +31,8 @@ library Errors {
     error RailAlreadyTerminated(uint256 railId);
 
     /// @notice Rail is not terminated, but the action requires a terminated rail
-    /// We can pass railId here but most functions pass rail but we cannot get railId from it
-    error RailNotTerminated();
+    /// @param railId The ID of the rail
+    error RailNotTerminated(uint256 railId);
 
     /// @notice The rail does not exist
     error RailDoesNotExist();

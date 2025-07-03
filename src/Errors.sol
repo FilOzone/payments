@@ -35,7 +35,8 @@ library Errors {
     error RailNotTerminated(uint256 railId);
 
     /// @notice The rail does not exist
-    error RailDoesNotExist();
+    /// @param railId The ID of the rail that does not exist
+    error RailDoesNotExist(uint256 railId);
 
     /// @notice The provided address is zero, which is not allowed
     /// @param varName The name of the variable that was expected to be non-zero

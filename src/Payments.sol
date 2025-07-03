@@ -236,7 +236,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     modifier validateRailTerminated(uint256 railId) {
-        if (!isRailTerminated(rails[railId])) {
+        if (!isRailTerminated(rails[railId], railId)) {
             revert Errors.RailNotTerminated(railId);
         }
         _;
@@ -663,7 +663,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         settleAccountLockupBeforeAndAfterForRail(railId, false, 0)
     {
         Rail storage rail = rails[railId];
-        bool isTerminated = isRailTerminated(rail);
+        bool isTerminated = isRailTerminated(rail, railId);
 
         uint256 oldLockupPeriod = rail.lockupPeriod;
         uint256 oldLockupFixed = rail.lockupFixed;
@@ -774,7 +774,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         Account storage payee = accounts[rail.token][rail.to];
 
         uint256 oldRate = rail.paymentRate;
-        bool isTerminated = isRailTerminated(rail);
+        bool isTerminated = isRailTerminated(rail, railId);
 
         // Validate rate changes based on rail state and account lockup
         if (isTerminated) {
@@ -1010,14 +1010,14 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         Account storage payer = accounts[rail.token][rail.from];
 
         // Handle terminated and fully settled rails that are still not finalised
-        if (isRailTerminated(rail) && rail.settledUpTo >= rail.endEpoch) {
+        if (isRailTerminated(rail, railId) && rail.settledUpTo >= rail.endEpoch) {
             finalizeTerminatedRail(railId, rail, payer);
             return (0, 0, 0, rail.settledUpTo, "rail fully settled and finalized");
         }
 
         // Calculate the maximum settlement epoch based on account lockup
         uint256 maxSettlementEpoch;
-        if (!isRailTerminated(rail)) {
+        if (!isRailTerminated(rail, railId)) {
             maxSettlementEpoch = min(untilEpoch, payer.lockupLastSettledAt);
         } else {
             maxSettlementEpoch = min(untilEpoch, rail.endEpoch);
@@ -1079,7 +1079,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         string memory finalizedNote
     ) internal returns (uint256, uint256, uint256, uint256, string memory) {
         // Check if rail is a terminated rail that's now fully settled
-        if (isRailTerminated(rail) && rail.settledUpTo >= maxSettlementEpochForTerminatedRail(rail, railId)) {
+        if (isRailTerminated(rail, railId) && rail.settledUpTo >= maxSettlementEpochForTerminatedRail(rail, railId)) {
             finalizeTerminatedRail(railId, rail, payer);
             return (totalSettledAmount, totalNetPayeeAmount, totalOperatorCommission, finalEpoch, finalizedNote);
         }
@@ -1371,9 +1371,9 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         return rail.endEpoch - block.number;
     }
 
-    function isRailTerminated(Rail storage rail) internal view returns (bool) {
+    function isRailTerminated(Rail storage rail, uint256 railId) internal view returns (bool) {
         if (rail.from == address(0)) {
-            revert Errors.RailDoesNotExist();
+            revert Errors.RailDoesNotExist(railId);
         }
         return rail.endEpoch > 0;
     }

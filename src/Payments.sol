@@ -198,54 +198,42 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     modifier validateRailActive(uint256 railId) {
-        if (rails[railId].from == address(0)) {
-            revert Errors.RailInactiveOrSettled(railId);
-        }
+        require(rails[railId].from != address(0), Errors.RailInactiveOrSettled(railId));
         _;
     }
 
     modifier onlyRailClient(uint256 railId) {
-        if (rails[railId].from != msg.sender) {
-            revert Errors.OnlyRailClientAllowed(rails[railId].from, msg.sender);
-        }
+        require(rails[railId].from == msg.sender, Errors.OnlyRailClientAllowed(rails[railId].from, msg.sender));
         _;
     }
 
     modifier onlyRailOperator(uint256 railId) {
-        if (rails[railId].operator != msg.sender) {
-            revert Errors.OnlyRailOperatorAllowed(rails[railId].operator, msg.sender);
-        }
+        require(
+            rails[railId].operator == msg.sender, Errors.OnlyRailOperatorAllowed(rails[railId].operator, msg.sender)
+        );
         _;
     }
 
     modifier onlyRailParticipant(uint256 railId) {
-        if (rails[railId].from != msg.sender && rails[railId].operator != msg.sender && rails[railId].to != msg.sender)
-        {
-            revert Errors.OnlyRailParticipantAllowed(
-                rails[railId].from, rails[railId].operator, rails[railId].to, msg.sender
-            );
-        }
+        require(
+            rails[railId].from == msg.sender || rails[railId].operator == msg.sender || rails[railId].to == msg.sender,
+            Errors.OnlyRailParticipantAllowed(rails[railId].from, rails[railId].operator, rails[railId].to, msg.sender)
+        );
         _;
     }
 
     modifier validateRailNotTerminated(uint256 railId) {
-        if (rails[railId].endEpoch != 0) {
-            revert Errors.RailAlreadyTerminated(railId);
-        }
+        require(rails[railId].endEpoch == 0, Errors.RailAlreadyTerminated(railId));
         _;
     }
 
     modifier validateRailTerminated(uint256 railId) {
-        if (!isRailTerminated(rails[railId], railId)) {
-            revert Errors.RailNotTerminated(railId);
-        }
+        require(isRailTerminated(rails[railId], railId), Errors.RailNotTerminated(railId));
         _;
     }
 
     modifier validateNonZeroAddress(address addr, string memory varName) {
-        if (addr == address(0)) {
-            revert Errors.ZeroAddressNotAllowed(varName);
-        }
+        require(addr != address(0), Errors.ZeroAddressNotAllowed(varName));
         _;
     }
 
@@ -264,15 +252,14 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     modifier settleAccountLockupBeforeAndAfterForRail(uint256 railId, bool settleFull, uint256 oneTimePayment) {
         Rail storage rail = rails[railId];
 
-        if (rail.from == address(0)) {
-            revert Errors.RailInactiveOrSettled(railId);
-        }
+        require(rail.from != address(0), Errors.RailInactiveOrSettled(railId));
 
         Account storage payer = accounts[rail.token][rail.from];
 
-        if (rail.lockupFixed < oneTimePayment) {
-            revert Errors.OneTimePaymentExceedsLockup(railId, rail.lockupFixed, oneTimePayment);
-        }
+        require(
+            rail.lockupFixed >= oneTimePayment,
+            Errors.OneTimePaymentExceedsLockup(railId, rail.lockupFixed, oneTimePayment)
+        );
 
         // Before function execution
         performSettlementCheck(rail.token, rail.from, payer, settleFull, true);
@@ -391,9 +378,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         Account storage payer = accounts[rail.token][rail.from];
 
         // Only client with fully settled lockup or operator can terminate a rail
-        if (!((msg.sender == rail.from && isAccountLockupFullySettled(payer)) || msg.sender == rail.operator)) {
-            revert Errors.NotAuthorizedToTerminateRail(railId, rail.from, rail.operator, msg.sender);
-        }
+        require(
+            (msg.sender == rail.from && isAccountLockupFullySettled(payer)) || msg.sender == rail.operator,
+            Errors.NotAuthorizedToTerminateRail(railId, rail.from, rail.operator, msg.sender)
+        );
 
         rail.endEpoch = payer.lockupLastSettledAt + rail.lockupPeriod;
 
@@ -404,9 +392,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // However, we remove the rail rate from the client lockup rate because we don't want to
         // lock funds for the rail beyond `rail.endEpoch` as we're exiting the rail
         // after that epoch.
-        if (payer.lockupRate < rail.paymentRate) {
-            revert Errors.LockupRateInconsistent(railId, rail.from, rail.paymentRate, payer.lockupRate);
-        }
+        require(
+            payer.lockupRate >= rail.paymentRate,
+            Errors.LockupRateInconsistent(railId, rail.from, rail.paymentRate, payer.lockupRate)
+        );
         payer.lockupRate -= rail.paymentRate;
 
         // Reduce operator rate allowance
@@ -433,14 +422,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Transfer tokens from sender to contract
         if (token == address(0)) {
-            if (msg.value != amount) {
-                revert Errors.MustSendExactNativeAmount(amount, msg.value);
-            }
+            require(msg.value == amount, Errors.MustSendExactNativeAmount(amount, msg.value));
             actualAmount = amount;
         } else {
-            if (msg.value != 0) {
-                revert Errors.NativeTokenNotAccepted(msg.value);
-            }
+            require(msg.value == 0, Errors.NativeTokenNotAccepted(msg.value));
 
             // Use balance-before/balance-after accounting for fee-on-transfer tokens
             uint256 balanceBefore = IERC20(token).balanceOf(address(this));
@@ -485,9 +470,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         bytes32 s
     ) internal {
         // Revert if token is address(0) as permit is not supported for native tokens
-        if (token == address(0)) {
-            revert Errors.NativeTokenNotSupported();
-        }
+        require(token != address(0), Errors.NativeTokenNotSupported());
 
         // Use 'to' as the owner in permit call (the address that signed the permit)
         IERC20Permit(token).permit(to, address(this), amount, deadline, v, r, s);
@@ -575,15 +558,11 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     function withdrawToInternal(address token, address to, uint256 amount) internal {
         Account storage account = accounts[token][msg.sender];
         uint256 available = account.funds - account.lockupCurrent;
-        if (amount > available) {
-            revert Errors.InsufficientUnlockedFunds(available, amount);
-        }
+        require(amount <= available, Errors.InsufficientUnlockedFunds(available, amount));
         account.funds -= amount;
         if (token == address(0)) {
             (bool success,) = payable(to).call{value: amount}("");
-            if (!success) {
-                revert Errors.NativeTransferFailed(to, amount);
-            }
+            require(success, Errors.NativeTransferFailed(to, amount));
         } else {
             IERC20(token).safeTransfer(to, amount);
         }
@@ -612,18 +591,14 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
         // Check if operator is approved - approval is required for rail creation
         OperatorApproval storage approval = operatorApprovals[token][from][operator];
-        if (!approval.isApproved) {
-            revert Errors.OperatorNotApproved(from, operator);
-        }
+        require(approval.isApproved, Errors.OperatorNotApproved(from, operator));
 
         // Validate commission rate
-        if (commissionRateBps > COMMISSION_MAX_BPS) {
-            revert Errors.CommissionRateTooHigh(COMMISSION_MAX_BPS, commissionRateBps);
-        }
+        require(
+            commissionRateBps <= COMMISSION_MAX_BPS, Errors.CommissionRateTooHigh(COMMISSION_MAX_BPS, commissionRateBps)
+        );
 
-        if (commissionRateBps > 0 && serviceFeeRecipient == address(0)) {
-            revert Errors.MissingServiceFeeRecipient();
-        }
+        require(commissionRateBps == 0 || serviceFeeRecipient != address(0), Errors.MissingServiceFeeRecipient());
 
         uint256 railId = _nextRailId++;
 
@@ -678,9 +653,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     function modifyTerminatedRailLockup(Rail storage rail, uint256 period, uint256 lockupFixed) internal {
-        if (period != rail.lockupPeriod || lockupFixed > rail.lockupFixed) {
-            revert Errors.InvalidTerminatedRailModification(rail.lockupPeriod, rail.lockupFixed, period, lockupFixed);
-        }
+        require(
+            period == rail.lockupPeriod && lockupFixed <= rail.lockupFixed,
+            Errors.InvalidTerminatedRailModification(rail.lockupPeriod, rail.lockupFixed, period, lockupFixed)
+        );
 
         Account storage payer = accounts[rail.token][rail.from];
 
@@ -688,9 +664,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         uint256 lockupReduction = rail.lockupFixed - lockupFixed;
 
         // Update payer's lockup - subtract the exact reduction amount
-        if (lockupReduction > payer.lockupCurrent) {
-            revert Errors.InsufficientCurrentLockup(rail.token, rail.from, payer.lockupCurrent, lockupReduction);
-        }
+        require(
+            payer.lockupCurrent >= lockupReduction,
+            Errors.InsufficientCurrentLockup(rail.token, rail.from, payer.lockupCurrent, lockupReduction)
+        );
         payer.lockupCurrent -= lockupReduction;
 
         // Reduce operator rate allowance
@@ -706,17 +683,19 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Don't allow changing the lockup period or increasing the fixed lockup unless the payer's
         // account is fully settled.
         if (!isAccountLockupFullySettled(payer)) {
-            if (period != rail.lockupPeriod) {
-                revert Errors.LockupPeriodChangeNotAllowedDueToInsufficientFunds(
+            require(
+                period == rail.lockupPeriod,
+                Errors.LockupPeriodChangeNotAllowedDueToInsufficientFunds(
                     rail.token, rail.from, rail.lockupPeriod, period
-                );
-            }
+                )
+            );
 
-            if (lockupFixed > rail.lockupFixed) {
-                revert Errors.LockupFixedIncreaseNotAllowedDueToInsufficientFunds(
+            require(
+                lockupFixed <= rail.lockupFixed,
+                Errors.LockupFixedIncreaseNotAllowedDueToInsufficientFunds(
                     rail.token, rail.from, rail.lockupFixed, lockupFixed
-                );
-            }
+                )
+            );
         }
 
         // Get operator approval
@@ -725,11 +704,12 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Check if period exceeds the max lockup period allowed for this operator
         // Only enforce this constraint when increasing the period, not when decreasing
         if (period > rail.lockupPeriod) {
-            if (period > operatorApproval.maxLockupPeriod) {
-                revert Errors.LockupPeriodExceedsOperatorMaximum(
+            require(
+                period <= operatorApproval.maxLockupPeriod,
+                Errors.LockupPeriodExceedsOperatorMaximum(
                     rail.token, rail.operator, operatorApproval.maxLockupPeriod, period
-                );
-            }
+                )
+            );
         }
 
         // Calculate current (old) lockup.
@@ -738,9 +718,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Calculate new lockup amount with new parameters
         uint256 newLockup = lockupFixed + (rail.paymentRate * period);
 
-        if (payer.lockupCurrent < oldLockup) {
-            revert Errors.CurrentLockupLessThanOldLockup(rail.token, rail.from, oldLockup, payer.lockupCurrent);
-        }
+        require(
+            payer.lockupCurrent >= oldLockup,
+            Errors.CurrentLockupLessThanOldLockup(rail.token, rail.from, oldLockup, payer.lockupCurrent)
+        );
 
         // We blindly update the payer's lockup. If they don't have enough funds to cover the new
         // amount, we'll revert in the post-condition.
@@ -779,18 +760,18 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Validate rate changes based on rail state and account lockup
         if (isTerminated) {
             uint256 maxSettlementEpoch = maxSettlementEpochForTerminatedRail(rail, railId);
-            if (block.number >= maxSettlementEpoch) {
-                revert Errors.CannotModifyTerminatedRailBeyondEndEpoch(railId, maxSettlementEpoch, block.number);
-            }
+            require(
+                block.number < maxSettlementEpoch,
+                Errors.CannotModifyTerminatedRailBeyondEndEpoch(railId, maxSettlementEpoch, block.number)
+            );
 
-            if (newRate > oldRate) {
-                revert Errors.RateChangeNotAllowedOnTerminatedRail(railId);
-            }
+            require(newRate <= oldRate, Errors.RateChangeNotAllowedOnTerminatedRail(railId));
         } else {
             bool isSettled = isAccountLockupFullySettled(payer);
-            if (!isSettled && newRate != oldRate) {
-                revert Errors.LockupNotSettledRateChangeNotAllowed(railId, rail.from, isSettled, oldRate, newRate);
-            }
+            require(
+                isSettled || newRate == oldRate,
+                Errors.LockupNotSettledRateChangeNotAllowed(railId, rail.from, isSettled, oldRate, newRate)
+            );
         }
 
         // enqueuing rate change
@@ -806,9 +787,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         }
 
         // Verify one-time payment doesn't exceed fixed lockup
-        if (oneTimePayment > rail.lockupFixed) {
-            revert Errors.OneTimePaymentExceedsLockup(railId, rail.lockupFixed, oneTimePayment);
-        }
+        require(
+            rail.lockupFixed >= oneTimePayment,
+            Errors.OneTimePaymentExceedsLockup(railId, rail.lockupFixed, oneTimePayment)
+        );
 
         // Update the rail fixed lockup and payment rate
         rail.lockupFixed = rail.lockupFixed - oneTimePayment;
@@ -819,9 +801,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         // Update payer's lockup rate - only if the rail is not terminated
         // for terminated rails, the payer's lockup rate is already updated during rail termination
         if (!isTerminated) {
-            if (payer.lockupRate < oldRate) {
-                revert Errors.LockupRateLessThanOldRate(railId, rail.from, oldRate, payer.lockupRate);
-            }
+            require(
+                payer.lockupRate >= oldRate,
+                Errors.LockupRateLessThanOldRate(railId, rail.from, oldRate, payer.lockupRate)
+            );
             payer.lockupRate = payer.lockupRate - oldRate + newRate;
             updateOperatorRateUsage(operatorApproval, oldRate, newRate);
         }
@@ -893,9 +876,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         uint256 oneTimePayment
     ) internal {
         if (oneTimePayment > 0) {
-            if (payer.funds < oneTimePayment) {
-                revert Errors.InsufficientFundsForOneTimePayment(rail.token, rail.from, oneTimePayment, payer.funds);
-            }
+            require(
+                payer.funds >= oneTimePayment,
+                Errors.InsufficientFundsForOneTimePayment(rail.token, rail.from, oneTimePayment, payer.funds)
+            );
 
             // Transfer funds from payer (full amount)
             payer.funds -= oneTimePayment;
@@ -935,30 +919,24 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     {
         // Verify the current epoch is greater than the max settlement epoch
         uint256 maxSettleEpoch = maxSettlementEpochForTerminatedRail(rails[railId], railId);
-        if (block.number <= maxSettleEpoch) {
-            // Revert with a specific error if the rail is terminated but not yet past the max settlement epoch
-            revert Errors.CannotSettleTerminatedRailBeforeMaxEpoch(railId, maxSettleEpoch + 1, block.number);
-        }
+        require(
+            block.number > maxSettleEpoch,
+            Errors.CannotSettleTerminatedRailBeforeMaxEpoch(railId, maxSettleEpoch + 1, block.number)
+        );
 
         return settleRailInternal(railId, maxSettleEpoch, true);
     }
 
     function burnAndRefundRest(uint256 _amount) internal {
-        if (msg.value < _amount) {
-            revert Errors.InsufficientNativeTokenForBurn(_amount, msg.value);
-        }
+        require(msg.value >= _amount, Errors.InsufficientNativeTokenForBurn(_amount, msg.value));
         // f099 burn address
         (bool success,) = address(0xff00000000000000000000000000000000000063).call{value: _amount}("");
-        if (!success) {
-            revert Errors.NativeTransferFailed(address(0xff00000000000000000000000000000000000063), _amount);
-        }
+        require(success, Errors.NativeTransferFailed(address(0xff00000000000000000000000000000000000063), _amount));
 
         if (msg.value > _amount) {
             uint256 refund = msg.value - _amount;
             (success,) = msg.sender.call{value: refund}("");
-            if (!success) {
-                revert Errors.NativeTransferFailed(msg.sender, refund);
-            }
+            require(success, Errors.NativeTransferFailed(msg.sender, refund));
         }
     }
 
@@ -1002,9 +980,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             string memory note
         )
     {
-        if (untilEpoch > block.number) {
-            revert Errors.CannotSettleFutureEpochs(railId, untilEpoch, block.number);
-        }
+        require(untilEpoch <= block.number, Errors.CannotSettleFutureEpochs(railId, untilEpoch, block.number));
 
         Rail storage rail = rails[railId];
         Account storage payer = accounts[rail.token][rail.from];
@@ -1042,9 +1018,9 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             (amount, netPayeeAmount, operatorCommission, segmentNote) =
                 _settleSegment(railId, startEpoch, maxSettlementEpoch, rail.paymentRate, skipValidation);
 
-            if (rail.settledUpTo <= startEpoch) {
-                revert Errors.NoProgressInSettlement(railId, startEpoch + 1, rail.settledUpTo);
-            }
+            require(
+                rail.settledUpTo > startEpoch, Errors.NoProgressInSettlement(railId, startEpoch + 1, rail.settledUpTo)
+            );
         } else {
             (amount, netPayeeAmount, operatorCommission, segmentNote) =
                 _settleWithRateChanges(railId, rail.paymentRate, startEpoch, maxSettlementEpoch, skipValidation);
@@ -1089,11 +1065,12 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
 
     function finalizeTerminatedRail(uint256 railId, Rail storage rail, Account storage payer) internal {
         // Reduce the lockup by the fixed amount
-        if (payer.lockupCurrent < rail.lockupFixed) {
-            revert Errors.LockupInconsistencyDuringRailFinalization(
+        require(
+            payer.lockupCurrent >= rail.lockupFixed,
+            Errors.LockupInconsistencyDuringRailFinalization(
                 railId, rail.token, rail.from, rail.lockupFixed, payer.lockupCurrent
-            );
-        }
+            )
+        );
         payer.lockupCurrent -= rail.lockupFixed;
 
         // Get operator approval for finalization update
@@ -1208,9 +1185,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             RateChangeQueue.RateChange memory nextRateChange = rateQueue.peek();
 
             // Validate rate change queue consistency
-            if (nextRateChange.untilEpoch < processedEpoch) {
-                revert Errors.InvalidRateChangeQueueState(nextRateChange.untilEpoch, processedEpoch);
-            }
+            require(
+                nextRateChange.untilEpoch >= processedEpoch,
+                Errors.InvalidRateChangeQueueState(nextRateChange.untilEpoch, processedEpoch)
+            );
 
             // Boundary is the minimum of our target or the next rate change epoch
             segmentEndBoundary = min(targetEpoch, nextRateChange.untilEpoch);
@@ -1244,12 +1222,14 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
                 validator.validatePayment(railId, settledAmount, epochStart, epochEnd, rate);
 
             // Ensure validator doesn't settle beyond our segment's end boundary
-            if (result.settleUpto > epochEnd) {
-                revert Errors.ValidatorSettledBeyondSegmentEnd(railId, epochEnd, result.settleUpto);
-            }
-            if (result.settleUpto < epochStart) {
-                revert Errors.ValidatorSettledBeforeSegmentStart(railId, epochStart, result.settleUpto);
-            }
+            require(
+                result.settleUpto <= epochEnd,
+                Errors.ValidatorSettledBeyondSegmentEnd(railId, epochEnd, result.settleUpto)
+            );
+            require(
+                result.settleUpto >= epochStart,
+                Errors.ValidatorSettledBeforeSegmentStart(railId, epochStart, result.settleUpto)
+            );
 
             settledUntilEpoch = result.settleUpto;
             settledAmount = result.modifiedAmount;
@@ -1259,20 +1239,23 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             // for the epochs they're confirming
             uint256 maxAllowedAmount = rate * (settledUntilEpoch - epochStart);
 
-            if (result.modifiedAmount > maxAllowedAmount) {
-                revert Errors.ValidatorModifiedAmountExceedsMaximum(railId, maxAllowedAmount, result.modifiedAmount);
-            }
+            require(
+                result.modifiedAmount <= maxAllowedAmount,
+                Errors.ValidatorModifiedAmountExceedsMaximum(railId, maxAllowedAmount, result.modifiedAmount)
+            );
         }
 
         // Verify payer has sufficient funds for the settlement
-        if (payer.funds < settledAmount) {
-            revert Errors.InsufficientFundsForSettlement(rail.token, rail.from, settledAmount, payer.funds);
-        }
+        require(
+            payer.funds >= settledAmount,
+            Errors.InsufficientFundsForSettlement(rail.token, rail.from, settledAmount, payer.funds)
+        );
 
         // Verify payer has sufficient lockup for the settlement
-        if (payer.lockupCurrent < settledAmount) {
-            revert Errors.InsufficientLockupForSettlement(rail.token, rail.from, payer.lockupCurrent, settledAmount);
-        }
+        require(
+            payer.lockupCurrent >= settledAmount,
+            Errors.InsufficientLockupForSettlement(rail.token, rail.from, payer.lockupCurrent, settledAmount)
+        );
         uint256 actualSettledDuration = settledUntilEpoch - epochStart;
         uint256 requiredLockup = rate * actualSettledDuration;
 
@@ -1295,9 +1278,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
         rail.settledUpTo = settledUntilEpoch;
 
         // Invariant check: lockup should never exceed funds
-        if (payer.lockupCurrent > payer.funds) {
-            revert Errors.LockupExceedsFundsInvariant(rail.token, rail.from, payer.lockupCurrent, payer.funds);
-        }
+        require(
+            payer.lockupCurrent <= payer.funds,
+            Errors.LockupExceedsFundsInvariant(rail.token, rail.from, payer.lockupCurrent, payer.funds)
+        );
         return (settledAmount, netPayeeAmount, operatorCommission, note);
     }
 
@@ -1332,9 +1316,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
             account.lockupCurrent += additionalLockup;
             account.lockupLastSettledAt = currentEpoch;
         } else {
-            if (account.funds < account.lockupCurrent) {
-                revert Errors.LockupExceedsFundsInvariant(token, owner, account.lockupCurrent, account.funds);
-            }
+            require(
+                account.funds >= account.lockupCurrent,
+                Errors.LockupExceedsFundsInvariant(token, owner, account.lockupCurrent, account.funds)
+            );
 
             // If insufficient, calculate the fractional epoch where funds became insufficient
             uint256 availableFunds = account.funds - account.lockupCurrent;
@@ -1372,9 +1357,7 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     function isRailTerminated(Rail storage rail, uint256 railId) internal view returns (bool) {
-        if (rail.from == address(0)) {
-            revert Errors.RailInactiveOrSettled(railId);
-        }
+        require(rail.from != address(0), Errors.RailInactiveOrSettled(railId));
         return rail.endEpoch > 0;
     }
 
@@ -1389,6 +1372,10 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     }
 
     function _zeroOutRail(Rail storage rail) internal {
+        // IMPORTANT: Do not use `require(cond, Errors.Custom(peekTail()))` here,
+        // because Solidity evaluates all arguments before checking the condition.
+        // That would call `peekTail()` even if the queue is empty, causing an unwanted revert.
+        // Use `if (!cond) revert Errors.Custom(peekTail());` to safely handle the error.
         // Check if queue is empty before clearing
         if (!rail.rateChangeQueue.isEmpty()) {
             revert Errors.RateChangeQueueNotEmpty(rail.rateChangeQueue.peekTail().untilEpoch);
@@ -1410,10 +1397,11 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     function updateOperatorRateUsage(OperatorApproval storage approval, uint256 oldRate, uint256 newRate) internal {
         if (newRate > oldRate) {
             uint256 rateIncrease = newRate - oldRate;
-            if (approval.rateUsage + rateIncrease > approval.rateAllowance) {
-                // If the increase exceeds the allowance, revert
-                revert Errors.OperatorRateAllowanceExceeded(approval.rateAllowance, approval.rateUsage + rateIncrease);
-            }
+            // If the increase exceeds the allowance, revert
+            require(
+                approval.rateUsage + rateIncrease <= approval.rateAllowance,
+                Errors.OperatorRateAllowanceExceeded(approval.rateAllowance, approval.rateUsage + rateIncrease)
+            );
             approval.rateUsage += rateIncrease;
         } else if (oldRate > newRate) {
             uint256 rateDecrease = oldRate - newRate;
@@ -1426,12 +1414,11 @@ contract Payments is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentra
     {
         if (newLockup > oldLockup) {
             uint256 lockupIncrease = newLockup - oldLockup;
-            if (approval.lockupUsage + lockupIncrease > approval.lockupAllowance) {
-                // If the increase exceeds the allowance, revert
-                revert Errors.OperatorLockupAllowanceExceeded(
-                    approval.lockupAllowance, approval.lockupUsage + lockupIncrease
-                );
-            }
+            // If the increase exceeds the allowance, revert
+            require(
+                approval.lockupUsage + lockupIncrease <= approval.lockupAllowance,
+                Errors.OperatorLockupAllowanceExceeded(approval.lockupAllowance, approval.lockupUsage + lockupIncrease)
+            );
             approval.lockupUsage += lockupIncrease;
         } else if (oldLockup > newLockup) {
             uint256 lockupDecrease = oldLockup - newLockup;

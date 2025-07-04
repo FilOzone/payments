@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.27;
 
 /// @title Errors
 /// @notice Centralized library for custom error definitions across the protocol

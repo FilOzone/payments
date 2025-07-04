@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
 import {Payments} from "../src/Payments.sol";
@@ -10,6 +10,7 @@ import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {RailSettlementHelpers} from "./helpers/RailSettlementHelpers.sol";
 import {console} from "forge-std/console.sol";
 import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
+import {Errors} from "../src/Errors.sol";
 
 contract RailSettlementTest is Test, BaseTestHelper {
     PaymentsTestHelpers helper;
@@ -322,7 +323,11 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Attempt settlement with malicious validator - should revert
         vm.prank(USER1);
-        vm.expectRevert("validator settled beyond segment end");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.ValidatorSettledBeyondSegmentEnd.selector, railId, block.number, block.number + 10
+            )
+        );
         payments.settleRail{value: networkFee}(railId, block.number);
 
         // Set the validator to return invalid amount but valid settlement duration
@@ -333,7 +338,12 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Attempt settlement with excessive amount - should also revert
         vm.prank(USER1);
-        vm.expectRevert("validator modified amount exceeds maximum for settled duration");
+        // error ValidatorModifiedAmountExceedsMaximum(uint256 railId, uint256 maxAllowed, uint256 attempted);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.ValidatorModifiedAmountExceedsMaximum.selector, railId, proposedAmount, invalidAmount
+            )
+        );
         payments.settleRail{value: networkFee}(railId, block.number);
     }
 
@@ -837,12 +847,20 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Now we're at the end epoch - try to modify rate
         vm.prank(OPERATOR);
-        vm.expectRevert("cannot modify terminated rail beyond it's end epoch");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.CannotModifyTerminatedRailBeyondEndEpoch.selector, railId, endEpoch, block.number
+            )
+        );
         payments.modifyRailPayment(railId, 5 ether, 0);
 
         // Also try to make a one-time payment
         vm.prank(OPERATOR);
-        vm.expectRevert("cannot modify terminated rail beyond it's end epoch");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.CannotModifyTerminatedRailBeyondEndEpoch.selector, railId, endEpoch, block.number
+            )
+        );
         payments.modifyRailPayment(railId, rate, 1 ether);
 
         // Advance one more block to go beyond the end epoch
@@ -850,12 +868,20 @@ contract RailSettlementTest is Test, BaseTestHelper {
 
         // Try to modify rate again - should still revert
         vm.prank(OPERATOR);
-        vm.expectRevert("cannot modify terminated rail beyond it's end epoch");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.CannotModifyTerminatedRailBeyondEndEpoch.selector, railId, endEpoch, block.number
+            )
+        );
         payments.modifyRailPayment(railId, 5 ether, 0);
 
         // Try to make both rate change and one-time payment
         vm.prank(OPERATOR);
-        vm.expectRevert("cannot modify terminated rail beyond it's end epoch");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.CannotModifyTerminatedRailBeyondEndEpoch.selector, railId, endEpoch, block.number
+            )
+        );
         payments.modifyRailPayment(railId, 5 ether, 1 ether);
     }
 }

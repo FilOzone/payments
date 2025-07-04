@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
 import {Payments} from "../src/Payments.sol";
@@ -7,6 +7,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 import {PaymentsTestHelpers} from "./helpers/PaymentsTestHelpers.sol";
 import {BaseTestHelper} from "./helpers/BaseTestHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Errors} from "../src/Errors.sol";
 
 contract AccountManagementTest is Test, BaseTestHelper {
     PaymentsTestHelpers helper;
@@ -73,7 +74,9 @@ contract AccountManagementTest is Test, BaseTestHelper {
         vm.startPrank(USER1);
 
         // Test zero token address
-        vm.expectRevert("must send an equal amount of native tokens");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.MustSendExactNativeAmount.selector, DEPOSIT_AMOUNT, DEPOSIT_AMOUNT - 1)
+        );
         payments.deposit{value: DEPOSIT_AMOUNT - 1}(address(0), USER1, DEPOSIT_AMOUNT);
 
         vm.stopPrank();
@@ -153,7 +156,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
         helper.makeDeposit(USER1, USER1, DEPOSIT_AMOUNT);
 
         // Try to withdraw more than available
-        helper.expectWithdrawalToFail(USER1, DEPOSIT_AMOUNT + 1, bytes("insufficient unlocked funds for withdrawal"));
+        helper.expectWithdrawalToFail(USER1, DEPOSIT_AMOUNT, DEPOSIT_AMOUNT + 1);
     }
 
     function testWithdrawToWithZeroRecipient() public {
@@ -209,7 +212,7 @@ contract AccountManagementTest is Test, BaseTestHelper {
         );
 
         // Try to withdraw more than unlocked funds
-        helper.expectWithdrawalToFail(USER1, DEPOSIT_AMOUNT, bytes("insufficient unlocked funds for withdrawal"));
+        helper.expectWithdrawalToFail(USER1, DEPOSIT_AMOUNT - lockedAmount, DEPOSIT_AMOUNT);
 
         // Should be able to withdraw up to unlocked amount
         helper.makeWithdrawal(USER1, DEPOSIT_AMOUNT - lockedAmount);
